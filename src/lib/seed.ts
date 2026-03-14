@@ -140,7 +140,7 @@ const lists: ListSeed[] = [
     category: 'tv',
     entries: [
       { rank: 1, title: 'The Pitt (Season 1)' },
-      { rank: 2, title: 'Studio (Season 1)' },
+      { rank: 2, title: 'The Studio (Season 1)' },
       { rank: 3, title: 'The Traitors (Season 3)' },
       { rank: 4, title: 'Andor (Season 2)' },
       { rank: 5, title: 'Pluribus (Season 1)' },
