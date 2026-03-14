@@ -127,7 +127,7 @@ const lists: ListSeed[] = [
       { rank: 5,  title: 'If I Had Legs I\'d Kick You' },
       { rank: 6,  title: 'Sorry Baby' },
       { rank: 7,  title: 'Sinners' },
-      { rank: 8,  title: 'KPDH' },
+      { rank: 8,  title: 'K-Pop Demon Hunters' },
       { rank: 9,  title: 'Eleanor the Great' },
       { rank: 10, title: 'Train Dreams' },
     ],
