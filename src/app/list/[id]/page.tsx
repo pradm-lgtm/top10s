@@ -4,6 +4,7 @@ import { useState, useEffect, use } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { fetchPosters } from '@/lib/tmdb'
 import type { List, ListEntry, Comment, ReactionCount } from '@/types'
 
 const EMOJIS = ['🔥', '❤️', '😮', '😂', '👏']
@@ -16,6 +17,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [reactions, setReactions] = useState<ReactionCount[]>([])
   const [newComment, setNewComment] = useState('')
   const [submittingComment, setSubmittingComment] = useState(false)
+  const [posters, setPosters] = useState<Record<string, string | null>>({})
   const [loading, setLoading] = useState(true)
   const [visitorId, setVisitorId] = useState('')
   const [visitorName, setVisitorName] = useState('')
@@ -46,7 +48,12 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     ])
 
     if (listRes.data) setList(listRes.data)
-    if (entriesRes.data) setEntries(entriesRes.data)
+    if (entriesRes.data) {
+      setEntries(entriesRes.data)
+      // Fetch TMDB posters in parallel with the rest
+      const category = listRes.data?.category ?? 'movies'
+      fetchPosters(entriesRes.data, category).then(setPosters)
+    }
     if (commentsRes.data) setComments(commentsRes.data as Comment[])
 
     if (reactionsRes.data) {
@@ -236,22 +243,39 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                       )}
                     </div>
                     {/* Thumbnail — right aligned */}
-                    {entry.image_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={entry.image_url}
-                        alt={entry.title}
-                        className="w-12 h-[4.5rem] object-cover rounded shrink-0"
-                        style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}
-                      />
-                    ) : (
-                      <div
-                        className="w-12 h-[4.5rem] rounded shrink-0 flex items-center justify-center text-lg"
-                        style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
-                      >
-                        {isMovie ? '🎬' : '📺'}
-                      </div>
-                    )}
+                    {(() => {
+                      const src = entry.image_url ?? posters[entry.id]
+                      if (src) return (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={src}
+                          alt={entry.title}
+                          className="w-12 h-[4.5rem] object-cover rounded shrink-0"
+                          style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }}
+                        />
+                      )
+                      // Poster not yet loaded or not found
+                      const pending = !(entry.id in posters)
+                      return (
+                        <div
+                          className="w-12 h-[4.5rem] rounded shrink-0 flex items-end justify-center pb-1 overflow-hidden"
+                          style={{
+                            background: 'var(--surface-2)',
+                            border: '1px solid var(--border)',
+                            opacity: pending ? 0.4 : 1,
+                          }}
+                        >
+                          {!pending && (
+                            <span
+                              className="text-[9px] text-center leading-tight px-1"
+                              style={{ color: 'var(--muted)' }}
+                            >
+                              {entry.title}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </div>
                 </div>
               </li>

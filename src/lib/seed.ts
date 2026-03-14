@@ -120,7 +120,7 @@ const lists: ListSeed[] = [
     year: 2025,
     category: 'movies',
     entries: [
-      { rank: 1,  title: 'OBAA' },
+      { rank: 1,  title: 'One Battle After Another' },
       { rank: 2,  title: 'No Other Choice' },
       { rank: 3,  title: '28 Years Later' },
       { rank: 4,  title: 'Wake Up Dead Man' },
