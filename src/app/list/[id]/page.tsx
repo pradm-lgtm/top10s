@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { fetchPosters } from '@/lib/tmdb'
-import type { List, ListEntry, Comment, ReactionCount } from '@/types'
+import type { List, ListEntry, Comment, ReactionCount, HonorableMention, AlsoWatched } from '@/types'
 
 const EMOJIS = ['🔥', '❤️', '😮', '😂', '👏']
 
@@ -17,6 +17,10 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [reactions, setReactions] = useState<ReactionCount[]>([])
   const [newComment, setNewComment] = useState('')
   const [submittingComment, setSubmittingComment] = useState(false)
+  const [honorableMentions, setHonorableMentions] = useState<HonorableMention[]>([])
+  const [alsoWatched, setAlsoWatched] = useState<AlsoWatched[]>([])
+  const [hmOpen, setHmOpen] = useState(false)
+  const [awOpen, setAwOpen] = useState(false)
   const [posters, setPosters] = useState<Record<string, string | null>>({})
   const [loading, setLoading] = useState(true)
   const [visitorId, setVisitorId] = useState('')
@@ -36,7 +40,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   }, [id, router])
 
   async function fetchAll(vid: string) {
-    const [listRes, entriesRes, commentsRes, reactionsRes] = await Promise.all([
+    const [listRes, entriesRes, commentsRes, reactionsRes, hmRes, awRes] = await Promise.all([
       supabase.from('lists').select('*').eq('id', id).single(),
       supabase.from('list_entries').select('*').eq('list_id', id).order('rank'),
       supabase
@@ -45,6 +49,8 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         .eq('list_id', id)
         .order('created_at', { ascending: false }),
       supabase.from('reactions').select('emoji, visitor_id').eq('list_id', id),
+      supabase.from('honorable_mentions').select('*').eq('list_id', id).order('created_at'),
+      supabase.from('also_watched').select('*').eq('list_id', id).order('created_at'),
     ])
 
     if (listRes.data) setList(listRes.data)
@@ -69,6 +75,9 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       }
       setReactions(EMOJIS.map((e) => ({ emoji: e, ...counts[e] })))
     }
+
+    if (hmRes.data) setHonorableMentions(hmRes.data)
+    if (awRes.data) setAlsoWatched(awRes.data)
 
     setLoading(false)
   }
@@ -283,6 +292,46 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
           </ol>
         </section>
 
+        {/* Honorable Mentions */}
+        {honorableMentions.length > 0 && (
+          <CollapsibleSection
+            label="Honorable Mentions"
+            count={honorableMentions.length}
+            open={hmOpen}
+            onToggle={() => setHmOpen((v) => !v)}
+            accentColor={accentColor}
+          >
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+              {honorableMentions.map((hm) => (
+                <span key={hm.id} className="text-sm flex items-center gap-2 min-w-0">
+                  <span className="shrink-0" style={{ color: accentColor }}>·</span>
+                  <span className="truncate" style={{ color: 'var(--foreground)' }}>{hm.title}</span>
+                </span>
+              ))}
+            </div>
+          </CollapsibleSection>
+        )}
+
+        {/* Also Watched */}
+        {alsoWatched.length > 0 && (
+          <CollapsibleSection
+            label="Also Watched"
+            count={alsoWatched.length}
+            open={awOpen}
+            onToggle={() => setAwOpen((v) => !v)}
+            accentColor={accentColor}
+          >
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+              {alsoWatched.map((aw) => (
+                <span key={aw.id} className="text-sm flex items-center gap-2 min-w-0">
+                  <span className="shrink-0" style={{ color: accentColor }}>·</span>
+                  <span className="truncate" style={{ color: 'var(--foreground)' }}>{aw.title}</span>
+                </span>
+              ))}
+            </div>
+          </CollapsibleSection>
+        )}
+
         {/* Reactions */}
         <section>
           <h2
@@ -400,5 +449,64 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         </section>
       </main>
     </div>
+  )
+}
+
+function CollapsibleSection({
+  label,
+  count,
+  open,
+  onToggle,
+  accentColor,
+  children,
+}: {
+  label: string
+  count: number
+  open: boolean
+  onToggle: () => void
+  accentColor: string
+  children: React.ReactNode
+}) {
+  return (
+    <section>
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between group mb-3"
+      >
+        <div className="flex items-center gap-3">
+          <span
+            className="text-xs tracking-[0.3em] uppercase font-semibold"
+            style={{ color: 'var(--muted)' }}
+          >
+            {label}
+          </span>
+          <span
+            className="text-xs px-1.5 py-0.5 rounded tabular-nums"
+            style={{ background: 'var(--surface-2)', color: 'var(--muted)' }}
+          >
+            {count}
+          </span>
+        </div>
+        <span
+          className="text-xs transition-transform duration-200"
+          style={{
+            color: accentColor,
+            display: 'inline-block',
+            transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+          }}
+        >
+          ▾
+        </span>
+      </button>
+
+      {open && (
+        <div
+          className="rounded-xl p-4 sm:p-5"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+        >
+          {children}
+        </div>
+      )}
+    </section>
   )
 }

@@ -45,3 +45,17 @@ export type ReactionCount = {
   count: number
   reacted: boolean
 }
+
+export type HonorableMention = {
+  id: string
+  list_id: string
+  title: string
+  created_at: string
+}
+
+export type AlsoWatched = {
+  id: string
+  list_id: string
+  title: string
+  created_at: string
+}

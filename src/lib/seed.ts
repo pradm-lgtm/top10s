@@ -33,6 +33,8 @@ type ListSeed = {
   description?: string
   force?: boolean  // set to true to delete & re-insert if it already exists
   entries: Entry[]
+  honorable_mentions?: string[]
+  also_watched?: string[]
 }
 
 const lists: ListSeed[] = [
@@ -42,6 +44,7 @@ const lists: ListSeed[] = [
     year: 2023,
     category: 'movies',
     description: 'A standout year for cinema. From blockbusters to quiet masterpieces.',
+    force: true,
     entries: [
       { rank: 1,  title: 'Past Lives' },
       { rank: 2,  title: 'Poor Things' },
@@ -54,6 +57,37 @@ const lists: ListSeed[] = [
       { rank: 9,  title: 'Godzilla Minus One' },
       { rank: 10, title: 'The Boy and the Heron' },
     ],
+    honorable_mentions: [
+      'Rye Lane',
+      'Dungeons & Dragons: Honor Among Thieves',
+      'Are You There God? It\'s Me, Margaret',
+      'Teenage Mutant Ninja Turtles: Mutant Mayhem',
+      'Barbie',
+      'Air',
+      'Bottoms',
+      'John Wick: Chapter 4',
+      'No Hard Feelings',
+      'Dream Scenario',
+      'The Killer',
+      'The Zone of Interest',
+    ],
+    also_watched: [
+      'Polite Society',
+      'Mission: Impossible – Dead Reckoning Part One',
+      'You Are So Not Invited to My Bat Mitzvah',
+      'Tár',
+      'Hustle',
+      'The Redeem Team',
+      'Guardians of the Galaxy Vol. 3',
+      'Creed III',
+      'M3GAN',
+      'Joy Ride',
+      'A Haunting in Venice',
+      'You Hurt My Feelings',
+      'Asteroid City',
+      'Elemental',
+      'Cocaine Bear',
+    ],
   },
 
   // ── 2023 TV ───────────────────────────────────
@@ -62,6 +96,7 @@ const lists: ListSeed[] = [
     year: 2023,
     category: 'tv',
     description: 'Peak TV is alive. These are the shows that consumed my evenings.',
+    force: true,
     entries: [
       { rank: 1,  title: 'The Bear (Season 2)' },
       { rank: 2,  title: 'Beef' },
@@ -73,6 +108,16 @@ const lists: ListSeed[] = [
       { rank: 8,  title: 'Barry (Season 4)' },
       { rank: 9,  title: 'Monarch: Legacy of Monsters' },
       { rank: 10, title: 'Atlanta (Season 4)' },
+    ],
+    honorable_mentions: ['Shrinking (Season 1)'],
+    also_watched: [
+      'Ted Lasso (Season 3)',
+      'Only Murders in the Building (Season 3)',
+      'Sex Education (Season 4)',
+      'Rothaniel',
+      'Neal Brennan: Blocks',
+      'Tennessee Kid',
+      'The Curse',
     ],
   },
 
@@ -119,6 +164,7 @@ const lists: ListSeed[] = [
     title: 'Best Movies of 2024',
     year: 2024,
     category: 'movies',
+    force: true,
     entries: [
       { rank: 1,  title: 'Dune: Part Two' },
       { rank: 2,  title: 'Anora' },
@@ -131,6 +177,28 @@ const lists: ListSeed[] = [
       { rank: 9,  title: 'Laapataa Ladies' },
       { rank: 10, title: 'The Wild Robot' },
     ],
+    honorable_mentions: [
+      'The Substance',
+      'Hit Man',
+      'Monkey Man',
+      'Will & Harper',
+      'The Last Stop in Yuma County',
+      'Rebel Ridge',
+      '12th Fail',
+      'Twisters',
+    ],
+    also_watched: [
+      'Problemista',
+      'Three Daughters',
+      'Kalki 2898 AD',
+      'Babes',
+      'Lucky Baskhar',
+      'Gladiator II',
+      'The Fall Guy',
+      'Saturday Night',
+      'Srikanth',
+      'Love Lies Bleeding',
+    ],
   },
 
   // ── 2024 TV ───────────────────────────────────
@@ -138,6 +206,7 @@ const lists: ListSeed[] = [
     title: 'Best TV Shows of 2024',
     year: 2024,
     category: 'tv',
+    force: true,
     entries: [
       { rank: 1,  title: 'Shōgun (Season 1)' },
       { rank: 2,  title: 'Hacks (Season 3)' },
@@ -150,6 +219,18 @@ const lists: ListSeed[] = [
       { rank: 9,  title: 'Black Doves (Season 1)' },
       { rank: 10, title: 'Poker Face (Season 1)' },
     ],
+    honorable_mentions: [
+      'House of the Dragon (Season 2)',
+      'English Teacher',
+      'The Traitors (Season 2)',
+    ],
+    also_watched: [
+      'Drops of God',
+      'Bad Monkey',
+      'The Bear (Season 3)',
+      "X-Men '97",
+      'Starting 5',
+    ],
   },
 
   // ── 2025 MOVIES ──────────────────────────────
@@ -157,6 +238,7 @@ const lists: ListSeed[] = [
     title: 'Best Movies of 2025',
     year: 2025,
     category: 'movies',
+    force: true,
     entries: [
       { rank: 1,  title: 'One Battle After Another' },
       { rank: 2,  title: 'No Other Choice' },
@@ -169,6 +251,28 @@ const lists: ListSeed[] = [
       { rank: 9,  title: 'Eleanor the Great' },
       { rank: 10, title: 'Train Dreams' },
     ],
+    honorable_mentions: [
+      'Bugonia',
+      'Good Fortune',
+      'Black Bag',
+      'Marty Supreme',
+      'Friendship',
+      'Superman',
+      'House of Dynamite',
+      'The Mastermind',
+      'F1',
+      'Warfare',
+      'Weapons',
+    ],
+    also_watched: [
+      'Babes',
+      'Pushpa 2: The Rule',
+      'Lucky Baskhar',
+      'Thunderbolts*',
+      'Mickey 17',
+      'Wicked: For Good',
+      'Paddington in Peru',
+    ],
   },
 
   // ── 2025 TV ───────────────────────────────────
@@ -176,12 +280,33 @@ const lists: ListSeed[] = [
     title: 'Best TV Shows of 2025',
     year: 2025,
     category: 'tv',
+    force: true,
     entries: [
       { rank: 1, title: 'The Pitt (Season 1)' },
       { rank: 2, title: 'The Studio (Season 1)' },
       { rank: 3, title: 'The Traitors (Season 3)' },
       { rank: 4, title: 'Andor (Season 2)' },
       { rank: 5, title: 'Pluribus (Season 1)' },
+    ],
+    honorable_mentions: [
+      'Mo (Season 2)',
+      'Court of Gold',
+      'Pop Culture Jeopardy!',
+      'Adolescence',
+    ],
+    also_watched: [
+      'Severance (Season 2)',
+      'Slow Horses (Season 5)',
+      'Hacks (Season 4)',
+      'The White Lotus (Season 3)',
+      'Drops of God',
+      'Man on the Inside (Season 2)',
+      'The Last of Us (Season 2)',
+      'The Four Seasons',
+      'A Swim Lesson',
+      'Black Doves',
+      'Dad Man Walking',
+      'Running Point',
     ],
   },
 ]
@@ -241,9 +366,29 @@ async function seed() {
 
     if (entriesError) {
       console.error(`✗  Entries failed for "${list.title}":`, entriesError.message)
-    } else {
-      console.log(`✓  Inserted  "${list.title}" (${list.year}) — ${list.entries.length} entries`)
+      continue
     }
+
+    if (list.honorable_mentions?.length) {
+      const { error: hmError } = await supabase.from('honorable_mentions').insert(
+        list.honorable_mentions.map((title) => ({ list_id: inserted.id, title }))
+      )
+      if (hmError) console.error(`✗  Honorable mentions failed for "${list.title}":`, hmError.message)
+    }
+
+    if (list.also_watched?.length) {
+      const { error: awError } = await supabase.from('also_watched').insert(
+        list.also_watched.map((title) => ({ list_id: inserted.id, title }))
+      )
+      if (awError) console.error(`✗  Also watched failed for "${list.title}":`, awError.message)
+    }
+
+    const extras = [
+      list.honorable_mentions?.length ? `${list.honorable_mentions.length} honorable mentions` : '',
+      list.also_watched?.length ? `${list.also_watched.length} also watched` : '',
+    ].filter(Boolean).join(', ')
+
+    console.log(`✓  Inserted  "${list.title}" (${list.year}) — ${list.entries.length} entries${extras ? `, ${extras}` : ''}`)
   }
 
   console.log('\nDone.\n')
