@@ -295,6 +295,8 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         <section>
           {list.list_format === 'tiered' ? (
             <TieredEntries entries={entries} accentColor={accentColor} posters={posters} />
+          ) : list.list_format === 'tier-ranked' ? (
+            <TierRankedEntries entries={entries} posters={posters} />
           ) : (
           <>
           <ol className="space-y-3">
@@ -705,6 +707,22 @@ function CollapsibleSection({
   )
 }
 
+// Colors for tier-ranked banners (one per tier, sequential)
+const TIER_RANKED_COLORS = [
+  '#e8c547', // gold
+  '#60a5fa', // blue
+  '#34d399', // green
+  '#a78bfa', // purple
+  '#fb923c', // orange
+  '#f472b6', // pink
+  '#818cf8', // indigo
+  '#38bdf8', // sky
+  '#f43f5e', // rose
+  '#4ade80', // light green
+  '#94a3b8', // slate
+  '#6b7280', // gray
+]
+
 // Tier colors — index 0 = tier 1 (best), descending
 const TIER_COLORS = [
   '#e8c547', // gold
@@ -901,6 +919,113 @@ function TieredEntries({
       <p className="text-xs text-right" style={{ color: 'var(--muted)' }}>
         {entries.length} films · Phases 1–4
       </p>
+    </div>
+  )
+}
+
+function TierRankedEntries({
+  entries,
+  posters,
+}: {
+  entries: ListEntry[]
+  posters: Record<string, PosterInfo>
+}) {
+  // Group by tier, preserving insertion order
+  const tierGroups: { tier: string; entries: ListEntry[] }[] = []
+  const seen = new Map<string, ListEntry[]>()
+
+  for (const entry of [...entries].sort((a, b) => a.rank - b.rank)) {
+    const key = entry.tier ?? 'Uncategorized'
+    if (!seen.has(key)) {
+      const arr: ListEntry[] = []
+      seen.set(key, arr)
+      tierGroups.push({ tier: key, entries: arr })
+    }
+    seen.get(key)!.push(entry)
+  }
+
+  return (
+    <div className="space-y-10">
+      {tierGroups.map(({ tier, entries: tierEntries }, tierIndex) => {
+        const color = TIER_RANKED_COLORS[tierIndex] ?? '#e8c547'
+
+        return (
+          <div key={tier}>
+            {/* Tier Banner */}
+            <div
+              className="relative rounded-xl overflow-hidden mb-4 px-6 py-5"
+              style={{
+                background: `linear-gradient(135deg, ${color}22 0%, ${color}08 100%)`,
+                border: `1px solid ${color}35`,
+              }}
+            >
+              {/* Watermark number */}
+              <span
+                className="absolute right-5 top-1/2 -translate-y-1/2 font-black select-none pointer-events-none leading-none"
+                style={{ fontSize: '5rem', color: `${color}12` }}
+              >
+                {tierIndex + 1}
+              </span>
+              <p
+                className="text-[10px] tracking-[0.3em] uppercase font-semibold mb-1"
+                style={{ color: `${color}70` }}
+              >
+                Tier {tierIndex + 1}
+              </p>
+              <h3 className="text-lg font-bold" style={{ color }}>{tier}</h3>
+            </div>
+
+            {/* Entries */}
+            <div className="space-y-1.5">
+              {tierEntries.map((entry) => {
+                const info = posters[entry.id]
+                const src = entry.image_url ?? info?.poster
+                const imdbUrl = info?.imdbUrl
+
+                return (
+                  <div
+                    key={entry.id}
+                    className="flex items-center gap-3 rounded-lg px-3 py-2"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+                  >
+                    {/* Global rank */}
+                    <span
+                      className="text-xs font-bold w-6 shrink-0 text-right tabular-nums"
+                      style={{ color: `${color}70` }}
+                    >
+                      {entry.rank}
+                    </span>
+
+                    {/* Poster */}
+                    {src ? (
+                      imdbUrl ? (
+                        <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
+                        </a>
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded shrink-0" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
+                      )
+                    ) : (
+                      <div className="w-8 h-12 rounded shrink-0" style={{ background: `${color}15`, border: `1px solid ${color}20` }} />
+                    )}
+
+                    {/* Title */}
+                    <span className="font-medium text-sm flex-1 min-w-0">
+                      {imdbUrl ? (
+                        <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'var(--foreground)' }}>
+                          {entry.title}
+                        </a>
+                      ) : entry.title}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

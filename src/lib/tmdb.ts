@@ -11,8 +11,11 @@ export type PosterInfo = {
 // "Shōgun (Season 1)" → "Shōgun"
 function cleanTitle(title: string): string {
   return title
-    .replace(/\s*\(Season \d+\)/i, '')
-    .replace(/\s*S\d+$/i, '')
+    .replace(/\s*\(Seasons?\s[^)]+\)/gi, '') // (Season 1), (Seasons 1 & 2)
+    .replace(/\s*\(S\d+[^)]*\)/gi, '')        // (S1), (S1 & S2)
+    .replace(/\s*S\d+$/i, '')                  // trailing S1
+    .replace(/\s*\(US\)$/i, '')                // (US)
+    .replace(/\s*\/.*$/, '')                   // "Narcos / Narcos: Mexico" → "Narcos"
     .trim()
 }
 

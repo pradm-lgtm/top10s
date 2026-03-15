@@ -31,7 +31,7 @@ type ListSeed = {
   title: string
   year?: number           // omit for theme lists
   list_type?: 'annual' | 'theme'
-  list_format?: 'ranked' | 'tiered'
+  list_format?: 'ranked' | 'tiered' | 'tier-ranked'
   genre?: string          // e.g. 'rom-com', 'horror', 'action', 'marvel'
   category: 'movies' | 'tv'
   description?: string
@@ -711,6 +711,74 @@ const lists: ListSeed[] = [
       'Black Doves',
       'Dad Man Walking',
       'Running Point',
+    ],
+  },
+
+  // ── THEME: ALL-TIME TV ───────────────────────
+  {
+    title: 'All-Time TV Shows',
+    list_type: 'theme',
+    list_format: 'tier-ranked',
+    category: 'tv',
+    entries: [
+      // Tier 1
+      { rank: 1,  tier: 'The Mount Rushmore',                      title: 'The Sopranos' },
+      { rank: 2,  tier: 'The Mount Rushmore',                      title: 'Mad Men' },
+      { rank: 3,  tier: 'The Mount Rushmore',                      title: 'The Wire' },
+      { rank: 4,  tier: 'The Mount Rushmore',                      title: 'Succession' },
+      // Tier 2
+      { rank: 5,  tier: 'The Greats with Caveats',                 title: 'Breaking Bad' },
+      { rank: 6,  tier: 'The Greats with Caveats',                 title: 'Game of Thrones' },
+      { rank: 7,  tier: 'The Greats with Caveats',                 title: 'Atlanta' },
+      { rank: 8,  tier: 'The Greats with Caveats',                 title: 'Fleabag' },
+      // Tier 3
+      { rank: 9,  tier: 'The A+ Comedies',                         title: '30 Rock' },
+      { rank: 10, tier: 'The A+ Comedies',                         title: 'Veep' },
+      { rank: 11, tier: 'The A+ Comedies',                         title: 'Community' },
+      { rank: 12, tier: 'The A+ Comedies',                         title: 'The Office (US)' },
+      { rank: 13, tier: 'The A+ Comedies',                         title: 'Parks and Recreation' },
+      // Tier 4
+      { rank: 14, tier: 'The Series Specials',                     title: 'Band of Brothers' },
+      // Tier 5
+      { rank: 15, tier: 'Short But Great Runs',                    title: 'Andor' },
+      { rank: 16, tier: 'Short But Great Runs',                    title: 'Sherlock' },
+      { rank: 17, tier: 'Short But Great Runs',                    title: 'Mindhunter' },
+      { rank: 18, tier: 'Short But Great Runs',                    title: 'Shōgun' },
+      { rank: 19, tier: 'Short But Great Runs',                    title: 'A Knight of the Seven Kingdoms' },
+      { rank: 20, tier: 'Short But Great Runs',                    title: 'The Pitt' },
+      { rank: 21, tier: 'Short But Great Runs',                    title: 'Flight of the Conchords' },
+      // Tier 6
+      { rank: 22, tier: 'The High Peaks Before Low Valleys',       title: 'True Detective (Season 1)' },
+      { rank: 23, tier: 'The High Peaks Before Low Valleys',       title: 'The Bear (Seasons 1 & 2)' },
+      { rank: 24, tier: 'The High Peaks Before Low Valleys',       title: 'Ted Lasso (Season 1)' },
+      { rank: 25, tier: 'The High Peaks Before Low Valleys',       title: 'House of Cards (Season 1)' },
+      { rank: 26, tier: 'The High Peaks Before Low Valleys',       title: 'Severance (Season 1)' },
+      { rank: 27, tier: 'The High Peaks Before Low Valleys',       title: 'Big Little Lies (Season 1)' },
+      { rank: 28, tier: 'The High Peaks Before Low Valleys',       title: 'The Last of Us (Season 1)' },
+      // Tier 7
+      { rank: 29, tier: 'The A− Comedies',                         title: 'The Good Place' },
+      { rank: 30, tier: 'The A− Comedies',                         title: 'Curb Your Enthusiasm' },
+      { rank: 31, tier: 'The A− Comedies',                         title: 'Arrested Development' },
+      // Tier 8
+      { rank: 32, tier: 'Golden Globe Interpretation Comedies',    title: 'Slow Horses' },
+      { rank: 33, tier: 'Golden Globe Interpretation Comedies',    title: 'The Rehearsal' },
+      { rank: 34, tier: 'Golden Globe Interpretation Comedies',    title: 'Louie' },
+      { rank: 35, tier: 'Golden Globe Interpretation Comedies',    title: 'Ramy' },
+      { rank: 36, tier: 'Golden Globe Interpretation Comedies',    title: 'Master of None' },
+      // Tier 9
+      { rank: 37, tier: 'My Sole But Rewarding Foray into Reality TV', title: 'The Traitors (US)' },
+      // Tier 10
+      { rank: 38, tier: 'The B+ Comedies',                         title: 'Hacks' },
+      { rank: 39, tier: 'The B+ Comedies',                         title: 'Friends' },
+      { rank: 40, tier: 'The B+ Comedies',                         title: 'Everybody Loves Raymond' },
+      { rank: 41, tier: 'The B+ Comedies',                         title: 'New Girl' },
+      { rank: 42, tier: 'The B+ Comedies',                         title: 'The League' },
+      // Tier 11
+      { rank: 43, tier: 'The Consistently Good, Maybe Never Great', title: 'Narcos / Narcos: Mexico' },
+      { rank: 44, tier: 'The Consistently Good, Maybe Never Great', title: 'Friday Night Lights' },
+      { rank: 45, tier: 'The Consistently Good, Maybe Never Great', title: 'The White Lotus' },
+      // Tier 12
+      { rank: 46, tier: 'Too Early to Rank',                       title: 'The Studio (Season 1)' },
     ],
   },
 

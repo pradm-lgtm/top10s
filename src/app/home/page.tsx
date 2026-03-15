@@ -394,6 +394,7 @@ function ListCard({ list }: { list: ListWithPreview }) {
     : isMovie ? 'rgba(232,197,71,0.4)' : 'rgba(139,92,246,0.4)'
 
   const isTiered = list.list_format === 'tiered'
+  const isTierRanked = list.list_format === 'tier-ranked'
 
   // For tiered preview: group entries by rank
   const tierGroups: { rank: number; tier: string; titles: string[] }[] = []
@@ -436,7 +437,18 @@ function ListCard({ list }: { list: ListWithPreview }) {
 
         {/* Preview — fixed remaining height, fades out */}
         <div className="flex-1 min-h-0 relative overflow-hidden">
-          {isTiered ? (
+          {isTierRanked ? (
+            <ol className="space-y-1.5">
+              {list.entries.map((entry) => (
+                <li key={entry.id} className="flex items-center gap-2.5 text-sm">
+                  <span className="text-xs font-bold w-5 shrink-0" style={{ color: accent }}>
+                    {entry.rank}
+                  </span>
+                  <span className="truncate" style={{ color: 'var(--foreground)' }}>{entry.title}</span>
+                </li>
+              ))}
+            </ol>
+          ) : isTiered ? (
             <div className="space-y-1.5">
               {tierGroups.map(({ rank, tier, titles }) => (
                 <div key={rank} className="flex items-baseline gap-2 text-sm">

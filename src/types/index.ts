@@ -10,7 +10,7 @@ export type List = {
   year: number | null
   category: 'movies' | 'tv'
   list_type: 'annual' | 'theme'
-  list_format: 'ranked' | 'tiered'
+  list_format: 'ranked' | 'tiered' | 'tier-ranked'
   genre: string | null
   description: string | null
   created_at: string
