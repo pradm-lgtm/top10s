@@ -267,9 +267,6 @@ function ListCard({ list }: { list: ListWithPreview }) {
         {/* Header */}
         <div className="flex items-start justify-between mb-3 shrink-0">
           <h3 className="font-semibold text-base leading-tight pr-2">{list.title}</h3>
-          <span className="text-xs shrink-0 mt-0.5" style={{ color: 'var(--muted)' }}>
-            {isTiered ? `${list.entries.length} films` : '10 picks'}
-          </span>
         </div>
 
         {/* Preview — fixed remaining height, fades out */}
