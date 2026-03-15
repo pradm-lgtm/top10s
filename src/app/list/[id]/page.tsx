@@ -199,7 +199,9 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
             className="text-xs tracking-[0.3em] uppercase font-medium mb-3"
             style={{ color: accentColor }}
           >
-            {list.year} · {isMovie ? 'Movies' : 'TV Shows'}
+            {list.list_type === 'theme'
+              ? (list.genre ?? 'All-Time')
+              : `${list.year} · ${isMovie ? 'Movies' : 'TV Shows'}`}
           </div>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-3">
             {list.title}
@@ -215,6 +217,9 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       <main className="max-w-3xl mx-auto px-4 pb-20 space-y-12">
         {/* Entries */}
         <section>
+          {list.list_format === 'tiered' ? (
+            <TieredEntries entries={entries} accentColor={accentColor} posters={posters} />
+          ) : (
           <ol className="space-y-3">
             {entries.map((entry, i) => (
               <li key={entry.id}>
@@ -290,6 +295,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               </li>
             ))}
           </ol>
+          )}
         </section>
 
         {/* Honorable Mentions */}
@@ -508,5 +514,193 @@ function CollapsibleSection({
         </div>
       )}
     </section>
+  )
+}
+
+// Tier colors — index 0 = tier 1 (best), descending
+const TIER_COLORS = [
+  '#e8c547', // gold
+  '#34d399', // green
+  '#60a5fa', // blue
+  '#a78bfa', // purple
+  '#fb923c', // orange
+  '#f87171', // red
+  '#6b7280', // grey
+]
+
+function TieredEntries({
+  entries,
+  accentColor,
+  posters,
+}: {
+  entries: ListEntry[]
+  accentColor: string
+  posters: Record<string, string | null>
+}) {
+  const tierMap = new Map<number, { label: string; entries: ListEntry[] }>()
+  for (const entry of entries) {
+    if (!tierMap.has(entry.rank)) {
+      tierMap.set(entry.rank, { label: entry.tier ?? `Tier ${entry.rank}`, entries: [] })
+    }
+    tierMap.get(entry.rank)!.entries.push(entry)
+  }
+
+  const tiers = Array.from(tierMap.entries()).sort(([a], [b]) => a - b)
+
+  return (
+    <div className="space-y-2">
+      {tiers.map(([rank, { label, entries: tierEntries }], i) => {
+        const color = TIER_COLORS[i] ?? accentColor
+        const isTop = i === 0
+
+        // ── Tier 1 hero treatment ──────────────────────
+        if (isTop) {
+          const hero = tierEntries[0]
+          const poster = hero.image_url ?? posters[hero.id]
+          return (
+            <div
+              key={rank}
+              className="rounded-xl overflow-hidden flex items-stretch"
+              style={{
+                border: `1px solid ${color}55`,
+                background: `linear-gradient(135deg, ${color}18 0%, ${color}06 60%, transparent 100%)`,
+                boxShadow: `0 0 32px ${color}20`,
+                minHeight: '110px',
+              }}
+            >
+              {/* Label */}
+              <div
+                className="flex flex-col items-center justify-center px-4 shrink-0 text-center w-24"
+                style={{ borderRight: `2px solid ${color}40` }}
+              >
+                <span className="text-2xl font-black" style={{ color }}>★</span>
+                <span
+                  className="text-[9px] leading-tight mt-1 font-semibold uppercase tracking-widest"
+                  style={{ color }}
+                >
+                  {label}
+                </span>
+              </div>
+
+              {/* Hero content */}
+              <div className="flex-1 flex items-center gap-5 px-5 py-4">
+                <div className="min-w-0">
+                  <p
+                    className="text-[10px] uppercase tracking-[0.2em] font-semibold mb-1"
+                    style={{ color: `${color}99` }}
+                  >
+                    #1 Pick
+                  </p>
+                  <h3
+                    className="text-xl font-bold leading-snug"
+                    style={{ color }}
+                  >
+                    {hero.title}
+                  </h3>
+                </div>
+                {poster && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={poster}
+                    alt={hero.title}
+                    className="shrink-0 rounded-lg object-cover ml-auto"
+                    style={{
+                      width: '56px',
+                      height: '84px',
+                      boxShadow: `0 4px 20px ${color}50`,
+                      border: `2px solid ${color}60`,
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+          )
+        }
+
+        // ── Standard tier rows ─────────────────────────
+        return (
+          <div
+            key={rank}
+            className="rounded-xl overflow-hidden flex items-stretch"
+            style={{ border: `1px solid ${color}22` }}
+          >
+            {/* Fixed-width label — same for all tiers */}
+            <div
+              className="flex flex-col items-center justify-center py-3 shrink-0 text-center w-24"
+              style={{
+                background: `${color}12`,
+                borderRight: `2px solid ${color}28`,
+              }}
+            >
+              <span className="text-sm font-bold" style={{ color }}>T{rank}</span>
+              <span
+                className="text-[9px] leading-tight mt-0.5 font-medium uppercase tracking-wide px-1"
+                style={{ color: `${color}bb` }}
+              >
+                {label}
+              </span>
+            </div>
+
+            {/* Movie cards */}
+            <div
+              className="flex flex-wrap gap-2 p-3 items-start"
+              style={{ background: `${color}05` }}
+            >
+              {tierEntries.map((entry) => {
+                const poster = entry.image_url ?? posters[entry.id]
+                return (
+                  <div
+                    key={entry.id}
+                    className="flex flex-col items-center gap-1"
+                    style={{ width: '56px' }}
+                  >
+                    {poster ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={poster}
+                        alt={entry.title}
+                        className="rounded object-cover w-full"
+                        style={{
+                          height: '78px',
+                          border: `1px solid ${color}30`,
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                        }}
+                      />
+                    ) : (
+                      <div
+                        className="rounded w-full flex items-center justify-center"
+                        style={{
+                          height: '78px',
+                          background: `${color}12`,
+                          border: `1px solid ${color}22`,
+                        }}
+                      />
+                    )}
+                    <span
+                      className="text-center leading-tight"
+                      style={{
+                        color: i <= 2 ? 'var(--foreground)' : 'var(--muted)',
+                        fontSize: '0.65rem',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical' as const,
+                        overflow: 'hidden',
+                        width: '100%',
+                        textAlign: 'center',
+                      }}
+                    >
+                      {entry.title}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+      <p className="text-xs text-right" style={{ color: 'var(--muted)' }}>
+        {entries.length} films · Phases 1–4
+      </p>
+    </div>
   )
 }

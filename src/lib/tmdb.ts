@@ -29,8 +29,13 @@ export async function fetchPoster(
     if (!res.ok) return null
 
     const data = await res.json()
-    const posterPath = data.results?.[0]?.poster_path
-    return posterPath ? `${TMDB_IMAGE_BASE}${posterPath}` : null
+    // Pick the result with the highest vote_count to avoid obscure titles
+    // shadowing well-known ones (e.g. "Pretty Woman" the 1990 film)
+    const results = data.results ?? []
+    const best = results
+      .filter((r: { poster_path?: string }) => r.poster_path)
+      .sort((a: { vote_count: number }, b: { vote_count: number }) => b.vote_count - a.vote_count)[0]
+    return best?.poster_path ? `${TMDB_IMAGE_BASE}${best.poster_path}` : null
   } catch {
     return null
   }

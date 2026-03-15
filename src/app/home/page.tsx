@@ -14,13 +14,25 @@ type GroupedByYear = {
   tv: ListWithPreview[]
 }
 
-const CATEGORY_LABELS = {
-  movies: 'Movies',
-  tv: 'TV Shows',
-} as const
+// Accent color per genre slug
+const GENRE_COLORS: Record<string, string> = {
+  'rom-com':  '#f472b6',
+  'horror':   '#f87171',
+  'action':   '#fb923c',
+  'drama':    '#60a5fa',
+  'scifi':    '#34d399',
+  'comedy':   '#facc15',
+  'animated': '#a78bfa',
+}
+const THEME_DEFAULT = '#f472b6'
+
+function themeColor(genre: string | null) {
+  return genre ? (GENRE_COLORS[genre] ?? THEME_DEFAULT) : THEME_DEFAULT
+}
 
 export default function HomePage() {
-  const [grouped, setGrouped] = useState<GroupedByYear[]>([])
+  const [annualGrouped, setAnnualGrouped] = useState<GroupedByYear[]>([])
+  const [themeLists, setThemeLists] = useState<ListWithPreview[]>([])
   const [loading, setLoading] = useState(true)
   const [visitorName, setVisitorName] = useState('')
   const router = useRouter()
@@ -39,14 +51,13 @@ export default function HomePage() {
     const { data: lists, error } = await supabase
       .from('lists')
       .select('*')
-      .order('year', { ascending: false })
+      .order('year', { ascending: false, nullsFirst: false })
 
     if (error || !lists) {
       setLoading(false)
       return
     }
 
-    // Fetch top 3 entries for each list
     const listIds = lists.map((l) => l.id)
     const { data: entries } = await supabase
       .from('list_entries')
@@ -61,23 +72,27 @@ export default function HomePage() {
       entryMap[entry.list_id].push(entry)
     }
 
-    const listsWithPreviews: ListWithPreview[] = lists.map((list) => ({
+    const withPreviews: ListWithPreview[] = lists.map((list) => ({
       ...list,
       entries: entryMap[list.id] ?? [],
     }))
 
-    // Group by year
-    const yearMap: Record<number, { movies: ListWithPreview[]; tv: ListWithPreview[] }> = {}
-    for (const list of listsWithPreviews) {
-      if (!yearMap[list.year]) yearMap[list.year] = { movies: [], tv: [] }
-      yearMap[list.year][list.category].push(list)
-    }
+    const annual = withPreviews.filter((l) => l.list_type !== 'theme')
+    const theme  = withPreviews.filter((l) => l.list_type === 'theme')
 
-    const result: GroupedByYear[] = Object.entries(yearMap)
+    // Group annual by year
+    const yearMap: Record<number, { movies: ListWithPreview[]; tv: ListWithPreview[] }> = {}
+    for (const list of annual) {
+      const y = list.year!
+      if (!yearMap[y]) yearMap[y] = { movies: [], tv: [] }
+      yearMap[y][list.category].push(list)
+    }
+    const grouped: GroupedByYear[] = Object.entries(yearMap)
       .sort(([a], [b]) => Number(b) - Number(a))
       .map(([year, cats]) => ({ year: Number(year), ...cats }))
 
-    setGrouped(result)
+    setAnnualGrouped(grouped)
+    setThemeLists(theme)
     setLoading(false)
   }
 
@@ -92,17 +107,11 @@ export default function HomePage() {
       {/* Header */}
       <header
         className="sticky top-0 z-50 border-b backdrop-blur-md"
-        style={{
-          background: 'rgba(10,10,15,0.85)',
-          borderColor: 'var(--border)',
-        }}
+        style={{ background: 'rgba(10,10,15,0.85)', borderColor: 'var(--border)' }}
       >
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>
-            <span
-              className="text-xs tracking-[0.3em] uppercase font-medium"
-              style={{ color: 'var(--accent)' }}
-            >
+            <span className="text-xs tracking-[0.3em] uppercase font-medium" style={{ color: 'var(--accent)' }}>
               Top 10
             </span>
             <span className="ml-2 text-sm" style={{ color: 'var(--muted)' }}>
@@ -117,10 +126,7 @@ export default function HomePage() {
               <button
                 onClick={handleSignOut}
                 className="text-xs px-3 py-1 rounded-full transition-all"
-                style={{
-                  border: '1px solid var(--border)',
-                  color: 'var(--muted)',
-                }}
+                style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}
               >
                 Leave
               </button>
@@ -132,46 +138,54 @@ export default function HomePage() {
       {/* Hero */}
       <div
         className="relative py-16 px-4 text-center overflow-hidden"
-        style={{
-          background:
-            'radial-gradient(ellipse 80% 100% at 50% -20%, rgba(232,197,71,0.1) 0%, transparent 70%)',
-        }}
+        style={{ background: 'radial-gradient(ellipse 80% 100% at 50% -20%, rgba(232,197,71,0.1) 0%, transparent 70%)' }}
       >
-        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-3">
-          The Lists
-        </h1>
+        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-3">The Lists</h1>
         <p style={{ color: 'var(--muted)' }}>
           My top 10s, year by year — movies and TV, ranked and annotated.
         </p>
       </div>
 
-      {/* Content */}
       <main className="max-w-4xl mx-auto px-4 pb-20 space-y-16">
         {loading && (
           <div className="flex justify-center py-20">
             <div
-              className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
+              className="w-8 h-8 rounded-full border-2 animate-spin"
               style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }}
             />
           </div>
         )}
 
-        {!loading && grouped.length === 0 && (
+        {/* Theme Lists */}
+        {!loading && themeLists.length > 0 && (
+          <section>
+            <div className="flex items-center gap-4 mb-8">
+              <h2 className="text-xl font-bold tracking-tight" style={{ color: 'var(--foreground)' }}>
+                All-Time Rankings
+              </h2>
+              <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {themeLists.map((list) => (
+                <ListCard key={list.id} list={list} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Annual Lists */}
+        {!loading && annualGrouped.length === 0 && themeLists.length === 0 && (
           <div className="text-center py-20" style={{ color: 'var(--muted)' }}>
             No lists yet. Check back soon.
           </div>
         )}
 
-        {grouped.map(({ year, movies, tv }) => (
+        {annualGrouped.map(({ year, movies, tv }) => (
           <section key={year}>
-            {/* Year header */}
             <div className="flex items-center gap-4 mb-8">
-              <h2 className="text-3xl font-bold" style={{ color: 'var(--accent)' }}>
-                {year}
-              </h2>
+              <h2 className="text-3xl font-bold" style={{ color: 'var(--accent)' }}>{year}</h2>
               <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
             </div>
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               {(['movies', 'tv'] as const).map((cat) => {
                 const catLists = cat === 'movies' ? movies : tv
@@ -185,7 +199,7 @@ export default function HomePage() {
                         color: cat === 'movies' ? 'var(--accent)' : '#a78bfa',
                       }}
                     >
-                      {CATEGORY_LABELS[cat]}
+                      {cat === 'movies' ? 'Movies' : 'TV Shows'}
                     </span>
                     {catLists.map((list) => (
                       <ListCard key={list.id} list={list} />
@@ -202,23 +216,47 @@ export default function HomePage() {
 }
 
 function ListCard({ list }: { list: ListWithPreview }) {
-  const isMovie = list.category === 'movies'
+  const isTheme  = list.list_type === 'theme'
+  const isMovie  = list.category === 'movies'
+  const accent   = isTheme
+    ? themeColor(list.genre)
+    : isMovie ? 'var(--accent)' : '#a78bfa'
+  const hoverBg  = isTheme
+    ? `rgba(244,114,182,0.06)`
+    : isMovie ? 'rgba(232,197,71,0.06)' : 'rgba(139,92,246,0.06)'
+  const hoverBorder = isTheme
+    ? `rgba(244,114,182,0.4)`
+    : isMovie ? 'rgba(232,197,71,0.4)' : 'rgba(139,92,246,0.4)'
+
+  const isTiered = list.list_format === 'tiered'
+
+  // For tiered preview: group entries by rank
+  const tierGroups: { rank: number; tier: string; titles: string[] }[] = []
+  if (isTiered) {
+    const map = new Map<number, { tier: string; titles: string[] }>()
+    for (const e of list.entries) {
+      if (!map.has(e.rank)) map.set(e.rank, { tier: e.tier ?? `T${e.rank}`, titles: [] })
+      map.get(e.rank)!.titles.push(e.title)
+    }
+    Array.from(map.entries())
+      .sort(([a], [b]) => a - b)
+      .forEach(([rank, v]) => tierGroups.push({ rank, ...v }))
+  }
 
   return (
     <Link href={`/list/${list.id}`} className="block group">
       <div
-        className="rounded-xl p-5 transition-all duration-200 group-hover:translate-y-[-2px]"
+        className="rounded-xl p-5 transition-all duration-200 group-hover:translate-y-[-2px] flex flex-col"
         style={{
           background: 'var(--surface)',
           border: '1px solid var(--border)',
           boxShadow: '0 0 0 0 transparent',
+          height: '220px',
         }}
         onMouseEnter={(e) => {
           const el = e.currentTarget as HTMLDivElement
-          el.style.borderColor = isMovie ? 'rgba(232,197,71,0.4)' : 'rgba(139,92,246,0.4)'
-          el.style.boxShadow = isMovie
-            ? '0 4px 24px rgba(232,197,71,0.06)'
-            : '0 4px 24px rgba(139,92,246,0.06)'
+          el.style.borderColor = hoverBorder
+          el.style.boxShadow = `0 4px 24px ${hoverBg}`
         }}
         onMouseLeave={(e) => {
           const el = e.currentTarget as HTMLDivElement
@@ -226,52 +264,59 @@ function ListCard({ list }: { list: ListWithPreview }) {
           el.style.boxShadow = '0 0 0 0 transparent'
         }}
       >
-        <div className="flex items-start justify-between mb-3">
-          <h3 className="font-semibold text-base leading-tight pr-2">
-            {list.title}
-          </h3>
-          <span
-            className="text-xs shrink-0 mt-0.5"
-            style={{ color: 'var(--muted)' }}
-          >
-            10 picks
+        {/* Header */}
+        <div className="flex items-start justify-between mb-3 shrink-0">
+          <h3 className="font-semibold text-base leading-tight pr-2">{list.title}</h3>
+          <span className="text-xs shrink-0 mt-0.5" style={{ color: 'var(--muted)' }}>
+            {isTiered ? `${list.entries.length} films` : '10 picks'}
           </span>
         </div>
 
-        {list.description && (
-          <p
-            className="text-sm mb-4 line-clamp-2"
-            style={{ color: 'var(--muted)' }}
-          >
-            {list.description}
-          </p>
-        )}
-
-        {/* Top 3 preview */}
-        <ol className="space-y-1.5">
-          {list.entries.map((entry) => (
-            <li key={entry.id} className="flex items-center gap-2.5 text-sm">
-              <span
-                className="text-xs font-bold w-5 shrink-0"
-                style={{ color: isMovie ? 'var(--accent)' : '#a78bfa' }}
-              >
-                {entry.rank}
-              </span>
-              <span className="truncate" style={{ color: 'var(--foreground)' }}>
-                {entry.title}
-              </span>
-            </li>
-          ))}
-          {list.entries.length === 0 && (
-            <li className="text-xs italic" style={{ color: 'var(--muted)' }}>
-              Coming soon…
-            </li>
+        {/* Preview — fixed remaining height, fades out */}
+        <div className="flex-1 min-h-0 relative overflow-hidden">
+          {isTiered ? (
+            <div className="space-y-1.5">
+              {tierGroups.map(({ rank, tier, titles }) => (
+                <div key={rank} className="flex items-baseline gap-2 text-sm">
+                  <span
+                    className="text-[10px] font-bold shrink-0 w-5"
+                    style={{ color: accent }}
+                  >
+                    {rank === 1 ? '★' : `T${rank}`}
+                  </span>
+                  <span className="truncate" style={{ color: rank === 1 ? accent : 'var(--foreground)' }}>
+                    {titles.join(', ')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <ol className="space-y-1.5">
+              {list.entries.map((entry) => (
+                <li key={entry.id} className="flex items-center gap-2.5 text-sm">
+                  <span className="text-xs font-bold w-5 shrink-0" style={{ color: accent }}>
+                    {entry.rank}
+                  </span>
+                  <span className="truncate" style={{ color: 'var(--foreground)' }}>{entry.title}</span>
+                </li>
+              ))}
+              {list.entries.length === 0 && (
+                <li className="text-xs italic" style={{ color: 'var(--muted)' }}>Coming soon…</li>
+              )}
+            </ol>
           )}
-        </ol>
 
+          {/* Fade out */}
+          <div
+            className="absolute bottom-0 left-0 right-0 h-10 pointer-events-none"
+            style={{ background: 'linear-gradient(to bottom, transparent, var(--surface))' }}
+          />
+        </div>
+
+        {/* Footer */}
         <div
-          className="mt-4 text-xs font-medium tracking-wide flex items-center gap-1 transition-colors"
-          style={{ color: isMovie ? 'var(--accent)' : '#a78bfa' }}
+          className="mt-2 text-xs font-medium tracking-wide flex items-center gap-1 shrink-0"
+          style={{ color: accent }}
         >
           See full list
           <span className="group-hover:translate-x-1 transition-transform inline-block">→</span>

@@ -7,8 +7,11 @@ export type Visitor = {
 export type List = {
   id: string
   title: string
-  year: number
+  year: number | null
   category: 'movies' | 'tv'
+  list_type: 'annual' | 'theme'
+  list_format: 'ranked' | 'tiered'
+  genre: string | null
   description: string | null
   created_at: string
 }
@@ -17,6 +20,7 @@ export type ListEntry = {
   id: string
   list_id: string
   rank: number
+  tier: string | null
   title: string
   notes: string | null
   image_url: string | null

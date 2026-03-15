@@ -20,7 +20,8 @@ const supabase = createClient(
 // ─────────────────────────────────────────────
 
 type Entry = {
-  rank: number
+  rank: number   // for tiered lists: use tier number (1, 2, 3...) so entries sort correctly
+  tier?: string  // tier label e.g. 'The Best', 'The Very, Very Good'
   title: string
   notes?: string
   image_url?: string
@@ -28,10 +29,13 @@ type Entry = {
 
 type ListSeed = {
   title: string
-  year: number
+  year?: number           // omit for theme lists
+  list_type?: 'annual' | 'theme'
+  list_format?: 'ranked' | 'tiered'
+  genre?: string          // e.g. 'rom-com', 'horror', 'action', 'marvel'
   category: 'movies' | 'tv'
   description?: string
-  force?: boolean  // set to true to delete & re-insert if it already exists
+  force?: boolean         // set to true to delete & re-insert if it already exists
   entries: Entry[]
   honorable_mentions?: string[]
   also_watched?: string[]
@@ -44,7 +48,6 @@ const lists: ListSeed[] = [
     year: 2023,
     category: 'movies',
     description: 'A standout year for cinema. From blockbusters to quiet masterpieces.',
-    force: true,
     entries: [
       { rank: 1,  title: 'Past Lives' },
       { rank: 2,  title: 'Poor Things' },
@@ -96,7 +99,6 @@ const lists: ListSeed[] = [
     year: 2023,
     category: 'tv',
     description: 'Peak TV is alive. These are the shows that consumed my evenings.',
-    force: true,
     entries: [
       { rank: 1,  title: 'The Bear (Season 2)' },
       { rank: 2,  title: 'Beef' },
@@ -164,7 +166,6 @@ const lists: ListSeed[] = [
     title: 'Best Movies of 2024',
     year: 2024,
     category: 'movies',
-    force: true,
     entries: [
       { rank: 1,  title: 'Dune: Part Two' },
       { rank: 2,  title: 'Anora' },
@@ -206,7 +207,6 @@ const lists: ListSeed[] = [
     title: 'Best TV Shows of 2024',
     year: 2024,
     category: 'tv',
-    force: true,
     entries: [
       { rank: 1,  title: 'Shōgun (Season 1)' },
       { rank: 2,  title: 'Hacks (Season 3)' },
@@ -238,7 +238,6 @@ const lists: ListSeed[] = [
     title: 'Best Movies of 2025',
     year: 2025,
     category: 'movies',
-    force: true,
     entries: [
       { rank: 1,  title: 'One Battle After Another' },
       { rank: 2,  title: 'No Other Choice' },
@@ -280,7 +279,6 @@ const lists: ListSeed[] = [
     title: 'Best TV Shows of 2025',
     year: 2025,
     category: 'tv',
-    force: true,
     entries: [
       { rank: 1, title: 'The Pitt (Season 1)' },
       { rank: 2, title: 'The Studio (Season 1)' },
@@ -307,6 +305,72 @@ const lists: ListSeed[] = [
       'Black Doves',
       'Dad Man Walking',
       'Running Point',
+    ],
+  },
+
+  // ── THEME: MARVEL ────────────────────────────
+  {
+    title: 'Marvel Movies Ranked (Phases 1–4)',
+    list_type: 'theme',
+    list_format: 'tiered',
+    genre: 'marvel',
+    category: 'movies',
+    entries: [
+      { rank: 1, tier: 'The Best',               title: 'Thor: Ragnarok' },
+      { rank: 2, tier: 'The Very, Very Good',     title: 'Avengers: Endgame' },
+      { rank: 2, tier: 'The Very, Very Good',     title: 'Avengers: Infinity War' },
+      { rank: 2, tier: 'The Very, Very Good',     title: 'Black Panther' },
+      { rank: 2, tier: 'The Very, Very Good',     title: 'Shang-Chi and the Legend of the Ten Rings' },
+      { rank: 3, tier: 'The Super Enjoyable',     title: 'Spider-Man: Homecoming' },
+      { rank: 3, tier: 'The Super Enjoyable',     title: 'Spider-Man: Far From Home' },
+      { rank: 3, tier: 'The Super Enjoyable',     title: 'Guardians of the Galaxy' },
+      { rank: 3, tier: 'The Super Enjoyable',     title: 'Guardians of the Galaxy Vol. 2' },
+      { rank: 3, tier: 'The Super Enjoyable',     title: 'Captain America: Civil War' },
+      { rank: 3, tier: 'The Super Enjoyable',     title: 'Ant-Man' },
+      { rank: 4, tier: 'The Solid',               title: 'Captain Marvel' },
+      { rank: 4, tier: 'The Solid',               title: 'Ant-Man and the Wasp' },
+      { rank: 4, tier: 'The Solid',               title: 'Doctor Strange' },
+      { rank: 4, tier: 'The Solid',               title: 'The Avengers' },
+      { rank: 4, tier: 'The Solid',               title: 'Iron Man 3' },
+      { rank: 4, tier: 'The Solid',               title: 'Captain America: The Winter Soldier' },
+      { rank: 5, tier: 'The Eh',                  title: 'Iron Man' },
+      { rank: 5, tier: 'The Eh',                  title: 'Avengers: Age of Ultron' },
+      { rank: 5, tier: 'The Eh',                  title: 'Thor' },
+      { rank: 5, tier: 'The Eh',                  title: 'Black Widow' },
+      { rank: 6, tier: 'The Chores',              title: 'Thor: The Dark World' },
+      { rank: 6, tier: 'The Chores',              title: 'Iron Man 2' },
+      { rank: 6, tier: 'The Chores',              title: 'Captain America: The First Avenger' },
+      { rank: 7, tier: 'The Actively Bad',        title: 'The Incredible Hulk' },
+    ],
+  },
+
+  // ── THEME: ROM-COMS ──────────────────────────
+  {
+    title: 'All-Time Rom-Com Rankings',
+    list_type: 'theme',
+    genre: 'rom-com',
+    category: 'movies',
+    entries: [
+      { rank: 1,  title: 'When Harry Met Sally' },
+      { rank: 2,  title: 'Crazy, Stupid, Love.' },
+      { rank: 3,  title: "You've Got Mail" },
+      { rank: 4,  title: 'Pretty Woman' },
+      { rank: 5,  title: 'The 40-Year-Old Virgin' },
+      { rank: 6,  title: 'Long Shot' },
+      { rank: 7,  title: 'Forgetting Sarah Marshall' },
+      { rank: 8,  title: 'Sleepless in Seattle' },
+      { rank: 9,  title: "Something's Gotta Give" },
+      { rank: 10, title: 'Love Actually' },
+    ],
+    honorable_mentions: [
+      '10 Things I Hate About You',
+      'Set It Up',
+      'Runaway Bride',
+      'Clueless',
+      'My Big Fat Greek Wedding',
+      'Palm Springs',
+      'The Apartment',
+      'Notting Hill',
     ],
   },
 ]
@@ -341,7 +405,10 @@ async function seed() {
       .from('lists')
       .insert({
         title: list.title,
-        year: list.year,
+        year: list.year ?? null,
+        list_type: list.list_type ?? 'annual',
+        list_format: list.list_format ?? 'ranked',
+        genre: list.genre ?? null,
         category: list.category,
         description: list.description ?? null,
       })
@@ -358,6 +425,7 @@ async function seed() {
       list.entries.map((e) => ({
         list_id: inserted.id,
         rank: e.rank,
+        tier: e.tier ?? null,
         title: e.title,
         notes: e.notes ?? null,
         image_url: e.image_url ?? null,
