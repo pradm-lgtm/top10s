@@ -76,6 +76,44 @@ const lists: ListSeed[] = [
     ],
   },
 
+  // ── 2022 MOVIES ──────────────────────────────
+  {
+    title: 'Best Movies of 2022',
+    year: 2022,
+    category: 'movies',
+    entries: [
+      { rank: 1,  title: 'Everything Everywhere All at Once' },
+      { rank: 2,  title: 'The Banshees of Inisherin' },
+      { rank: 3,  title: 'RRR' },
+      { rank: 4,  title: 'Barbarian' },
+      { rank: 5,  title: 'Top Gun: Maverick' },
+      { rank: 6,  title: 'Marcel the Shell with Shoes On' },
+      { rank: 7,  title: 'The Fabelmans' },
+      { rank: 8,  title: 'The Worst Person in the World' },
+      { rank: 9,  title: 'The Northman' },
+      { rank: 10, title: 'Decision to Leave' },
+    ],
+  },
+
+  // ── 2022 TV ───────────────────────────────────
+  {
+    title: 'Best TV Shows of 2022',
+    year: 2022,
+    category: 'tv',
+    entries: [
+      { rank: 1,  title: 'Severance (Season 1)' },
+      { rank: 2,  title: 'Andor (Season 1)' },
+      { rank: 3,  title: 'The Rehearsal (Season 1)' },
+      { rank: 4,  title: 'Hacks (Season 2)' },
+      { rank: 5,  title: 'The Bear (Season 1)' },
+      { rank: 6,  title: 'House of the Dragon (Season 1)' },
+      { rank: 7,  title: 'This Fool (Season 1)' },
+      { rank: 8,  title: 'Stranger Things (Season 4)' },
+      { rank: 9,  title: 'Our Flag Means Death (Season 1)' },
+      { rank: 10, title: 'Atlanta (Season 3)' },
+    ],
+  },
+
   // ── 2024 MOVIES ──────────────────────────────
   {
     title: 'Best Movies of 2024',
