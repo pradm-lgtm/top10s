@@ -328,7 +328,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                   {/* Content */}
                   <div className="flex-1 min-w-0 flex items-center gap-3">
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-base leading-snug flex items-center gap-1.5">
+                      <h3 className="font-semibold text-base leading-snug">
                         <EditableText
                           value={entry.title}
                           onSave={(v) => saveEntryField(entry.id, 'title', v)}
@@ -347,9 +347,6 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                             ) : <>{v}</>
                           }
                         />
-                        {list.list_type === 'theme' && entry.rank === 1 && (
-                          <span className="text-base">👑</span>
-                        )}
                       </h3>
                       <div className="text-sm mt-1 leading-relaxed" style={{ color: 'var(--muted)' }}>
                         <EditableText
@@ -809,7 +806,6 @@ function TieredEntries({
                         {hero.title}
                       </a>
                     ) : hero.title}
-                    {isTheme && <span>👑</span>}
                   </h3>
                 </div>
                 {heroPoster && (
@@ -1026,7 +1022,6 @@ function TierRankedEntries({
                           {entry.title}
                         </a>
                       ) : entry.title}
-                      {isTheme && entry.rank === 1 && <span>👑</span>}
                     </span>
                   </div>
                 )

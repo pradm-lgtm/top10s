@@ -179,7 +179,7 @@ export default function HomePage() {
       >
         <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-3">Prad's Lists</h1>
         <p style={{ color: 'var(--muted)' }}>
-          Everything worth ranking, ranked.
+          Ranked. Hot takes included.
         </p>
       </div>
 
@@ -451,7 +451,9 @@ function ListCard({ list }: { list: ListWithPreview }) {
                   <span className="text-xs font-bold w-5 shrink-0" style={{ color: accent }}>
                     {entry.rank}
                   </span>
-                  <span className="truncate" style={{ color: 'var(--foreground)' }}>{entry.title}</span>
+                  <span className="truncate" style={{ color: 'var(--foreground)' }}>
+                    {entry.title}{isTheme && entry.rank === 1 ? ' 👑' : ''}
+                  </span>
                 </li>
               ))}
             </ol>
@@ -466,7 +468,7 @@ function ListCard({ list }: { list: ListWithPreview }) {
                     {`T${rank}`}
                   </span>
                   <span className="truncate" style={{ color: 'var(--foreground)' }}>
-                    {titles.join(', ')}
+                    {titles.join(', ')}{isTheme && rank === 1 ? ' 👑' : ''}
                   </span>
                 </div>
               ))}
@@ -478,7 +480,9 @@ function ListCard({ list }: { list: ListWithPreview }) {
                   <span className="text-xs font-bold w-5 shrink-0" style={{ color: accent }}>
                     {entry.rank}
                   </span>
-                  <span className="truncate" style={{ color: 'var(--foreground)' }}>{entry.title}</span>
+                  <span className="truncate" style={{ color: 'var(--foreground)' }}>
+                    {entry.title}{isTheme && entry.rank === 1 ? ' 👑' : ''}
+                  </span>
                 </li>
               ))}
               {list.entries.length === 0 && (
