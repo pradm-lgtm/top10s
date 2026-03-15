@@ -452,7 +452,7 @@ function ListCard({ list }: { list: ListWithPreview }) {
                     {entry.rank}
                   </span>
                   <span className="truncate" style={{ color: 'var(--foreground)' }}>
-                    {entry.title}{isTheme && entry.rank === 1 ? ' 👑' : ''}
+                    {entry.title}
                   </span>
                 </li>
               ))}
@@ -468,7 +468,7 @@ function ListCard({ list }: { list: ListWithPreview }) {
                     {`T${rank}`}
                   </span>
                   <span className="truncate" style={{ color: 'var(--foreground)' }}>
-                    {titles.join(', ')}{isTheme && rank === 1 ? ' 👑' : ''}
+                    {titles.join(', ')}
                   </span>
                 </div>
               ))}
@@ -481,7 +481,7 @@ function ListCard({ list }: { list: ListWithPreview }) {
                     {entry.rank}
                   </span>
                   <span className="truncate" style={{ color: 'var(--foreground)' }}>
-                    {entry.title}{isTheme && entry.rank === 1 ? ' 👑' : ''}
+                    {entry.title}
                   </span>
                 </li>
               ))}
