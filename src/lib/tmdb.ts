@@ -27,21 +27,26 @@ export async function fetchPoster(
     ? `&primary_release_year=${year}`
     : ''
 
-  try {
+  async function search(extraParam: string): Promise<string | null> {
     const res = await fetch(
-      `${TMDB_BASE}/search/${type}?query=${encodeURIComponent(query)}&api_key=${apiKey}&page=1${yearParam}`,
-      { next: { revalidate: 60 * 60 * 24 } } // cache for 24h
+      `${TMDB_BASE}/search/${type}?query=${encodeURIComponent(query)}&api_key=${apiKey}&page=1${extraParam}`,
+      { next: { revalidate: 60 * 60 * 24 } }
     )
     if (!res.ok) return null
-
     const data = await res.json()
-    // Pick the result with the highest vote_count to avoid obscure titles
-    // shadowing well-known ones (e.g. "Pretty Woman" the 1990 film)
-    const results = data.results ?? []
+    const results = (data.results ?? []) as { poster_path?: string; vote_count: number }[]
     const best = results
-      .filter((r: { poster_path?: string }) => r.poster_path)
-      .sort((a: { vote_count: number }, b: { vote_count: number }) => b.vote_count - a.vote_count)[0]
+      .filter((r) => r.poster_path)
+      .sort((a, b) => b.vote_count - a.vote_count)[0]
     return best?.poster_path ? `${TMDB_IMAGE_BASE}${best.poster_path}` : null
+  }
+
+  try {
+    const result = await search(yearParam)
+    // If year-filtered search found nothing, retry without year —
+    // handles films with different release years by country (e.g. Eye in the Sky 2015/2016)
+    if (!result && yearParam) return search('')
+    return result
   } catch {
     return null
   }
