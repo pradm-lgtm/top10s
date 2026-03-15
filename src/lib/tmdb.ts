@@ -21,10 +21,10 @@ export async function fetchPoster(
 
   const type = category === 'movies' ? 'movie' : 'tv'
   const query = cleanTitle(title)
-  const yearParam = year
-    ? category === 'movies'
-      ? `&primary_release_year=${year}`
-      : `&first_air_date_year=${year}`
+  // For TV, first_air_date_year is the show's premiere year, not the season year,
+  // so filtering by list year returns nothing for returning shows (e.g. Atlanta S4, The Bear S2).
+  const yearParam = year && category === 'movies'
+    ? `&primary_release_year=${year}`
     : ''
 
   try {

@@ -101,7 +101,7 @@ const lists: ListSeed[] = [
     description: 'Peak TV is alive. These are the shows that consumed my evenings.',
     entries: [
       { rank: 1,  title: 'The Bear (Season 2)' },
-      { rank: 2,  title: 'Beef' },
+      { rank: 2,  title: 'Beef (Season 1)' },
       { rank: 3,  title: 'Jury Duty' },
       { rank: 4,  title: 'Succession (Season 4)' },
       { rank: 5,  title: 'Dave (Season 3)' },
