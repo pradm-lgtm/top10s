@@ -234,7 +234,7 @@ export default function HomePage() {
 
         {/* Theme Lists */}
         {!loading && themeLists.length > 0 && (
-          <section id="all-time">
+          <section id="all-time" style={{ scrollMarginTop: '80px' }}>
             <div className="flex items-center gap-4 mb-8">
               <h2 className="text-xl font-bold tracking-tight" style={{ color: 'var(--foreground)' }}>
                 All-Time Rankings
@@ -257,7 +257,7 @@ export default function HomePage() {
         )}
 
         {annualGrouped.map(({ year, movies, tv }) => (
-          <section key={year} id={`year-${year}`}>
+          <section key={year} id={`year-${year}`} style={{ scrollMarginTop: '80px' }}>
             <div className="flex items-center gap-4 mb-8">
               <h2 className="text-3xl font-bold" style={{ color: 'var(--accent)' }}>{year}</h2>
               <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
