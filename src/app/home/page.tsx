@@ -87,7 +87,14 @@ export default function HomePage() {
     }))
 
     const annual = withPreviews.filter((l) => l.list_type !== 'theme')
-    const theme  = withPreviews.filter((l) => l.list_type === 'theme')
+    const THEME_ORDER = ['All-Time TV Shows', 'Marvel Movies (Phases 1-4)', 'Rom-Coms']
+    const theme = withPreviews
+      .filter((l) => l.list_type === 'theme')
+      .sort((a, b) => {
+        const ai = THEME_ORDER.indexOf(a.title)
+        const bi = THEME_ORDER.indexOf(b.title)
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+      })
 
     // Group annual by year
     const yearMap: Record<number, { movies: ListWithPreview[]; tv: ListWithPreview[] }> = {}

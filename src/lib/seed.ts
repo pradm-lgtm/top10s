@@ -784,7 +784,7 @@ const lists: ListSeed[] = [
 
   // ── THEME: MARVEL ────────────────────────────
   {
-    title: 'Marvel Movies Ranked (Phases 1–4)',
+    title: 'Marvel Movies (Phases 1-4)',
     list_type: 'theme',
     list_format: 'tiered',
     genre: 'marvel',
