@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { fetchPosters } from '@/lib/tmdb'
 import { useAdmin } from '@/context/admin'
 import { EditableText } from '@/components/EditableText'
+import type { PosterInfo } from '@/lib/tmdb'
 import type { List, ListEntry, Comment, ReactionCount, HonorableMention, AlsoWatched } from '@/types'
 
 const EMOJIS = ['🔥', '❤️', '😮', '😂', '👏']
@@ -23,7 +24,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [alsoWatched, setAlsoWatched] = useState<AlsoWatched[]>([])
   const [hmOpen, setHmOpen] = useState(false)
   const [awOpen, setAwOpen] = useState(false)
-  const [posters, setPosters] = useState<Record<string, string | null>>({})
+  const [posters, setPosters] = useState<Record<string, PosterInfo>>({})
   const [loading, setLoading] = useState(true)
   const [visitorId, setVisitorId] = useState('')
   const [visitorName, setVisitorName] = useState('')
@@ -330,6 +331,19 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                           value={entry.title}
                           onSave={(v) => saveEntryField(entry.id, 'title', v)}
                           className="font-semibold text-base"
+                          renderValue={(v) =>
+                            posters[entry.id]?.imdbUrl && !isAdmin ? (
+                              <a
+                                href={posters[entry.id].imdbUrl!}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="hover:underline"
+                                style={{ color: 'inherit' }}
+                              >
+                                {v}
+                              </a>
+                            ) : <>{v}</>
+                          }
                         />
                       </h3>
                       <div className="text-sm mt-1 leading-relaxed" style={{ color: 'var(--muted)' }}>
@@ -345,8 +359,10 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                     </div>
                     {/* Thumbnail — right aligned */}
                     {(() => {
-                      const src = entry.image_url ?? posters[entry.id]
-                      if (src) return (
+                      const info = posters[entry.id]
+                      const src = entry.image_url ?? info?.poster
+                      const imdbUrl = info?.imdbUrl
+                      const img = src ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={src}
@@ -354,7 +370,12 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                           className="w-12 h-[4.5rem] object-cover rounded shrink-0"
                           style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }}
                         />
-                      )
+                      ) : null
+                      if (src) return imdbUrl ? (
+                        <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                          {img}
+                        </a>
+                      ) : img
                       const pending = !(entry.id in posters)
                       return (
                         <div
@@ -702,7 +723,7 @@ function TieredEntries({
 }: {
   entries: ListEntry[]
   accentColor: string
-  posters: Record<string, string | null>
+  posters: Record<string, PosterInfo>
 }) {
   const tierMap = new Map<number, { label: string; entries: ListEntry[] }>()
   for (const entry of entries) {
@@ -723,7 +744,8 @@ function TieredEntries({
         // ── Tier 1 hero treatment ──────────────────────
         if (isTop) {
           const hero = tierEntries[0]
-          const poster = hero.image_url ?? posters[hero.id]
+          const heroPoster = hero.image_url ?? posters[hero.id]?.poster
+          const heroImdb = posters[hero.id]?.imdbUrl
           return (
             <div
               key={rank}
@@ -758,17 +780,18 @@ function TieredEntries({
                   >
                     #1 Pick
                   </p>
-                  <h3
-                    className="text-xl font-bold leading-snug"
-                    style={{ color }}
-                  >
-                    {hero.title}
+                  <h3 className="text-xl font-bold leading-snug" style={{ color }}>
+                    {heroImdb ? (
+                      <a href={heroImdb} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>
+                        {hero.title}
+                      </a>
+                    ) : hero.title}
                   </h3>
                 </div>
-                {poster && (
+                {heroPoster && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={poster}
+                    src={heroPoster}
                     alt={hero.title}
                     className="shrink-0 rounded-lg object-cover ml-auto"
                     style={{
@@ -814,35 +837,41 @@ function TieredEntries({
               style={{ background: `${color}05` }}
             >
               {tierEntries.map((entry) => {
-                const poster = entry.image_url ?? posters[entry.id]
+                const poster = entry.image_url ?? posters[entry.id]?.poster
+                const imdbUrl = posters[entry.id]?.imdbUrl
+                const imgEl = poster ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={poster}
+                    alt={entry.title}
+                    className="rounded object-cover w-full"
+                    style={{
+                      height: '78px',
+                      border: `1px solid ${color}30`,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                    }}
+                  />
+                ) : (
+                  <div
+                    className="rounded w-full flex items-center justify-center"
+                    style={{
+                      height: '78px',
+                      background: `${color}12`,
+                      border: `1px solid ${color}22`,
+                    }}
+                  />
+                )
                 return (
                   <div
                     key={entry.id}
                     className="flex flex-col items-center gap-1"
                     style={{ width: '56px' }}
                   >
-                    {poster ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={poster}
-                        alt={entry.title}
-                        className="rounded object-cover w-full"
-                        style={{
-                          height: '78px',
-                          border: `1px solid ${color}30`,
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
-                        }}
-                      />
-                    ) : (
-                      <div
-                        className="rounded w-full flex items-center justify-center"
-                        style={{
-                          height: '78px',
-                          background: `${color}12`,
-                          border: `1px solid ${color}22`,
-                        }}
-                      />
-                    )}
+                    {imdbUrl ? (
+                      <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="w-full">
+                        {imgEl}
+                      </a>
+                    ) : imgEl}
                     <span
                       className="text-center leading-tight"
                       style={{
@@ -856,7 +885,11 @@ function TieredEntries({
                         textAlign: 'center',
                       }}
                     >
-                      {entry.title}
+                      {imdbUrl ? (
+                        <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>
+                          {entry.title}
+                        </a>
+                      ) : entry.title}
                     </span>
                   </div>
                 )
