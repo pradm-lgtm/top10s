@@ -87,7 +87,7 @@ export default function HomePage() {
     }))
 
     const annual = withPreviews.filter((l) => l.list_type !== 'theme')
-    const THEME_ORDER = ['All-Time TV Shows', 'Marvel Movies (Phases 1-4)', 'Rom-Coms']
+    const THEME_ORDER = ['All-Time TV Shows', 'Marvel Movies (Phases 1-4)', 'Rom-Coms 💞']
     const theme = withPreviews
       .filter((l) => l.list_type === 'theme')
       .sort((a, b) => {
@@ -465,7 +465,7 @@ function ListCard({ list }: { list: ListWithPreview }) {
                   >
                     {`T${rank}`}
                   </span>
-                  <span className="truncate" style={{ color: rank === 1 ? accent : 'var(--foreground)' }}>
+                  <span className="truncate" style={{ color: 'var(--foreground)' }}>
                     {titles.join(', ')}
                   </span>
                 </div>

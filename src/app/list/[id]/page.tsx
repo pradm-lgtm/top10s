@@ -294,9 +294,9 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         {/* Entries */}
         <section>
           {list.list_format === 'tiered' ? (
-            <TieredEntries entries={entries} accentColor={accentColor} posters={posters} />
+            <TieredEntries entries={entries} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} />
           ) : list.list_format === 'tier-ranked' ? (
-            <TierRankedEntries entries={entries} posters={posters} />
+            <TierRankedEntries entries={entries} posters={posters} isTheme={list.list_type === 'theme'} />
           ) : (
           <>
           <ol className="space-y-3">
@@ -328,7 +328,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                   {/* Content */}
                   <div className="flex-1 min-w-0 flex items-center gap-3">
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-base leading-snug">
+                      <h3 className="font-semibold text-base leading-snug flex items-center gap-1.5">
                         <EditableText
                           value={entry.title}
                           onSave={(v) => saveEntryField(entry.id, 'title', v)}
@@ -347,6 +347,9 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                             ) : <>{v}</>
                           }
                         />
+                        {list.list_type === 'theme' && entry.rank === 1 && (
+                          <span className="text-base">👑</span>
+                        )}
                       </h3>
                       <div className="text-sm mt-1 leading-relaxed" style={{ color: 'var(--muted)' }}>
                         <EditableText
@@ -738,10 +741,12 @@ function TieredEntries({
   entries,
   accentColor,
   posters,
+  isTheme = false,
 }: {
   entries: ListEntry[]
   accentColor: string
   posters: Record<string, PosterInfo>
+  isTheme?: boolean
 }) {
   const tierMap = new Map<number, { label: string; entries: ListEntry[] }>()
   for (const entry of entries) {
@@ -798,12 +803,13 @@ function TieredEntries({
                   >
                     #1 Pick
                   </p>
-                  <h3 className="text-xl font-bold leading-snug" style={{ color }}>
+                  <h3 className="text-xl font-bold leading-snug flex items-center gap-1.5" style={{ color }}>
                     {heroImdb ? (
                       <a href={heroImdb} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>
                         {hero.title}
                       </a>
                     ) : hero.title}
+                    {isTheme && <span>👑</span>}
                   </h3>
                 </div>
                 {heroPoster && (
@@ -926,9 +932,11 @@ function TieredEntries({
 function TierRankedEntries({
   entries,
   posters,
+  isTheme = false,
 }: {
   entries: ListEntry[]
   posters: Record<string, PosterInfo>
+  isTheme?: boolean
 }) {
   // Group by tier, preserving insertion order
   const tierGroups: { tier: string; entries: ListEntry[] }[] = []
@@ -1012,12 +1020,13 @@ function TierRankedEntries({
                     )}
 
                     {/* Title */}
-                    <span className="font-medium text-sm flex-1 min-w-0">
+                    <span className="font-medium text-sm flex-1 min-w-0 flex items-center gap-1.5">
                       {imdbUrl ? (
                         <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'var(--foreground)' }}>
                           {entry.title}
                         </a>
                       ) : entry.title}
+                      {isTheme && entry.rank === 1 && <span>👑</span>}
                     </span>
                   </div>
                 )

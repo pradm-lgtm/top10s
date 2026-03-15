@@ -819,7 +819,7 @@ const lists: ListSeed[] = [
 
   // ── THEME: ROM-COMS ──────────────────────────
   {
-    title: 'Rom-Coms',
+    title: 'Rom-Coms 💞',
     list_type: 'theme',
     genre: 'rom-com',
     category: 'movies',
