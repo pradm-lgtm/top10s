@@ -383,13 +383,12 @@ async function seed() {
   console.log(`\nSeeding ${lists.length} list(s)...\n`)
 
   for (const list of lists) {
-    // Check if list already exists
-    const { data: existing } = await supabase
-      .from('lists')
-      .select('id')
-      .eq('title', list.title)
-      .eq('year', list.year)
-      .single()
+    // Check if list already exists (null year needs .is() not .eq())
+    let query = supabase.from('lists').select('id').eq('title', list.title)
+    query = list.year != null
+      ? query.eq('year', list.year)
+      : query.is('year', null)
+    const { data: existing } = await query.single()
 
     if (existing) {
       if (!list.force) {
