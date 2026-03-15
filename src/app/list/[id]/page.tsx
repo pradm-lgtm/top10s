@@ -294,9 +294,9 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         {/* Entries */}
         <section>
           {list.list_format === 'tiered' ? (
-            <TieredEntries entries={entries} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} />
+            <TieredEntries entries={entries} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} saveEntryField={saveEntryField} />
           ) : list.list_format === 'tier-ranked' ? (
-            <TierRankedEntries entries={entries} posters={posters} isTheme={list.list_type === 'theme'} />
+            <TierRankedEntries entries={entries} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} saveEntryField={saveEntryField} />
           ) : (
           <>
           <ol className="space-y-3">
@@ -739,11 +739,15 @@ function TieredEntries({
   accentColor,
   posters,
   isTheme = false,
+  isAdmin = false,
+  saveEntryField,
 }: {
   entries: ListEntry[]
   accentColor: string
   posters: Record<string, PosterInfo>
   isTheme?: boolean
+  isAdmin?: boolean
+  saveEntryField?: (id: string, field: string, value: string | number) => Promise<void>
 }) {
   const tierMap = new Map<number, { label: string; entries: ListEntry[] }>()
   for (const entry of entries) {
@@ -911,6 +915,18 @@ function TieredEntries({
                         </a>
                       ) : entry.title}
                     </span>
+                    {(entry.notes || isAdmin) && (
+                      <div className="w-full text-center" style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>
+                        <EditableText
+                          value={entry.notes ?? ''}
+                          onSave={(v) => saveEntryField ? saveEntryField(entry.id, 'notes', v) : Promise.resolve()}
+                          multiline
+                          placeholder="Notes…"
+                          className="text-[0.6rem]"
+                          style={{ color: 'var(--muted)' }}
+                        />
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -929,10 +945,14 @@ function TierRankedEntries({
   entries,
   posters,
   isTheme = false,
+  isAdmin = false,
+  saveEntryField,
 }: {
   entries: ListEntry[]
   posters: Record<string, PosterInfo>
   isTheme?: boolean
+  isAdmin?: boolean
+  saveEntryField?: (id: string, field: string, value: string | number) => Promise<void>
 }) {
   // Group by tier, preserving insertion order
   const tierGroups: { tier: string; entries: ListEntry[] }[] = []
@@ -989,12 +1009,12 @@ function TierRankedEntries({
                 return (
                   <div
                     key={entry.id}
-                    className="flex items-center gap-3 rounded-lg px-3 py-2"
+                    className="flex items-start gap-3 rounded-lg px-3 py-2"
                     style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
                   >
                     {/* Global rank */}
                     <span
-                      className="text-xs font-bold w-6 shrink-0 text-right tabular-nums"
+                      className="text-xs font-bold w-6 shrink-0 text-right tabular-nums mt-2.5"
                       style={{ color: `${color}70` }}
                     >
                       {entry.rank}
@@ -1003,26 +1023,40 @@ function TierRankedEntries({
                     {/* Poster */}
                     {src ? (
                       imdbUrl ? (
-                        <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                        <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 mt-1">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
                         </a>
                       ) : (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded shrink-0" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
+                        <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded shrink-0 mt-1" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
                       )
                     ) : (
-                      <div className="w-8 h-12 rounded shrink-0" style={{ background: `${color}15`, border: `1px solid ${color}20` }} />
+                      <div className="w-8 h-12 rounded shrink-0 mt-1" style={{ background: `${color}15`, border: `1px solid ${color}20` }} />
                     )}
 
-                    {/* Title */}
-                    <span className="font-medium text-sm flex-1 min-w-0 flex items-center gap-1.5">
-                      {imdbUrl ? (
-                        <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'var(--foreground)' }}>
-                          {entry.title}
-                        </a>
-                      ) : entry.title}
-                    </span>
+                    {/* Title + Notes */}
+                    <div className="flex-1 min-w-0 py-1.5">
+                      <span className="font-medium text-sm">
+                        {imdbUrl && !isAdmin ? (
+                          <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'var(--foreground)' }}>
+                            {entry.title}
+                          </a>
+                        ) : entry.title}
+                      </span>
+                      {(entry.notes || isAdmin) && (
+                        <div className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--muted)' }}>
+                          <EditableText
+                            value={entry.notes ?? ''}
+                            onSave={(v) => saveEntryField ? saveEntryField(entry.id, 'notes', v) : Promise.resolve()}
+                            multiline
+                            placeholder="Add notes…"
+                            className="text-xs"
+                            style={{ color: 'var(--muted)' }}
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )
               })}
