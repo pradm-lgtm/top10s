@@ -144,11 +144,11 @@ export default function HomePage() {
       >
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>
-            <span className="text-xs tracking-[0.3em] uppercase font-medium" style={{ color: 'var(--accent)' }}>
-              Top 10
+            <span className="text-base font-bold tracking-tight" style={{ color: 'var(--foreground)' }}>
+              Ranked
             </span>
-            <span className="ml-2 text-sm" style={{ color: 'var(--muted)' }}>
-              Movies &amp; TV
+            <span className="ml-2 text-xs tracking-[0.15em] uppercase font-medium" style={{ color: 'var(--muted)' }}>
+              by Prad
             </span>
           </div>
           {visitorName && (
@@ -173,9 +173,9 @@ export default function HomePage() {
         className="relative py-16 px-4 text-center overflow-hidden"
         style={{ background: 'radial-gradient(ellipse 80% 100% at 50% -20%, rgba(232,197,71,0.1) 0%, transparent 70%)' }}
       >
-        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-3">The Lists</h1>
+        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-3">Prad's Lists</h1>
         <p style={{ color: 'var(--muted)' }}>
-          My top 10s, year by year — movies and TV, ranked and annotated.
+          Prad's take on the best in film &amp; TV, year by year.
         </p>
       </div>
 

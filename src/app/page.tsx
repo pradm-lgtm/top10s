@@ -78,16 +78,16 @@ export default function LandingPage() {
             className="text-xs tracking-[0.4em] uppercase font-medium"
             style={{ color: 'var(--accent)' }}
           >
-            A curated collection
+            by Prad
           </div>
           <h1
             className="text-5xl sm:text-6xl font-bold tracking-tight leading-none"
             style={{ color: 'var(--foreground)' }}
           >
-            Top 10
+            Ranked
           </h1>
           <p className="text-lg" style={{ color: 'var(--muted)' }}>
-            Movies &amp; TV Shows
+            The best in film &amp; TV, year by year
           </p>
         </div>
 
@@ -142,7 +142,7 @@ export default function LandingPage() {
               color: '#0a0a0f',
             }}
           >
-            {loading ? 'Loading…' : 'Enter the Lists →'}
+            {loading ? 'Loading…' : 'Enter →'}
           </button>
         </form>
 

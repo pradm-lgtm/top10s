@@ -42,9 +42,9 @@ export default function AdminLoginPage() {
       >
         <div>
           <p className="text-xs tracking-[0.3em] uppercase font-semibold mb-1" style={{ color: 'var(--accent)' }}>
-            Admin
+            Ranked
           </p>
-          <h1 className="text-xl font-bold">Sign in</h1>
+          <h1 className="text-xl font-bold">Admin sign in</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

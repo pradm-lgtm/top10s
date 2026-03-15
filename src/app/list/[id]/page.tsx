@@ -232,10 +232,14 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link
             href="/home"
-            className="flex items-center gap-2 text-sm transition-colors"
+            className="flex items-center gap-2 text-sm transition-colors group"
             style={{ color: 'var(--muted)' }}
           >
-            ← All Lists
+            <span>←</span>
+            <span>
+              <span className="font-bold" style={{ color: 'var(--foreground)' }}>Ranked</span>
+              <span className="ml-1.5 text-xs tracking-[0.15em] uppercase">by Prad</span>
+            </span>
           </Link>
           <span
             className="text-xs tracking-[0.3em] uppercase font-semibold px-2 py-1 rounded"

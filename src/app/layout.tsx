@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Top 10 Lists",
-  description: "My curated top 10 movies & TV shows, year by year.",
+  title: "Ranked",
+  description: "Prad's take on the best in film & TV, year by year.",
 };
 
 export default function RootLayout({
