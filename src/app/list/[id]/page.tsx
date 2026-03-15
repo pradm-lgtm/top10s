@@ -58,7 +58,8 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       setEntries(entriesRes.data)
       // Fetch TMDB posters in parallel with the rest
       const category = listRes.data?.category ?? 'movies'
-      fetchPosters(entriesRes.data, category).then(setPosters)
+      const year = listRes.data?.year ?? null
+      fetchPosters(entriesRes.data, category, year).then(setPosters)
     }
     if (commentsRes.data) setComments(commentsRes.data as Comment[])
 
