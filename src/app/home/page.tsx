@@ -147,9 +147,6 @@ export default function HomePage() {
             <span className="text-base font-bold tracking-tight" style={{ color: 'var(--foreground)' }}>
               Ranked
             </span>
-            <span className="ml-2 text-xs tracking-[0.15em] uppercase font-medium" style={{ color: 'var(--muted)' }}>
-              by Prad
-            </span>
           </div>
           {visitorName && (
             <div className="flex items-center gap-3">
@@ -175,7 +172,7 @@ export default function HomePage() {
       >
         <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-3">Prad's Lists</h1>
         <p style={{ color: 'var(--muted)' }}>
-          Prad's take on the best in film &amp; TV, year by year.
+          My take on the best in film &amp; TV, year by year.
         </p>
       </div>
 
@@ -193,13 +190,16 @@ export default function HomePage() {
                 >
                   All-Time
                 </span>
-                <a
-                  href="#all-time"
-                  className="text-sm py-1 transition-colors hover:text-white"
-                  style={{ color: 'var(--muted)' }}
-                >
-                  Rankings
-                </a>
+                {themeLists.map((list) => (
+                  <a
+                    key={list.id}
+                    href={`/list/${list.id}`}
+                    className="text-sm py-0.5 transition-colors hover:text-white"
+                    style={{ color: 'var(--muted)' }}
+                  >
+                    {list.title}
+                  </a>
+                ))}
                 <div className="my-3 h-px" style={{ background: 'var(--border)' }} />
               </>
             )}

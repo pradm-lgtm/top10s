@@ -752,7 +752,7 @@ const lists: ListSeed[] = [
 
   // ── THEME: ROM-COMS ──────────────────────────
   {
-    title: 'All-Time Rom-Com Rankings',
+    title: 'Rom-Coms',
     list_type: 'theme',
     genre: 'rom-com',
     category: 'movies',
