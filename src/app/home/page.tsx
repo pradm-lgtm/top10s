@@ -179,7 +179,50 @@ export default function HomePage() {
         </p>
       </div>
 
-      <main className="max-w-4xl mx-auto px-4 pb-20 space-y-16">
+      <div className="max-w-5xl mx-auto px-4 pb-20 flex gap-10 items-start">
+        {/* Sidebar nav */}
+        {!loading && (
+          <nav
+            className="hidden lg:flex flex-col gap-1 w-36 shrink-0 sticky top-24 pt-4"
+          >
+            {themeLists.length > 0 && (
+              <>
+                <span
+                  className="text-[10px] tracking-[0.2em] uppercase font-semibold mb-1"
+                  style={{ color: 'var(--muted)' }}
+                >
+                  All-Time
+                </span>
+                <a
+                  href="#all-time"
+                  className="text-sm py-1 transition-colors hover:text-white"
+                  style={{ color: 'var(--muted)' }}
+                >
+                  Rankings
+                </a>
+                <div className="my-3 h-px" style={{ background: 'var(--border)' }} />
+              </>
+            )}
+            <span
+              className="text-[10px] tracking-[0.2em] uppercase font-semibold mb-1"
+              style={{ color: 'var(--muted)' }}
+            >
+              By Year
+            </span>
+            {annualGrouped.map(({ year }) => (
+              <a
+                key={year}
+                href={`#year-${year}`}
+                className="text-sm py-0.5 font-medium transition-colors hover:text-white"
+                style={{ color: 'var(--muted)' }}
+              >
+                {year}
+              </a>
+            ))}
+          </nav>
+        )}
+
+        <main className="flex-1 min-w-0 space-y-16 pt-4">
         {loading && (
           <div className="flex justify-center py-20">
             <div
@@ -191,7 +234,7 @@ export default function HomePage() {
 
         {/* Theme Lists */}
         {!loading && themeLists.length > 0 && (
-          <section>
+          <section id="all-time">
             <div className="flex items-center gap-4 mb-8">
               <h2 className="text-xl font-bold tracking-tight" style={{ color: 'var(--foreground)' }}>
                 All-Time Rankings
@@ -214,7 +257,7 @@ export default function HomePage() {
         )}
 
         {annualGrouped.map(({ year, movies, tv }) => (
-          <section key={year}>
+          <section key={year} id={`year-${year}`}>
             <div className="flex items-center gap-4 mb-8">
               <h2 className="text-3xl font-bold" style={{ color: 'var(--accent)' }}>{year}</h2>
               <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
@@ -331,7 +374,8 @@ export default function HomePage() {
             )}
           </section>
         )}
-      </main>
+        </main>
+      </div>
     </div>
   )
 }
@@ -400,7 +444,7 @@ function ListCard({ list }: { list: ListWithPreview }) {
                     className="text-[10px] font-bold shrink-0 w-5"
                     style={{ color: accent }}
                   >
-                    {rank === 1 ? '★' : `T${rank}`}
+                    {`T${rank}`}
                   </span>
                   <span className="truncate" style={{ color: rank === 1 ? accent : 'var(--foreground)' }}>
                     {titles.join(', ')}
