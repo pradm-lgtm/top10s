@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { fetchPosters } from '@/lib/tmdb'
+import { useAdmin } from '@/context/admin'
+import { EditableText } from '@/components/EditableText'
 import type { List, ListEntry, Comment, ReactionCount, HonorableMention, AlsoWatched } from '@/types'
 
 const EMOJIS = ['🔥', '❤️', '😮', '😂', '👏']
@@ -25,6 +27,12 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [loading, setLoading] = useState(true)
   const [visitorId, setVisitorId] = useState('')
   const [visitorName, setVisitorName] = useState('')
+  const [addingEntry, setAddingEntry] = useState(false)
+  const [newEntryTitle, setNewEntryTitle] = useState('')
+  const [newEntryRank, setNewEntryRank] = useState('')
+  const [newEntryNotes, setNewEntryNotes] = useState('')
+  const [savingEntry, setSavingEntry] = useState(false)
+  const { isAdmin } = useAdmin()
   const router = useRouter()
 
   useEffect(() => {
@@ -81,6 +89,59 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     if (awRes.data) setAlsoWatched(awRes.data)
 
     setLoading(false)
+  }
+
+  async function saveListField(field: string, value: string) {
+    await fetch(`/api/admin/lists/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: value }),
+    })
+    setList((prev) => prev ? { ...prev, [field]: value } : prev)
+  }
+
+  async function saveEntryField(entryId: string, field: string, value: string | number) {
+    await fetch(`/api/admin/entries/${entryId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: value }),
+    })
+    setEntries((prev) =>
+      prev.map((e) => e.id === entryId ? { ...e, [field]: value } : e)
+    )
+  }
+
+  async function addEntry(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newEntryTitle.trim() || !newEntryRank) return
+    setSavingEntry(true)
+    const res = await fetch('/api/admin/entries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        list_id: id,
+        rank: Number(newEntryRank),
+        title: newEntryTitle.trim(),
+        notes: newEntryNotes.trim() || null,
+      }),
+    })
+    if (res.ok) {
+      const entry = await res.json()
+      setEntries((prev) =>
+        [...prev, entry].sort((a, b) => a.rank - b.rank)
+      )
+      setNewEntryTitle('')
+      setNewEntryRank('')
+      setNewEntryNotes('')
+      setAddingEntry(false)
+    }
+    setSavingEntry(false)
+  }
+
+  async function deleteEntry(entryId: string) {
+    if (!confirm('Delete this entry?')) return
+    await fetch(`/api/admin/entries/${entryId}`, { method: 'DELETE' })
+    setEntries((prev) => prev.filter((e) => e.id !== entryId))
   }
 
   async function toggleReaction(emoji: string) {
@@ -205,13 +266,22 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               : `${list.year} · ${isMovie ? 'Movies' : 'TV Shows'}`}
           </div>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-3">
-            {list.title}
+            <EditableText
+              value={list.title}
+              onSave={(v) => saveListField('title', v)}
+              className="text-3xl sm:text-4xl font-bold tracking-tight"
+            />
           </h1>
-          {list.description && (
-            <p className="text-base max-w-xl" style={{ color: 'var(--muted)' }}>
-              {list.description}
-            </p>
-          )}
+          <p className="text-base max-w-xl" style={{ color: 'var(--muted)' }}>
+            <EditableText
+              value={list.description ?? ''}
+              onSave={(v) => saveListField('description', v)}
+              multiline
+              placeholder="Add a description…"
+              className="text-base"
+              style={{ color: 'var(--muted)' }}
+            />
+          </p>
         </div>
       </div>
 
@@ -221,6 +291,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
           {list.list_format === 'tiered' ? (
             <TieredEntries entries={entries} accentColor={accentColor} posters={posters} />
           ) : (
+          <>
           <ol className="space-y-3">
             {entries.map((entry, i) => (
               <li key={entry.id}>
@@ -239,23 +310,34 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                       color: i === 0 ? accentColor : i < 3 ? 'var(--foreground)' : 'var(--muted)',
                     }}
                   >
-                    {entry.rank}
+                    <EditableText
+                      value={String(entry.rank)}
+                      onSave={(v) => saveEntryField(entry.id, 'rank', Number(v))}
+                      className="text-2xl font-bold tabular-nums"
+                      style={{ color: i === 0 ? accentColor : i < 3 ? 'var(--foreground)' : 'var(--muted)' }}
+                    />
                   </div>
 
                   {/* Content */}
                   <div className="flex-1 min-w-0 flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-base leading-snug">
-                        {entry.title}
+                        <EditableText
+                          value={entry.title}
+                          onSave={(v) => saveEntryField(entry.id, 'title', v)}
+                          className="font-semibold text-base"
+                        />
                       </h3>
-                      {entry.notes && (
-                        <p
-                          className="text-sm mt-1 leading-relaxed"
+                      <div className="text-sm mt-1 leading-relaxed" style={{ color: 'var(--muted)' }}>
+                        <EditableText
+                          value={entry.notes ?? ''}
+                          onSave={(v) => saveEntryField(entry.id, 'notes', v)}
+                          multiline
+                          placeholder="Add notes…"
+                          className="text-sm"
                           style={{ color: 'var(--muted)' }}
-                        >
-                          {entry.notes}
-                        </p>
-                      )}
+                        />
+                      </div>
                     </div>
                     {/* Thumbnail — right aligned */}
                     {(() => {
@@ -269,7 +351,6 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                           style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }}
                         />
                       )
-                      // Poster not yet loaded or not found
                       const pending = !(entry.id in posters)
                       return (
                         <div
@@ -291,11 +372,92 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                         </div>
                       )
                     })()}
+                    {isAdmin && (
+                      <button
+                        onClick={() => deleteEntry(entry.id)}
+                        className="shrink-0 text-xs px-2 py-1 rounded opacity-40 hover:opacity-100 transition-opacity"
+                        style={{ border: '1px solid #f87171', color: '#f87171' }}
+                        title="Delete entry"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                 </div>
               </li>
             ))}
           </ol>
+
+          {/* Add Entry */}
+          {isAdmin && (
+            <div className="mt-4">
+              {addingEntry ? (
+                <form
+                  onSubmit={addEntry}
+                  className="rounded-xl p-4 space-y-3"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--accent)33' }}
+                >
+                  <p className="text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--accent)' }}>
+                    New Entry
+                  </p>
+                  <div className="flex gap-3">
+                    <input
+                      type="number"
+                      value={newEntryRank}
+                      onChange={(e) => setNewEntryRank(e.target.value)}
+                      placeholder="Rank"
+                      min={1}
+                      className="w-20 px-3 py-2 rounded text-sm outline-none"
+                      style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                    />
+                    <input
+                      type="text"
+                      value={newEntryTitle}
+                      onChange={(e) => setNewEntryTitle(e.target.value)}
+                      placeholder="Title"
+                      className="flex-1 px-3 py-2 rounded text-sm outline-none"
+                      style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                    />
+                  </div>
+                  <textarea
+                    value={newEntryNotes}
+                    onChange={(e) => setNewEntryNotes(e.target.value)}
+                    placeholder="Notes (optional)"
+                    rows={2}
+                    className="w-full px-3 py-2 rounded text-sm resize-none outline-none"
+                    style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={savingEntry || !newEntryTitle.trim() || !newEntryRank}
+                      className="px-4 py-2 rounded text-sm font-semibold disabled:opacity-40"
+                      style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+                    >
+                      {savingEntry ? 'Adding…' : 'Add Entry'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddingEntry(false)}
+                      className="px-4 py-2 rounded text-sm"
+                      style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  onClick={() => setAddingEntry(true)}
+                  className="w-full py-3 rounded-xl text-sm font-medium transition-all"
+                  style={{ border: '1px dashed var(--border)', color: 'var(--muted)' }}
+                >
+                  + Add Entry
+                </button>
+              )}
+            </div>
+          )}
+          </>
           )}
         </section>
 

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { AdminProvider } from "@/context/admin";
+import { AdminBar } from "@/components/AdminBar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,7 +30,10 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen`}
         style={{ background: "var(--background)", color: "var(--foreground)" }}
       >
-        {children}
+        <AdminProvider>
+          {children}
+          <AdminBar />
+        </AdminProvider>
       </body>
     </html>
   );

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useAdmin } from '@/context/admin'
 import type { List, ListEntry } from '@/types'
 
 type ListWithPreview = List & { entries: ListEntry[] }
@@ -35,6 +36,14 @@ export default function HomePage() {
   const [themeLists, setThemeLists] = useState<ListWithPreview[]>([])
   const [loading, setLoading] = useState(true)
   const [visitorName, setVisitorName] = useState('')
+  const [addingList, setAddingList] = useState(false)
+  const [newListTitle, setNewListTitle] = useState('')
+  const [newListYear, setNewListYear] = useState('')
+  const [newListCategory, setNewListCategory] = useState<'movies' | 'tv'>('movies')
+  const [newListType, setNewListType] = useState<'annual' | 'theme'>('annual')
+  const [newListDesc, setNewListDesc] = useState('')
+  const [savingList, setSavingList] = useState(false)
+  const { isAdmin } = useAdmin()
   const router = useRouter()
 
   useEffect(() => {
@@ -100,6 +109,30 @@ export default function HomePage() {
     localStorage.removeItem('visitor_id')
     localStorage.removeItem('visitor_name')
     router.push('/')
+  }
+
+  async function addList(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newListTitle.trim()) return
+    setSavingList(true)
+    const body: Record<string, unknown> = {
+      title: newListTitle.trim(),
+      category: newListCategory,
+      list_type: newListType,
+      list_format: 'ranked',
+      description: newListDesc.trim() || null,
+    }
+    if (newListType === 'annual' && newListYear) body.year = Number(newListYear)
+    const res = await fetch('/api/admin/lists', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) {
+      const newList = await res.json()
+      router.push(`/list/${newList.id}`)
+    }
+    setSavingList(false)
   }
 
   return (
@@ -210,6 +243,94 @@ export default function HomePage() {
             </div>
           </section>
         ))}
+        {/* Add List — admin only */}
+        {isAdmin && (
+          <section>
+            {addingList ? (
+              <form
+                onSubmit={addList}
+                className="rounded-xl p-6 space-y-4"
+                style={{ background: 'var(--surface)', border: '1px solid rgba(232,197,71,0.3)' }}
+              >
+                <p className="text-xs font-semibold tracking-[0.2em] uppercase" style={{ color: 'var(--accent)' }}>
+                  New List
+                </p>
+                <input
+                  type="text"
+                  value={newListTitle}
+                  onChange={(e) => setNewListTitle(e.target.value)}
+                  placeholder="Title"
+                  className="w-full px-3 py-2 rounded text-sm outline-none"
+                  style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                />
+                <div className="flex gap-3 flex-wrap">
+                  <select
+                    value={newListType}
+                    onChange={(e) => setNewListType(e.target.value as 'annual' | 'theme')}
+                    className="px-3 py-2 rounded text-sm outline-none"
+                    style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                  >
+                    <option value="annual">Annual</option>
+                    <option value="theme">Theme</option>
+                  </select>
+                  <select
+                    value={newListCategory}
+                    onChange={(e) => setNewListCategory(e.target.value as 'movies' | 'tv')}
+                    className="px-3 py-2 rounded text-sm outline-none"
+                    style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                  >
+                    <option value="movies">Movies</option>
+                    <option value="tv">TV</option>
+                  </select>
+                  {newListType === 'annual' && (
+                    <input
+                      type="number"
+                      value={newListYear}
+                      onChange={(e) => setNewListYear(e.target.value)}
+                      placeholder="Year"
+                      className="w-24 px-3 py-2 rounded text-sm outline-none"
+                      style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                    />
+                  )}
+                </div>
+                <textarea
+                  value={newListDesc}
+                  onChange={(e) => setNewListDesc(e.target.value)}
+                  placeholder="Description (optional)"
+                  rows={2}
+                  className="w-full px-3 py-2 rounded text-sm resize-none outline-none"
+                  style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={savingList || !newListTitle.trim()}
+                    className="px-5 py-2 rounded text-sm font-semibold disabled:opacity-40"
+                    style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+                  >
+                    {savingList ? 'Creating…' : 'Create List'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddingList(false)}
+                    className="px-5 py-2 rounded text-sm"
+                    style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <button
+                onClick={() => setAddingList(true)}
+                className="w-full py-4 rounded-xl text-sm font-medium transition-all"
+                style={{ border: '1px dashed rgba(232,197,71,0.3)', color: 'var(--muted)' }}
+              >
+                + Add New List
+              </button>
+            )}
+          </section>
+        )}
       </main>
     </div>
   )
