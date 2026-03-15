@@ -179,7 +179,7 @@ export default function HomePage() {
       >
         <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-3">Prad's Lists</h1>
         <p style={{ color: 'var(--muted)' }}>
-          My take on the best in film &amp; TV, year by year.
+          Everything worth ranking, ranked.
         </p>
       </div>
 
