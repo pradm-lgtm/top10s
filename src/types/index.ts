@@ -4,6 +4,14 @@ export type Visitor = {
   created_at: string
 }
 
+export type Profile = {
+  id: string
+  username: string
+  display_name: string | null
+  avatar_url: string | null
+  created_at: string
+}
+
 export type List = {
   id: string
   title: string
@@ -13,7 +21,9 @@ export type List = {
   list_format: 'ranked' | 'tiered' | 'tier-ranked'
   genre: string | null
   description: string | null
+  owner_id: string | null
   created_at: string
+  profiles?: { username: string; display_name: string | null; avatar_url: string | null } | null
 }
 
 export type ListEntry = {

@@ -5,9 +5,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAdmin } from '@/context/admin'
+import { NavAuth } from '@/components/NavAuth'
 import type { List, ListEntry } from '@/types'
 
-type ListWithPreview = List & { entries: ListEntry[] }
+type OwnerInfo = { username: string; display_name: string | null; avatar_url: string | null }
+type ListWithPreview = List & { entries: ListEntry[]; profiles: OwnerInfo | null }
 
 type GroupedByYear = {
   year: number
@@ -35,7 +37,6 @@ export default function HomePage() {
   const [annualGrouped, setAnnualGrouped] = useState<GroupedByYear[]>([])
   const [themeLists, setThemeLists] = useState<ListWithPreview[]>([])
   const [loading, setLoading] = useState(true)
-  const [visitorName, setVisitorName] = useState('')
   const [addingList, setAddingList] = useState(false)
   const [newListTitle, setNewListTitle] = useState('')
   const [newListYear, setNewListYear] = useState('')
@@ -47,15 +48,13 @@ export default function HomePage() {
   const router = useRouter()
 
   useEffect(() => {
-    const name = localStorage.getItem('visitor_name')
-    if (name) setVisitorName(name)
     fetchLists()
   }, [])
 
   async function fetchLists() {
     const { data: lists, error } = await supabase
       .from('lists')
-      .select('*')
+      .select('*, profiles(username, display_name, avatar_url)')
       .order('year', { ascending: false, nullsFirst: false })
 
     if (error || !lists) {
@@ -140,16 +139,10 @@ export default function HomePage() {
         style={{ background: 'rgba(10,10,15,0.85)', borderColor: 'var(--border)' }}
       >
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <span className="text-base font-bold tracking-tight" style={{ color: 'var(--foreground)' }}>
-              Ranked
-            </span>
-          </div>
-          {visitorName && (
-            <span className="text-sm" style={{ color: 'var(--muted)' }}>
-              Hey, <span style={{ color: 'var(--foreground)' }}>{visitorName}</span>
-            </span>
-          )}
+          <Link href="/home" className="text-base font-bold tracking-tight" style={{ color: 'var(--foreground)' }}>
+            Ranked
+          </Link>
+          <NavAuth />
         </div>
       </header>
 
@@ -158,24 +151,19 @@ export default function HomePage() {
         className="relative py-16 px-4 text-center overflow-hidden"
         style={{ background: 'radial-gradient(ellipse 80% 100% at 50% -20%, rgba(232,197,71,0.1) 0%, transparent 70%)' }}
       >
-        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-3">Prad's Lists</h1>
+        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-3">Ranked</h1>
         <p style={{ color: 'var(--muted)' }}>
-          Ranked. Hot takes included.
+          The best in film &amp; TV, ranked by people who care too much.
         </p>
       </div>
 
       <div className="max-w-5xl mx-auto px-4 pb-20 flex gap-10 items-start">
         {/* Sidebar nav */}
         {!loading && (
-          <nav
-            className="hidden lg:flex flex-col gap-1 w-36 shrink-0 sticky top-24 pt-4"
-          >
+          <nav className="hidden lg:flex flex-col gap-1 w-36 shrink-0 sticky top-24 pt-4">
             {themeLists.length > 0 && (
               <>
-                <span
-                  className="text-[10px] tracking-[0.2em] uppercase font-semibold mb-1"
-                  style={{ color: 'var(--muted)' }}
-                >
+                <span className="text-[10px] tracking-[0.2em] uppercase font-semibold mb-1" style={{ color: 'var(--muted)' }}>
                   All-Time
                 </span>
                 {themeLists.map((list) => (
@@ -191,10 +179,7 @@ export default function HomePage() {
                 <div className="my-3 h-px" style={{ background: 'var(--border)' }} />
               </>
             )}
-            <span
-              className="text-[10px] tracking-[0.2em] uppercase font-semibold mb-1"
-              style={{ color: 'var(--muted)' }}
-            >
+            <span className="text-[10px] tracking-[0.2em] uppercase font-semibold mb-1" style={{ color: 'var(--muted)' }}>
               By Year
             </span>
             {annualGrouped.map(({ year }) => (
@@ -211,157 +196,158 @@ export default function HomePage() {
         )}
 
         <main className="flex-1 min-w-0 space-y-16 pt-4">
-        {loading && (
-          <div className="flex justify-center py-20">
-            <div
-              className="w-8 h-8 rounded-full border-2 animate-spin"
-              style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }}
-            />
-          </div>
-        )}
+          {loading && (
+            <div className="flex justify-center py-20">
+              <div
+                className="w-8 h-8 rounded-full border-2 animate-spin"
+                style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }}
+              />
+            </div>
+          )}
 
-        {/* Theme Lists */}
-        {!loading && themeLists.length > 0 && (
-          <section id="all-time" style={{ scrollMarginTop: '80px' }}>
-            <div className="flex items-center gap-4 mb-8">
-              <h2 className="text-xl font-bold tracking-tight" style={{ color: 'var(--foreground)' }}>
-                All-Time Rankings
-              </h2>
-              <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {themeLists.map((list) => (
-                <ListCard key={list.id} list={list} />
-              ))}
-            </div>
-          </section>
-        )}
+          {/* Theme Lists */}
+          {!loading && themeLists.length > 0 && (
+            <section id="all-time" style={{ scrollMarginTop: '80px' }}>
+              <div className="flex items-center gap-4 mb-8">
+                <h2 className="text-xl font-bold tracking-tight" style={{ color: 'var(--foreground)' }}>
+                  All-Time Rankings
+                </h2>
+                <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {themeLists.map((list) => (
+                  <ListCard key={list.id} list={list} />
+                ))}
+              </div>
+            </section>
+          )}
 
-        {/* Annual Lists */}
-        {!loading && annualGrouped.length === 0 && themeLists.length === 0 && (
-          <div className="text-center py-20" style={{ color: 'var(--muted)' }}>
-            No lists yet. Check back soon.
-          </div>
-        )}
+          {/* Annual Lists */}
+          {!loading && annualGrouped.length === 0 && themeLists.length === 0 && (
+            <div className="text-center py-20" style={{ color: 'var(--muted)' }}>
+              No lists yet. Check back soon.
+            </div>
+          )}
 
-        {annualGrouped.map(({ year, movies, tv }) => (
-          <section key={year} id={`year-${year}`} style={{ scrollMarginTop: '80px' }}>
-            <div className="flex items-center gap-4 mb-8">
-              <h2 className="text-3xl font-bold" style={{ color: 'var(--accent)' }}>{year}</h2>
-              <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              {(['movies', 'tv'] as const).map((cat) => {
-                const catLists = cat === 'movies' ? movies : tv
-                if (catLists.length === 0) return null
-                return (
-                  <div key={cat} className="space-y-3">
-                    <span
-                      className="text-xs tracking-[0.25em] uppercase font-semibold px-2 py-1 rounded inline-block"
-                      style={{
-                        background: cat === 'movies' ? 'rgba(232,197,71,0.12)' : 'rgba(139,92,246,0.12)',
-                        color: cat === 'movies' ? 'var(--accent)' : '#a78bfa',
-                      }}
-                    >
-                      {cat === 'movies' ? 'Movies' : 'TV Shows'}
-                    </span>
-                    {catLists.map((list) => (
-                      <ListCard key={list.id} list={list} />
-                    ))}
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-        ))}
-        {/* Add List — admin only */}
-        {isAdmin && (
-          <section>
-            {addingList ? (
-              <form
-                onSubmit={addList}
-                className="rounded-xl p-6 space-y-4"
-                style={{ background: 'var(--surface)', border: '1px solid rgba(232,197,71,0.3)' }}
-              >
-                <p className="text-xs font-semibold tracking-[0.2em] uppercase" style={{ color: 'var(--accent)' }}>
-                  New List
-                </p>
-                <input
-                  type="text"
-                  value={newListTitle}
-                  onChange={(e) => setNewListTitle(e.target.value)}
-                  placeholder="Title"
-                  className="w-full px-3 py-2 rounded text-sm outline-none"
-                  style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
-                />
-                <div className="flex gap-3 flex-wrap">
-                  <select
-                    value={newListType}
-                    onChange={(e) => setNewListType(e.target.value as 'annual' | 'theme')}
-                    className="px-3 py-2 rounded text-sm outline-none"
+          {annualGrouped.map(({ year, movies, tv }) => (
+            <section key={year} id={`year-${year}`} style={{ scrollMarginTop: '80px' }}>
+              <div className="flex items-center gap-4 mb-8">
+                <h2 className="text-3xl font-bold" style={{ color: 'var(--accent)' }}>{year}</h2>
+                <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {(['movies', 'tv'] as const).map((cat) => {
+                  const catLists = cat === 'movies' ? movies : tv
+                  if (catLists.length === 0) return null
+                  return (
+                    <div key={cat} className="space-y-3">
+                      <span
+                        className="text-xs tracking-[0.25em] uppercase font-semibold px-2 py-1 rounded inline-block"
+                        style={{
+                          background: cat === 'movies' ? 'rgba(232,197,71,0.12)' : 'rgba(139,92,246,0.12)',
+                          color: cat === 'movies' ? 'var(--accent)' : '#a78bfa',
+                        }}
+                      >
+                        {cat === 'movies' ? 'Movies' : 'TV Shows'}
+                      </span>
+                      {catLists.map((list) => (
+                        <ListCard key={list.id} list={list} />
+                      ))}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          ))}
+
+          {/* Add List — admin only */}
+          {isAdmin && (
+            <section>
+              {addingList ? (
+                <form
+                  onSubmit={addList}
+                  className="rounded-xl p-6 space-y-4"
+                  style={{ background: 'var(--surface)', border: '1px solid rgba(232,197,71,0.3)' }}
+                >
+                  <p className="text-xs font-semibold tracking-[0.2em] uppercase" style={{ color: 'var(--accent)' }}>
+                    New List
+                  </p>
+                  <input
+                    type="text"
+                    value={newListTitle}
+                    onChange={(e) => setNewListTitle(e.target.value)}
+                    placeholder="Title"
+                    className="w-full px-3 py-2 rounded text-sm outline-none"
                     style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
-                  >
-                    <option value="annual">Annual</option>
-                    <option value="theme">Theme</option>
-                  </select>
-                  <select
-                    value={newListCategory}
-                    onChange={(e) => setNewListCategory(e.target.value as 'movies' | 'tv')}
-                    className="px-3 py-2 rounded text-sm outline-none"
-                    style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
-                  >
-                    <option value="movies">Movies</option>
-                    <option value="tv">TV</option>
-                  </select>
-                  {newListType === 'annual' && (
-                    <input
-                      type="number"
-                      value={newListYear}
-                      onChange={(e) => setNewListYear(e.target.value)}
-                      placeholder="Year"
-                      className="w-24 px-3 py-2 rounded text-sm outline-none"
+                  />
+                  <div className="flex gap-3 flex-wrap">
+                    <select
+                      value={newListType}
+                      onChange={(e) => setNewListType(e.target.value as 'annual' | 'theme')}
+                      className="px-3 py-2 rounded text-sm outline-none"
                       style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
-                    />
-                  )}
-                </div>
-                <textarea
-                  value={newListDesc}
-                  onChange={(e) => setNewListDesc(e.target.value)}
-                  placeholder="Description (optional)"
-                  rows={2}
-                  className="w-full px-3 py-2 rounded text-sm resize-none outline-none"
-                  style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
-                />
-                <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    disabled={savingList || !newListTitle.trim()}
-                    className="px-5 py-2 rounded text-sm font-semibold disabled:opacity-40"
-                    style={{ background: 'var(--accent)', color: '#0a0a0f' }}
-                  >
-                    {savingList ? 'Creating…' : 'Create List'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAddingList(false)}
-                    className="px-5 py-2 rounded text-sm"
-                    style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <button
-                onClick={() => setAddingList(true)}
-                className="w-full py-4 rounded-xl text-sm font-medium transition-all"
-                style={{ border: '1px dashed rgba(232,197,71,0.3)', color: 'var(--muted)' }}
-              >
-                + Add New List
-              </button>
-            )}
-          </section>
-        )}
+                    >
+                      <option value="annual">Annual</option>
+                      <option value="theme">Theme</option>
+                    </select>
+                    <select
+                      value={newListCategory}
+                      onChange={(e) => setNewListCategory(e.target.value as 'movies' | 'tv')}
+                      className="px-3 py-2 rounded text-sm outline-none"
+                      style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                    >
+                      <option value="movies">Movies</option>
+                      <option value="tv">TV</option>
+                    </select>
+                    {newListType === 'annual' && (
+                      <input
+                        type="number"
+                        value={newListYear}
+                        onChange={(e) => setNewListYear(e.target.value)}
+                        placeholder="Year"
+                        className="w-24 px-3 py-2 rounded text-sm outline-none"
+                        style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                      />
+                    )}
+                  </div>
+                  <textarea
+                    value={newListDesc}
+                    onChange={(e) => setNewListDesc(e.target.value)}
+                    placeholder="Description (optional)"
+                    rows={2}
+                    className="w-full px-3 py-2 rounded text-sm resize-none outline-none"
+                    style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={savingList || !newListTitle.trim()}
+                      className="px-5 py-2 rounded text-sm font-semibold disabled:opacity-40"
+                      style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+                    >
+                      {savingList ? 'Creating…' : 'Create List'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddingList(false)}
+                      className="px-5 py-2 rounded text-sm"
+                      style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  onClick={() => setAddingList(true)}
+                  className="w-full py-4 rounded-xl text-sm font-medium transition-all"
+                  style={{ border: '1px dashed rgba(232,197,71,0.3)', color: 'var(--muted)' }}
+                >
+                  + Add New List
+                </button>
+              )}
+            </section>
+          )}
         </main>
       </div>
     </div>
@@ -384,7 +370,6 @@ function ListCard({ list }: { list: ListWithPreview }) {
   const isTiered = list.list_format === 'tiered'
   const isTierRanked = list.list_format === 'tier-ranked'
 
-  // For tiered preview: group entries by rank
   const tierGroups: { rank: number; tier: string; titles: string[] }[] = []
   if (isTiered) {
     const map = new Map<number, { tier: string; titles: string[] }>()
@@ -396,6 +381,9 @@ function ListCard({ list }: { list: ListWithPreview }) {
       .sort(([a], [b]) => a - b)
       .forEach(([rank, v]) => tierGroups.push({ rank, ...v }))
   }
+
+  const owner = list.profiles
+  const ownerName = owner?.display_name ?? owner?.username
 
   return (
     <Link href={`/list/${list.id}`} className="block group">
@@ -421,6 +409,11 @@ function ListCard({ list }: { list: ListWithPreview }) {
         {/* Header */}
         <div className="flex items-start justify-between mb-3 shrink-0">
           <h3 className="font-semibold text-base leading-tight pr-2">{list.title}</h3>
+          {ownerName && (
+            <span className="text-[10px] shrink-0 font-medium" style={{ color: 'var(--muted)' }}>
+              @{owner?.username}
+            </span>
+          )}
         </div>
 
         {/* Preview — fixed remaining height, fades out */}
@@ -442,10 +435,7 @@ function ListCard({ list }: { list: ListWithPreview }) {
             <div className="space-y-1.5">
               {tierGroups.map(({ rank, tier, titles }) => (
                 <div key={rank} className="flex items-baseline gap-2 text-sm">
-                  <span
-                    className="text-[10px] font-bold shrink-0 w-5"
-                    style={{ color: accent }}
-                  >
+                  <span className="text-[10px] font-bold shrink-0 w-5" style={{ color: accent }}>
                     {`T${rank}`}
                   </span>
                   <span className="truncate" style={{ color: 'var(--foreground)' }}>
