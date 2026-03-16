@@ -52,12 +52,24 @@ export default function HomePage() {
   }, [])
 
   async function fetchLists() {
-    const { data: lists, error } = await supabase
+    // Try with profiles join; fall back to plain select if profiles table doesn't exist yet
+    let lists: (List & { profiles?: OwnerInfo | null })[] | null = null
+    const { data: withJoin, error: joinError } = await supabase
       .from('lists')
       .select('*, profiles(username, display_name, avatar_url)')
       .order('year', { ascending: false, nullsFirst: false })
 
-    if (error || !lists) {
+    if (!joinError) {
+      lists = withJoin
+    } else {
+      const { data: plain } = await supabase
+        .from('lists')
+        .select('*')
+        .order('year', { ascending: false, nullsFirst: false })
+      lists = plain
+    }
+
+    if (!lists) {
       setLoading(false)
       return
     }
@@ -79,6 +91,7 @@ export default function HomePage() {
     const withPreviews: ListWithPreview[] = lists.map((list) => ({
       ...list,
       entries: entryMap[list.id] ?? [],
+      profiles: list.profiles ?? null,
     }))
 
     const annual = withPreviews.filter((l) => l.list_type !== 'theme')
