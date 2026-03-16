@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { fetchPosters } from '@/lib/tmdb'
 import { useAdmin } from '@/context/admin'
 import { EditableText } from '@/components/EditableText'
+import { EntryDrawer } from '@/components/EntryDrawer'
 import type { PosterInfo } from '@/lib/tmdb'
 import type { List, ListEntry, Comment, ReactionCount, HonorableMention, AlsoWatched } from '@/types'
 
@@ -33,6 +34,8 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [newEntryRank, setNewEntryRank] = useState('')
   const [newEntryNotes, setNewEntryNotes] = useState('')
   const [savingEntry, setSavingEntry] = useState(false)
+  const [selectedEntry, setSelectedEntry] = useState<ListEntry | null>(null)
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({})
   const { isAdmin } = useAdmin()
   const router = useRouter()
 
@@ -65,10 +68,22 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     if (listRes.data) setList(listRes.data)
     if (entriesRes.data) {
       setEntries(entriesRes.data)
-      // Fetch TMDB posters in parallel with the rest
       const category = listRes.data?.category ?? 'movies'
       const year = listRes.data?.year ?? null
       fetchPosters(entriesRes.data, category, year).then(setPosters)
+      // Fetch entry-level comment counts
+      const entryIds = entriesRes.data.map(e => e.id)
+      supabase
+        .from('entry_comments')
+        .select('list_entry_id')
+        .in('list_entry_id', entryIds)
+        .then(({ data }) => {
+          const counts: Record<string, number> = {}
+          for (const row of data ?? []) {
+            counts[row.list_entry_id] = (counts[row.list_entry_id] ?? 0) + 1
+          }
+          setCommentCounts(counts)
+        })
     }
     if (commentsRes.data) setComments(commentsRes.data as Comment[])
 
@@ -137,6 +152,14 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       setAddingEntry(false)
     }
     setSavingEntry(false)
+  }
+
+  function handleEntryClick(entry: ListEntry) {
+    setSelectedEntry(entry)
+  }
+
+  function handleCommentPosted(entryId: string) {
+    setCommentCounts(prev => ({ ...prev, [entryId]: (prev[entryId] ?? 0) + 1 }))
   }
 
   async function deleteEntry(entryId: string) {
@@ -294,20 +317,25 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         {/* Entries */}
         <section>
           {list.list_format === 'tiered' ? (
-            <TieredEntries entries={entries} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} saveEntryField={saveEntryField} />
+            <TieredEntries entries={entries} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} selectedEntryId={selectedEntry?.id ?? null} />
           ) : list.list_format === 'tier-ranked' ? (
-            <TierRankedEntries entries={entries} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} saveEntryField={saveEntryField} />
+            <TierRankedEntries entries={entries} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} selectedEntryId={selectedEntry?.id ?? null} />
           ) : (
           <>
           <ol className="space-y-3">
             {entries.map((entry, i) => (
               <li key={entry.id}>
                 <div
-                  className="rounded-xl p-4 sm:p-5 flex gap-4 items-start"
+                  className={`rounded-xl p-4 sm:p-5 flex gap-4 items-start transition-colors${!isAdmin ? ' cursor-pointer' : ''}`}
                   style={{
-                    background: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    borderLeft: `3px solid ${i === 0 ? accentColor : 'var(--border)'}`,
+                    background: selectedEntry?.id === entry.id ? `${accentColor}08` : 'var(--surface)',
+                    border: `1px solid ${selectedEntry?.id === entry.id ? `${accentColor}40` : 'var(--border)'}`,
+                    borderLeft: `3px solid ${i === 0 ? accentColor : selectedEntry?.id === entry.id ? `${accentColor}60` : 'var(--border)'}`,
+                  }}
+                  onClick={(e) => {
+                    if (isAdmin) return
+                    if ((e.target as HTMLElement).closest('a')) return
+                    handleEntryClick(entry)
                   }}
                 >
                   {/* Rank */}
@@ -358,6 +386,11 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                           style={{ color: 'var(--muted)' }}
                         />
                       </div>
+                      {commentCounts[entry.id] > 0 && (
+                        <div className="mt-1.5 text-xs" style={{ color: 'var(--muted)' }}>
+                          💬 {commentCounts[entry.id]}
+                        </div>
+                      )}
                     </div>
                     {/* Thumbnail — right aligned */}
                     {(() => {
@@ -644,6 +677,15 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
           )}
         </section>
       </main>
+
+      <EntryDrawer
+        entry={selectedEntry}
+        visitorId={visitorId}
+        visitorName={visitorName}
+        accentColor={accentColor}
+        onClose={() => setSelectedEntry(null)}
+        onCommentPosted={handleCommentPosted}
+      />
     </div>
   )
 }
@@ -741,6 +783,9 @@ function TieredEntries({
   isTheme = false,
   isAdmin = false,
   saveEntryField,
+  onEntryClick,
+  commentCounts = {},
+  selectedEntryId,
 }: {
   entries: ListEntry[]
   accentColor: string
@@ -748,6 +793,9 @@ function TieredEntries({
   isTheme?: boolean
   isAdmin?: boolean
   saveEntryField?: (id: string, field: string, value: string | number) => Promise<void>
+  onEntryClick?: (entry: ListEntry) => void
+  commentCounts?: Record<string, number>
+  selectedEntryId?: string | null
 }) {
   const tierMap = new Map<number, { label: string; entries: ListEntry[] }>()
   for (const entry of entries) {
@@ -773,12 +821,17 @@ function TieredEntries({
           return (
             <div
               key={rank}
-              className="rounded-xl overflow-hidden flex items-stretch"
+              className={`rounded-xl overflow-hidden flex items-stretch${!isAdmin ? ' cursor-pointer' : ''}`}
               style={{
-                border: `1px solid ${color}55`,
+                border: `1px solid ${selectedEntryId === hero.id ? color : `${color}55`}`,
                 background: `linear-gradient(135deg, ${color}18 0%, ${color}06 60%, transparent 100%)`,
-                boxShadow: `0 0 32px ${color}20`,
+                boxShadow: selectedEntryId === hero.id ? `0 0 32px ${color}40` : `0 0 32px ${color}20`,
                 minHeight: '110px',
+              }}
+              onClick={(e) => {
+                if (isAdmin) return
+                if ((e.target as HTMLElement).closest('a')) return
+                onEntryClick?.(hero)
               }}
             >
               {/* Label */}
@@ -888,8 +941,18 @@ function TieredEntries({
                 return (
                   <div
                     key={entry.id}
-                    className="flex flex-col items-center gap-1"
-                    style={{ width: '56px' }}
+                    className={`flex flex-col items-center gap-1${!isAdmin ? ' cursor-pointer' : ''}`}
+                    style={{
+                      width: '56px',
+                      outline: selectedEntryId === entry.id ? `2px solid ${color}` : 'none',
+                      outlineOffset: '2px',
+                      borderRadius: '4px',
+                    }}
+                    onClick={(e) => {
+                      if (isAdmin) return
+                      if ((e.target as HTMLElement).closest('a')) return
+                      onEntryClick?.(entry)
+                    }}
                   >
                     {imdbUrl ? (
                       <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="w-full">
@@ -927,6 +990,11 @@ function TieredEntries({
                         />
                       </div>
                     )}
+                    {commentCounts[entry.id] > 0 && (
+                      <span style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>
+                        💬 {commentCounts[entry.id]}
+                      </span>
+                    )}
                   </div>
                 )
               })}
@@ -947,12 +1015,18 @@ function TierRankedEntries({
   isTheme = false,
   isAdmin = false,
   saveEntryField,
+  onEntryClick,
+  commentCounts = {},
+  selectedEntryId,
 }: {
   entries: ListEntry[]
   posters: Record<string, PosterInfo>
   isTheme?: boolean
   isAdmin?: boolean
   saveEntryField?: (id: string, field: string, value: string | number) => Promise<void>
+  onEntryClick?: (entry: ListEntry) => void
+  commentCounts?: Record<string, number>
+  selectedEntryId?: string | null
 }) {
   // Group by tier, preserving insertion order
   const tierGroups: { tier: string; entries: ListEntry[] }[] = []
@@ -1009,8 +1083,16 @@ function TierRankedEntries({
                 return (
                   <div
                     key={entry.id}
-                    className="flex items-start gap-3 rounded-lg px-3 py-2"
-                    style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+                    className={`flex items-start gap-3 rounded-lg px-3 py-2 transition-colors${!isAdmin ? ' cursor-pointer' : ''}`}
+                    style={{
+                      background: selectedEntryId === entry.id ? `${color}10` : 'var(--surface)',
+                      border: `1px solid ${selectedEntryId === entry.id ? `${color}40` : 'var(--border)'}`,
+                    }}
+                    onClick={(e) => {
+                      if (isAdmin) return
+                      if ((e.target as HTMLElement).closest('a')) return
+                      onEntryClick?.(entry)
+                    }}
                   >
                     {/* Global rank */}
                     <span
@@ -1054,6 +1136,11 @@ function TierRankedEntries({
                             className="text-xs"
                             style={{ color: 'var(--muted)' }}
                           />
+                        </div>
+                      )}
+                      {commentCounts[entry.id] > 0 && (
+                        <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
+                          💬 {commentCounts[entry.id]}
                         </div>
                       )}
                     </div>
