@@ -31,10 +31,14 @@ async function searchTmdb(
   )
   if (!res.ok) return { poster: null, tmdbId: null }
   const data = await res.json()
-  const results = (data.results ?? []) as { poster_path?: string; vote_count: number; id: number }[]
-  const best = results
-    .filter((r) => r.poster_path)
-    .sort((a, b) => b.vote_count - a.vote_count)[0]
+  const results = (data.results ?? []) as { poster_path?: string; vote_count: number; id: number; name?: string; title?: string }[]
+  const withPoster = results.filter((r) => r.poster_path)
+  const queryLower = query.toLowerCase()
+  // Prefer exact title match before falling back to highest vote_count
+  const exact = withPoster.find(
+    (r) => (r.name ?? r.title ?? '').toLowerCase() === queryLower
+  )
+  const best = exact ?? withPoster.sort((a, b) => b.vote_count - a.vote_count)[0]
   return {
     poster: best?.poster_path ? `${TMDB_IMAGE_BASE}${best.poster_path}` : null,
     tmdbId: best?.id ?? null,
