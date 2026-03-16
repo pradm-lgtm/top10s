@@ -410,12 +410,11 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                         />
                       </div>
                       <div className="mt-1.5 flex items-center gap-2.5 flex-wrap">
-                        <span
-                          className="text-xs"
-                          style={{ color: 'var(--muted)', opacity: commentCounts[entry.id] > 0 ? 1 : 0.35 }}
-                        >
-                          💬{commentCounts[entry.id] > 0 ? ` ${commentCounts[entry.id]}` : ''}
-                        </span>
+                        {commentCounts[entry.id] > 0 && (
+                          <span className="text-xs" style={{ color: 'var(--muted)' }}>
+                            💬 {commentCounts[entry.id]}
+                          </span>
+                        )}
                         {['🔥', '❤️', '😮', '😂', '👏']
                           .filter(e => (entryReactions[entry.id]?.[e] ?? 0) > 0)
                           .map(e => (
@@ -1026,11 +1025,11 @@ function TieredEntries({
                         />
                       </div>
                     )}
-                    <span
-                      style={{ fontSize: '0.6rem', color: 'var(--muted)', opacity: (commentCounts[entry.id] ?? 0) > 0 ? 1 : 0.35 }}
-                    >
-                      💬{(commentCounts[entry.id] ?? 0) > 0 ? ` ${commentCounts[entry.id]}` : ''}
-                    </span>
+                    {(commentCounts[entry.id] ?? 0) > 0 && (
+                      <span style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>
+                        💬 {commentCounts[entry.id]}
+                      </span>
+                    )}
                     {['🔥', '❤️', '😮', '😂', '👏']
                       .filter(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0)
                       .map(e => (
@@ -1184,12 +1183,11 @@ function TierRankedEntries({
                         </div>
                       )}
                       <div className="mt-1 flex items-center gap-2 flex-wrap">
-                        <span
-                          className="text-xs"
-                          style={{ color: 'var(--muted)', opacity: commentCounts[entry.id] > 0 ? 1 : 0.35 }}
-                        >
-                          💬{commentCounts[entry.id] > 0 ? ` ${commentCounts[entry.id]}` : ''}
-                        </span>
+                        {commentCounts[entry.id] > 0 && (
+                          <span className="text-xs" style={{ color: 'var(--muted)' }}>
+                            💬 {commentCounts[entry.id]}
+                          </span>
+                        )}
                         {['🔥', '❤️', '😮', '😂', '👏']
                           .filter(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0)
                           .map(e => (
