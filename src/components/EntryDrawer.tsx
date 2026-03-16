@@ -27,9 +27,10 @@ type Props = {
   accentColor: string
   onClose: () => void
   onCommentPosted: (entryId: string) => void
+  onReactionToggled?: (entryId: string, emoji: string, delta: number) => void
 }
 
-export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClose, onCommentPosted }: Props) {
+export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClose, onCommentPosted, onReactionToggled }: Props) {
   const [comments, setComments] = useState<EntryComment[]>([])
   const [reactions, setReactions] = useState<ReactionCount[]>(
     EMOJIS.map(e => ({ emoji: e, count: 0, reacted: false }))
@@ -85,6 +86,7 @@ export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClos
           : r
       )
     )
+    onReactionToggled?.(entry.id, emoji, hasReacted ? -1 : 1)
     if (hasReacted) {
       await supabase
         .from('entry_reactions')

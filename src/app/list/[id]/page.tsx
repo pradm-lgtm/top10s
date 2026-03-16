@@ -36,6 +36,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [savingEntry, setSavingEntry] = useState(false)
   const [selectedEntry, setSelectedEntry] = useState<ListEntry | null>(null)
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({})
+  const [entryReactions, setEntryReactions] = useState<Record<string, Record<string, number>>>({})
   const { isAdmin } = useAdmin()
   const router = useRouter()
 
@@ -71,7 +72,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       const category = listRes.data?.category ?? 'movies'
       const year = listRes.data?.year ?? null
       fetchPosters(entriesRes.data, category, year).then(setPosters)
-      // Fetch entry-level comment counts
+      // Fetch entry-level comment counts and reaction counts
       const entryIds = entriesRes.data.map(e => e.id)
       supabase
         .from('entry_comments')
@@ -83,6 +84,18 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
             counts[row.list_entry_id] = (counts[row.list_entry_id] ?? 0) + 1
           }
           setCommentCounts(counts)
+        })
+      supabase
+        .from('entry_reactions')
+        .select('list_entry_id, emoji')
+        .in('list_entry_id', entryIds)
+        .then(({ data }) => {
+          const reacs: Record<string, Record<string, number>> = {}
+          for (const row of data ?? []) {
+            if (!reacs[row.list_entry_id]) reacs[row.list_entry_id] = {}
+            reacs[row.list_entry_id][row.emoji] = (reacs[row.list_entry_id][row.emoji] ?? 0) + 1
+          }
+          setEntryReactions(reacs)
         })
     }
     if (commentsRes.data) setComments(commentsRes.data as Comment[])
@@ -160,6 +173,16 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
 
   function handleCommentPosted(entryId: string) {
     setCommentCounts(prev => ({ ...prev, [entryId]: (prev[entryId] ?? 0) + 1 }))
+  }
+
+  function handleReactionToggled(entryId: string, emoji: string, delta: number) {
+    setEntryReactions(prev => ({
+      ...prev,
+      [entryId]: {
+        ...(prev[entryId] ?? {}),
+        [emoji]: Math.max(0, (prev[entryId]?.[emoji] ?? 0) + delta),
+      },
+    }))
   }
 
   async function deleteEntry(entryId: string) {
@@ -317,9 +340,9 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         {/* Entries */}
         <section>
           {list.list_format === 'tiered' ? (
-            <TieredEntries entries={entries} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} selectedEntryId={selectedEntry?.id ?? null} />
+            <TieredEntries entries={entries} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
           ) : list.list_format === 'tier-ranked' ? (
-            <TierRankedEntries entries={entries} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} selectedEntryId={selectedEntry?.id ?? null} />
+            <TierRankedEntries entries={entries} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
           ) : (
           <>
           <ol className="space-y-3">
@@ -386,11 +409,21 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                           style={{ color: 'var(--muted)' }}
                         />
                       </div>
-                      {commentCounts[entry.id] > 0 && (
-                        <div className="mt-1.5 text-xs" style={{ color: 'var(--muted)' }}>
-                          💬 {commentCounts[entry.id]}
-                        </div>
-                      )}
+                      <div className="mt-1.5 flex items-center gap-2.5 flex-wrap">
+                        <span
+                          className="text-xs"
+                          style={{ color: 'var(--muted)', opacity: commentCounts[entry.id] > 0 ? 1 : 0.35 }}
+                        >
+                          💬{commentCounts[entry.id] > 0 ? ` ${commentCounts[entry.id]}` : ''}
+                        </span>
+                        {['🔥', '❤️', '😮', '😂', '👏']
+                          .filter(e => (entryReactions[entry.id]?.[e] ?? 0) > 0)
+                          .map(e => (
+                            <span key={e} className="text-xs" style={{ color: 'var(--muted)' }}>
+                              {e} {entryReactions[entry.id][e]}
+                            </span>
+                          ))}
+                      </div>
                     </div>
                     {/* Thumbnail — right aligned */}
                     {(() => {
@@ -685,6 +718,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         accentColor={accentColor}
         onClose={() => setSelectedEntry(null)}
         onCommentPosted={handleCommentPosted}
+        onReactionToggled={handleReactionToggled}
       />
     </div>
   )
@@ -785,6 +819,7 @@ function TieredEntries({
   saveEntryField,
   onEntryClick,
   commentCounts = {},
+  entryReactions = {},
   selectedEntryId,
 }: {
   entries: ListEntry[]
@@ -795,6 +830,7 @@ function TieredEntries({
   saveEntryField?: (id: string, field: string, value: string | number) => Promise<void>
   onEntryClick?: (entry: ListEntry) => void
   commentCounts?: Record<string, number>
+  entryReactions?: Record<string, Record<string, number>>
   selectedEntryId?: string | null
 }) {
   const tierMap = new Map<number, { label: string; entries: ListEntry[] }>()
@@ -990,11 +1026,18 @@ function TieredEntries({
                         />
                       </div>
                     )}
-                    {commentCounts[entry.id] > 0 && (
-                      <span style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>
-                        💬 {commentCounts[entry.id]}
-                      </span>
-                    )}
+                    <span
+                      style={{ fontSize: '0.6rem', color: 'var(--muted)', opacity: (commentCounts[entry.id] ?? 0) > 0 ? 1 : 0.35 }}
+                    >
+                      💬{(commentCounts[entry.id] ?? 0) > 0 ? ` ${commentCounts[entry.id]}` : ''}
+                    </span>
+                    {['🔥', '❤️', '😮', '😂', '👏']
+                      .filter(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0)
+                      .map(e => (
+                        <span key={e} style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>
+                          {e}{entryReactions![entry.id][e]}
+                        </span>
+                      ))}
                   </div>
                 )
               })}
@@ -1017,6 +1060,7 @@ function TierRankedEntries({
   saveEntryField,
   onEntryClick,
   commentCounts = {},
+  entryReactions = {},
   selectedEntryId,
 }: {
   entries: ListEntry[]
@@ -1026,6 +1070,7 @@ function TierRankedEntries({
   saveEntryField?: (id: string, field: string, value: string | number) => Promise<void>
   onEntryClick?: (entry: ListEntry) => void
   commentCounts?: Record<string, number>
+  entryReactions?: Record<string, Record<string, number>>
   selectedEntryId?: string | null
 }) {
   // Group by tier, preserving insertion order
@@ -1138,11 +1183,21 @@ function TierRankedEntries({
                           />
                         </div>
                       )}
-                      {commentCounts[entry.id] > 0 && (
-                        <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
-                          💬 {commentCounts[entry.id]}
-                        </div>
-                      )}
+                      <div className="mt-1 flex items-center gap-2 flex-wrap">
+                        <span
+                          className="text-xs"
+                          style={{ color: 'var(--muted)', opacity: commentCounts[entry.id] > 0 ? 1 : 0.35 }}
+                        >
+                          💬{commentCounts[entry.id] > 0 ? ` ${commentCounts[entry.id]}` : ''}
+                        </span>
+                        {['🔥', '❤️', '😮', '😂', '👏']
+                          .filter(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0)
+                          .map(e => (
+                            <span key={e} className="text-xs" style={{ color: 'var(--muted)' }}>
+                              {e} {entryReactions![entry.id][e]}
+                            </span>
+                          ))}
+                      </div>
                     </div>
                   </div>
                 )
