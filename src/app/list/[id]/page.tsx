@@ -34,6 +34,9 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [newEntryRank, setNewEntryRank] = useState('')
   const [newEntryNotes, setNewEntryNotes] = useState('')
   const [savingEntry, setSavingEntry] = useState(false)
+  const [commentNameInput, setCommentNameInput] = useState('')
+  const [pendingListReaction, setPendingListReaction] = useState<string | null>(null)
+  const [listReactionNameInput, setListReactionNameInput] = useState('')
   const [selectedEntry, setSelectedEntry] = useState<ListEntry | null>(null)
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({})
   const [entryReactions, setEntryReactions] = useState<Record<string, Record<string, number>>>({})
@@ -42,15 +45,11 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
 
   useEffect(() => {
     const name = localStorage.getItem('visitor_name')
-    const vid = localStorage.getItem('visitor_id')
-    if (!name || !vid) {
-      router.replace('/')
-      return
-    }
-    setVisitorName(name)
-    setVisitorId(vid)
+    const vid = localStorage.getItem('visitor_id') ?? ''
+    if (name) setVisitorName(name)
+    if (vid) setVisitorId(vid)
     fetchAll(vid)
-  }, [id, router])
+  }, [id])
 
   async function fetchAll(vid: string) {
     const [listRes, entriesRes, commentsRes, reactionsRes, hmRes, awRes] = await Promise.all([
@@ -191,8 +190,32 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     setEntries((prev) => prev.filter((e) => e.id !== entryId))
   }
 
-  async function toggleReaction(emoji: string) {
-    if (!visitorId) return
+  async function registerVisitor(name: string): Promise<string> {
+    try {
+      const { data } = await supabase
+        .from('visitors')
+        .insert({ name })
+        .select('id')
+        .single()
+      const newId = data?.id ?? crypto.randomUUID()
+      localStorage.setItem('visitor_id', newId)
+      localStorage.setItem('visitor_name', name)
+      setVisitorId(newId)
+      setVisitorName(name)
+      return newId
+    } catch {
+      const newId = crypto.randomUUID()
+      localStorage.setItem('visitor_id', newId)
+      localStorage.setItem('visitor_name', name)
+      setVisitorId(newId)
+      setVisitorName(name)
+      return newId
+    }
+  }
+
+  async function toggleReaction(emoji: string, overrideVid?: string) {
+    const vid = overrideVid ?? visitorId
+    if (!vid) return
 
     const existing = reactions.find((r) => r.emoji === emoji)
     const hasReacted = existing?.reacted ?? false
@@ -211,23 +234,29 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         .from('reactions')
         .delete()
         .eq('list_id', id)
-        .eq('visitor_id', visitorId)
+        .eq('visitor_id', vid)
         .eq('emoji', emoji)
     } else {
       await supabase
         .from('reactions')
-        .insert({ list_id: id, visitor_id: visitorId, emoji })
+        .insert({ list_id: id, visitor_id: vid, emoji })
     }
   }
 
   async function submitComment(e: React.FormEvent) {
     e.preventDefault()
-    if (!newComment.trim() || !visitorId) return
+    if (!newComment.trim()) return
+    let vid = visitorId
+    if (!vid) {
+      if (!commentNameInput.trim()) return
+      vid = await registerVisitor(commentNameInput.trim())
+      setCommentNameInput('')
+    }
 
     setSubmittingComment(true)
     const { data, error } = await supabase
       .from('comments')
-      .insert({ list_id: id, visitor_id: visitorId, content: newComment.trim() })
+      .insert({ list_id: id, visitor_id: vid, content: newComment.trim() })
       .select('*, visitors(name)')
       .single()
 
@@ -605,7 +634,13 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
             {reactions.map((r) => (
               <button
                 key={r.emoji}
-                onClick={() => toggleReaction(r.emoji)}
+                onClick={() => {
+                  if (!visitorId) {
+                    setPendingListReaction(r.emoji)
+                    return
+                  }
+                  toggleReaction(r.emoji)
+                }}
                 className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all"
                 style={{
                   background: r.reacted ? `${accentColor}18` : 'var(--surface)',
@@ -620,6 +655,47 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               </button>
             ))}
           </div>
+          {pendingListReaction && !visitorId && (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault()
+                if (!listReactionNameInput.trim()) return
+                const newId = await registerVisitor(listReactionNameInput.trim())
+                await toggleReaction(pendingListReaction, newId)
+                setPendingListReaction(null)
+                setListReactionNameInput('')
+              }}
+              className="mt-3 flex items-center gap-2"
+            >
+              <input
+                autoFocus
+                value={listReactionNameInput}
+                onChange={(e) => setListReactionNameInput(e.target.value)}
+                placeholder="Your name to react…"
+                maxLength={50}
+                className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = accentColor)}
+                onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+              />
+              <button
+                type="submit"
+                disabled={!listReactionNameInput.trim()}
+                className="px-3 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+                style={{ background: accentColor, color: '#0a0a0f' }}
+              >
+                React {pendingListReaction}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setPendingListReaction(null); setListReactionNameInput('') }}
+                className="px-3 py-2 rounded-lg text-sm"
+                style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}
+              >
+                ✕
+              </button>
+            </form>
+          )}
         </section>
 
         {/* Comments */}
@@ -633,12 +709,22 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
 
           {/* Comment form */}
           <form onSubmit={submitComment} className="mb-6 space-y-3">
-            <div className="flex items-center gap-2 mb-1">
+            {visitorName ? (
               <span className="text-sm" style={{ color: 'var(--muted)' }}>
-                Posting as{' '}
-                <span style={{ color: 'var(--foreground)' }}>{visitorName}</span>
+                Posting as <span style={{ color: 'var(--foreground)' }}>{visitorName}</span>
               </span>
-            </div>
+            ) : (
+              <input
+                value={commentNameInput}
+                onChange={(e) => setCommentNameInput(e.target.value)}
+                placeholder="Your name…"
+                maxLength={50}
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = accentColor)}
+                onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+              />
+            )}
             <textarea
               value={newComment}
               onChange={(e) => setNewComment(e.target.value)}
@@ -660,7 +746,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               </span>
               <button
                 type="submit"
-                disabled={submittingComment || !newComment.trim()}
+                disabled={submittingComment || !newComment.trim() || (!visitorName && !commentNameInput.trim())}
                 className="px-5 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ background: accentColor, color: '#0a0a0f' }}
               >
@@ -718,6 +804,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         onClose={() => setSelectedEntry(null)}
         onCommentPosted={handleCommentPosted}
         onReactionToggled={handleReactionToggled}
+        onRegisterVisitor={registerVisitor}
       />
     </div>
   )

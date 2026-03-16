@@ -1,53 +1,6 @@
-'use client'
-
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import Link from 'next/link'
 
 export default function LandingPage() {
-  const [name, setName] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const router = useRouter()
-
-  useEffect(() => {
-    const saved = localStorage.getItem('visitor_name')
-    if (saved) {
-      router.replace('/home')
-    }
-  }, [router])
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    const trimmed = name.trim()
-    if (!trimmed) return
-
-    setLoading(true)
-    setError('')
-
-    try {
-      const { data, error: dbError } = await supabase
-        .from('visitors')
-        .insert({ name: trimmed })
-        .select('id, name')
-        .single()
-
-      if (dbError) throw dbError
-
-      localStorage.setItem('visitor_id', data.id)
-      localStorage.setItem('visitor_name', data.name)
-      router.push('/home')
-    } catch (err) {
-      console.error(err)
-      // Fallback: store locally even if DB fails
-      localStorage.setItem('visitor_id', crypto.randomUUID())
-      localStorage.setItem('visitor_name', trimmed)
-      router.push('/home')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center px-4 relative overflow-hidden"
@@ -94,61 +47,13 @@ export default function LandingPage() {
         {/* Divider */}
         <div className="w-16 h-px" style={{ background: 'var(--accent)' }} />
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="w-full space-y-4">
-          <div className="space-y-2">
-            <label
-              htmlFor="name"
-              className="block text-sm tracking-wide"
-              style={{ color: 'var(--muted)' }}
-            >
-              What should I call you?
-            </label>
-            <input
-              id="name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Your name..."
-              maxLength={50}
-              required
-              className="w-full px-4 py-3 rounded-lg text-base outline-none transition-all"
-              style={{
-                background: 'var(--surface-2)',
-                border: '1px solid var(--border)',
-                color: 'var(--foreground)',
-              }}
-              onFocus={(e) =>
-                (e.currentTarget.style.borderColor = 'var(--accent)')
-              }
-              onBlur={(e) =>
-                (e.currentTarget.style.borderColor = 'var(--border)')
-              }
-            />
-          </div>
-
-          {error && (
-            <p className="text-sm" style={{ color: '#f87171' }}>
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading || !name.trim()}
-            className="w-full py-3 rounded-lg font-semibold tracking-wide text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{
-              background: 'var(--accent)',
-              color: '#0a0a0f',
-            }}
-          >
-            {loading ? 'Loading…' : 'Enter →'}
-          </button>
-        </form>
-
-        <p className="text-xs text-center" style={{ color: 'var(--muted)' }}>
-          No account needed — just your name.
-        </p>
+        <Link
+          href="/home"
+          className="w-full py-3 rounded-lg font-semibold tracking-wide text-sm text-center transition-all"
+          style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+        >
+          Enter →
+        </Link>
       </div>
     </div>
   )

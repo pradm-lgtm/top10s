@@ -48,13 +48,9 @@ export default function HomePage() {
 
   useEffect(() => {
     const name = localStorage.getItem('visitor_name')
-    if (!name) {
-      router.replace('/')
-      return
-    }
-    setVisitorName(name)
+    if (name) setVisitorName(name)
     fetchLists()
-  }, [router])
+  }, [])
 
   async function fetchLists() {
     const { data: lists, error } = await supabase
@@ -112,12 +108,6 @@ export default function HomePage() {
     setLoading(false)
   }
 
-  function handleSignOut() {
-    localStorage.removeItem('visitor_id')
-    localStorage.removeItem('visitor_name')
-    router.push('/')
-  }
-
   async function addList(e: React.FormEvent) {
     e.preventDefault()
     if (!newListTitle.trim()) return
@@ -156,18 +146,9 @@ export default function HomePage() {
             </span>
           </div>
           {visitorName && (
-            <div className="flex items-center gap-3">
-              <span className="text-sm" style={{ color: 'var(--muted)' }}>
-                Hey, <span style={{ color: 'var(--foreground)' }}>{visitorName}</span>
-              </span>
-              <button
-                onClick={handleSignOut}
-                className="text-xs px-3 py-1 rounded-full transition-all"
-                style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}
-              >
-                Leave
-              </button>
-            </div>
+            <span className="text-sm" style={{ color: 'var(--muted)' }}>
+              Hey, <span style={{ color: 'var(--foreground)' }}>{visitorName}</span>
+            </span>
           )}
         </div>
       </header>

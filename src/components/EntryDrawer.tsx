@@ -28,9 +28,10 @@ type Props = {
   onClose: () => void
   onCommentPosted: (entryId: string) => void
   onReactionToggled?: (entryId: string, emoji: string, delta: number) => void
+  onRegisterVisitor?: (name: string) => Promise<string>
 }
 
-export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClose, onCommentPosted, onReactionToggled }: Props) {
+export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClose, onCommentPosted, onReactionToggled, onRegisterVisitor }: Props) {
   const [comments, setComments] = useState<EntryComment[]>([])
   const [reactions, setReactions] = useState<ReactionCount[]>(
     EMOJIS.map(e => ({ emoji: e, count: 0, reacted: false }))
@@ -38,6 +39,18 @@ export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClos
   const [newComment, setNewComment] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [loading, setLoading] = useState(false)
+  // Local visitor state — syncs from props, can be updated on registration
+  const [localVisitorId, setLocalVisitorId] = useState(visitorId)
+  const [localVisitorName, setLocalVisitorName] = useState(visitorName)
+  // Inline name prompts
+  const [pendingEmoji, setPendingEmoji] = useState<string | null>(null)
+  const [reactionNameInput, setReactionNameInput] = useState('')
+  const [commentNameInput, setCommentNameInput] = useState('')
+
+  useEffect(() => {
+    setLocalVisitorId(visitorId)
+    setLocalVisitorName(visitorName)
+  }, [visitorId, visitorName])
 
   useEffect(() => {
     if (!entry) return
@@ -76,8 +89,15 @@ export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClos
     setLoading(false)
   }
 
-  async function toggleReaction(emoji: string) {
-    if (!entry || !visitorId) return
+  async function ensureRegistered(name: string): Promise<string> {
+    const newId = await onRegisterVisitor?.(name) ?? crypto.randomUUID()
+    setLocalVisitorId(newId)
+    setLocalVisitorName(name)
+    return newId
+  }
+
+  async function doToggleReaction(emoji: string, vid: string) {
+    if (!entry) return
     const hasReacted = reactions.find(r => r.emoji === emoji)?.reacted ?? false
     setReactions(prev =>
       prev.map(r =>
@@ -88,26 +108,34 @@ export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClos
     )
     onReactionToggled?.(entry.id, emoji, hasReacted ? -1 : 1)
     if (hasReacted) {
-      await supabase
-        .from('entry_reactions')
-        .delete()
-        .eq('list_entry_id', entry.id)
-        .eq('visitor_id', visitorId)
-        .eq('emoji', emoji)
+      await supabase.from('entry_reactions').delete()
+        .eq('list_entry_id', entry.id).eq('visitor_id', vid).eq('emoji', emoji)
     } else {
-      await supabase
-        .from('entry_reactions')
-        .insert({ list_entry_id: entry.id, visitor_id: visitorId, emoji })
+      await supabase.from('entry_reactions').insert({ list_entry_id: entry.id, visitor_id: vid, emoji })
     }
+  }
+
+  async function handleReactionClick(emoji: string) {
+    if (!localVisitorId) {
+      setPendingEmoji(emoji)
+      return
+    }
+    await doToggleReaction(emoji, localVisitorId)
   }
 
   async function submitComment(e: React.FormEvent) {
     e.preventDefault()
-    if (!newComment.trim() || !entry || !visitorId) return
+    if (!newComment.trim() || !entry) return
+    let vid = localVisitorId
+    if (!vid) {
+      if (!commentNameInput.trim()) return
+      vid = await ensureRegistered(commentNameInput.trim())
+      setCommentNameInput('')
+    }
     setSubmitting(true)
     const { data, error } = await supabase
       .from('entry_comments')
-      .insert({ list_entry_id: entry.id, visitor_id: visitorId, content: newComment.trim() })
+      .insert({ list_entry_id: entry.id, visitor_id: vid, content: newComment.trim() })
       .select('*, visitors(name)')
       .single()
     if (!error && data) {
@@ -167,7 +195,7 @@ export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClos
                   {reactions.map(r => (
                     <button
                       key={r.emoji}
-                      onClick={() => toggleReaction(r.emoji)}
+                      onClick={() => handleReactionClick(r.emoji)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all"
                       style={{
                         background: r.reacted ? `${accentColor}18` : 'var(--surface-2)',
@@ -180,6 +208,35 @@ export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClos
                     </button>
                   ))}
                 </div>
+                {pendingEmoji && !localVisitorId && (
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault()
+                      if (!reactionNameInput.trim()) return
+                      const newId = await ensureRegistered(reactionNameInput.trim())
+                      await doToggleReaction(pendingEmoji, newId)
+                      setPendingEmoji(null)
+                      setReactionNameInput('')
+                    }}
+                    className="mt-2 flex items-center gap-2"
+                  >
+                    <input
+                      autoFocus
+                      value={reactionNameInput}
+                      onChange={e => setReactionNameInput(e.target.value)}
+                      placeholder="Your name to react…"
+                      maxLength={50}
+                      className="flex-1 px-3 py-1.5 rounded-lg text-sm outline-none"
+                      style={{ background: 'var(--surface-2)', border: `1px solid var(--border)`, color: 'var(--foreground)' }}
+                      onFocus={e => (e.currentTarget.style.borderColor = accentColor)}
+                      onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+                    />
+                    <button type="submit" disabled={!reactionNameInput.trim()} className="px-2 py-1.5 rounded-lg text-sm font-semibold disabled:opacity-40" style={{ background: accentColor, color: '#0a0a0f' }}>
+                      {pendingEmoji}
+                    </button>
+                    <button type="button" onClick={() => { setPendingEmoji(null); setReactionNameInput('') }} className="text-xs px-2 py-1.5 rounded-lg" style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}>✕</button>
+                  </form>
+                )}
               </div>
 
               {/* Comments */}
@@ -228,9 +285,22 @@ export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClos
               className="p-4 border-t shrink-0 space-y-2"
               style={{ borderColor: 'var(--border)' }}
             >
-              <span className="text-xs" style={{ color: 'var(--muted)' }}>
-                Posting as <span style={{ color: 'var(--foreground)' }}>{visitorName}</span>
-              </span>
+              {localVisitorName ? (
+                <span className="text-xs" style={{ color: 'var(--muted)' }}>
+                  Posting as <span style={{ color: 'var(--foreground)' }}>{localVisitorName}</span>
+                </span>
+              ) : (
+                <input
+                  value={commentNameInput}
+                  onChange={e => setCommentNameInput(e.target.value)}
+                  placeholder="Your name…"
+                  maxLength={50}
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                  onFocus={e => (e.currentTarget.style.borderColor = accentColor)}
+                  onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+                />
+              )}
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -245,7 +315,7 @@ export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClos
                 />
                 <button
                   type="submit"
-                  disabled={submitting || !newComment.trim()}
+                  disabled={submitting || !newComment.trim() || (!localVisitorName && !commentNameInput.trim())}
                   className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
                   style={{ background: accentColor, color: '#0a0a0f' }}
                 >
