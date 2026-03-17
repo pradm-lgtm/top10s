@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { NavAuth } from '@/components/NavAuth'
+import { useAuth } from '@/context/auth'
+import { useAdmin } from '@/context/admin'
 import type { List, ListEntry, Profile } from '@/types'
 
 type ListWithPreview = List & { entries: ListEntry[] }
@@ -32,12 +34,26 @@ function themeColor(genre: string | null) {
 export default function ProfilePage() {
   const params = useParams()
   const username = params.username as string
+  const router = useRouter()
+  const { user, profile: authProfile } = useAuth()
+  const { isAdmin } = useAdmin()
 
   const [profile, setProfile] = useState<Profile | null>(null)
   const [annualGrouped, setAnnualGrouped] = useState<GroupedByYear[]>([])
   const [themeLists, setThemeLists] = useState<ListWithPreview[]>([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+
+  // Add list form
+  const [addingList, setAddingList] = useState(false)
+  const [newListTitle, setNewListTitle] = useState('')
+  const [newListYear, setNewListYear] = useState('')
+  const [newListCategory, setNewListCategory] = useState<'movies' | 'tv'>('movies')
+  const [newListType, setNewListType] = useState<'annual' | 'theme'>('annual')
+  const [newListDesc, setNewListDesc] = useState('')
+  const [savingList, setSavingList] = useState(false)
+
+  const isOwnProfile = authProfile?.username === username
 
   useEffect(() => {
     if (username) loadProfile(username)
@@ -112,6 +128,30 @@ export default function ProfilePage() {
     setLoading(false)
   }
 
+  async function addList(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newListTitle.trim()) return
+    setSavingList(true)
+    const body: Record<string, unknown> = {
+      title: newListTitle.trim(),
+      category: newListCategory,
+      list_type: newListType,
+      list_format: 'ranked',
+      description: newListDesc.trim() || null,
+    }
+    if (newListType === 'annual' && newListYear) body.year = Number(newListYear)
+    const res = await fetch('/api/admin/lists', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) {
+      const newList = await res.json()
+      router.push(`/list/${newList.id}`)
+    }
+    setSavingList(false)
+  }
+
   const initials = (profile?.display_name ?? profile?.username ?? '?')[0].toUpperCase()
 
   return (
@@ -121,7 +161,7 @@ export default function ProfilePage() {
         className="sticky top-0 z-50 border-b backdrop-blur-md"
         style={{ background: 'rgba(10,10,15,0.85)', borderColor: 'var(--border)' }}
       >
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link href="/home" className="text-base font-bold tracking-tight" style={{ color: 'var(--foreground)' }}>
             Ranked
           </Link>
@@ -138,27 +178,27 @@ export default function ProfilePage() {
         <>
           {/* Profile hero */}
           <div
-            className="relative py-12 px-4 text-center overflow-hidden"
-            style={{ background: 'radial-gradient(ellipse 80% 100% at 50% -20%, rgba(232,197,71,0.08) 0%, transparent 70%)' }}
+            className="relative py-12 px-4 overflow-hidden"
+            style={{ background: 'radial-gradient(ellipse 80% 100% at 50% -20%, rgba(232,197,71,0.07) 0%, transparent 70%)' }}
           >
-            <div className="flex flex-col items-center gap-3">
+            <div className="max-w-5xl mx-auto flex items-center gap-5">
               {profile?.avatar_url ? (
-                <img src={profile.avatar_url} alt="" className="w-16 h-16 rounded-full" />
+                <img src={profile.avatar_url} alt="" className="w-16 h-16 rounded-full shrink-0" />
               ) : (
                 <div
-                  className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold"
+                  className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold shrink-0"
                   style={{ background: 'var(--accent)', color: '#0a0a0f' }}
                 >
                   {!loading && initials}
                 </div>
               )}
               {profile && (
-                <>
+                <div>
                   <h1 className="text-2xl font-bold tracking-tight">
                     {profile.display_name ?? profile.username}
                   </h1>
-                  <p className="text-sm" style={{ color: 'var(--muted)' }}>@{profile.username}</p>
-                </>
+                  <p className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>@{profile.username}</p>
+                </div>
               )}
             </div>
           </div>
@@ -166,19 +206,14 @@ export default function ProfilePage() {
           <div className="max-w-5xl mx-auto px-4 pb-20 flex gap-10 items-start">
             {/* Sidebar */}
             {!loading && (
-              <nav className="hidden lg:flex flex-col gap-1 w-36 shrink-0 sticky top-24 pt-4">
+              <nav className="hidden lg:flex flex-col gap-1 w-36 shrink-0 sticky top-24 pt-8">
                 {themeLists.length > 0 && (
                   <>
                     <span className="text-[10px] tracking-[0.2em] uppercase font-semibold mb-1" style={{ color: 'var(--muted)' }}>
                       All-Time
                     </span>
                     {themeLists.map((list) => (
-                      <a
-                        key={list.id}
-                        href={`/list/${list.id}`}
-                        className="text-sm py-0.5 transition-colors hover:text-white"
-                        style={{ color: 'var(--muted)' }}
-                      >
+                      <a key={list.id} href={`/list/${list.id}`} className="text-sm py-0.5 transition-colors hover:text-white truncate" style={{ color: 'var(--muted)' }}>
                         {list.title}
                       </a>
                     ))}
@@ -189,29 +224,21 @@ export default function ProfilePage() {
                   By Year
                 </span>
                 {annualGrouped.map(({ year }) => (
-                  <a
-                    key={year}
-                    href={`#year-${year}`}
-                    className="text-sm py-0.5 font-medium transition-colors hover:text-white"
-                    style={{ color: 'var(--muted)' }}
-                  >
+                  <a key={year} href={`#year-${year}`} className="text-sm py-0.5 font-medium transition-colors hover:text-white" style={{ color: 'var(--muted)' }}>
                     {year}
                   </a>
                 ))}
               </nav>
             )}
 
-            <main className="flex-1 min-w-0 space-y-16 pt-4">
+            <main className="flex-1 min-w-0 space-y-16 pt-8">
               {loading && (
                 <div className="flex justify-center py-20">
-                  <div
-                    className="w-8 h-8 rounded-full border-2 animate-spin"
-                    style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }}
-                  />
+                  <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
                 </div>
               )}
 
-              {!loading && themeLists.length === 0 && annualGrouped.length === 0 && !notFound && (
+              {!loading && themeLists.length === 0 && annualGrouped.length === 0 && (
                 <div className="text-center py-20" style={{ color: 'var(--muted)' }}>
                   No lists yet.
                 </div>
@@ -263,6 +290,95 @@ export default function ProfilePage() {
                   </div>
                 </section>
               ))}
+
+              {/* Add new list — own profile + admin only */}
+              {!loading && isOwnProfile && isAdmin && (
+                <section>
+                  {addingList ? (
+                    <form
+                      onSubmit={addList}
+                      className="rounded-xl p-6 space-y-4"
+                      style={{ background: 'var(--surface)', border: '1px solid rgba(232,197,71,0.3)' }}
+                    >
+                      <p className="text-xs font-semibold tracking-[0.2em] uppercase" style={{ color: 'var(--accent)' }}>
+                        New List
+                      </p>
+                      <input
+                        type="text"
+                        value={newListTitle}
+                        onChange={(e) => setNewListTitle(e.target.value)}
+                        placeholder="Title"
+                        className="w-full px-3 py-2 rounded text-sm outline-none"
+                        style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                      />
+                      <div className="flex gap-3 flex-wrap">
+                        <select
+                          value={newListType}
+                          onChange={(e) => setNewListType(e.target.value as 'annual' | 'theme')}
+                          className="px-3 py-2 rounded text-sm outline-none"
+                          style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                        >
+                          <option value="annual">Annual</option>
+                          <option value="theme">Theme</option>
+                        </select>
+                        <select
+                          value={newListCategory}
+                          onChange={(e) => setNewListCategory(e.target.value as 'movies' | 'tv')}
+                          className="px-3 py-2 rounded text-sm outline-none"
+                          style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                        >
+                          <option value="movies">Movies</option>
+                          <option value="tv">TV</option>
+                        </select>
+                        {newListType === 'annual' && (
+                          <input
+                            type="number"
+                            value={newListYear}
+                            onChange={(e) => setNewListYear(e.target.value)}
+                            placeholder="Year"
+                            className="w-24 px-3 py-2 rounded text-sm outline-none"
+                            style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                          />
+                        )}
+                      </div>
+                      <textarea
+                        value={newListDesc}
+                        onChange={(e) => setNewListDesc(e.target.value)}
+                        placeholder="Description (optional)"
+                        rows={2}
+                        className="w-full px-3 py-2 rounded text-sm resize-none outline-none"
+                        style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="submit"
+                          disabled={savingList || !newListTitle.trim()}
+                          className="px-5 py-2 rounded text-sm font-semibold disabled:opacity-40"
+                          style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+                        >
+                          {savingList ? 'Creating…' : 'Create List'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAddingList(false)}
+                          className="px-5 py-2 rounded text-sm"
+                          style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <button
+                      onClick={() => setAddingList(true)}
+                      className="w-full py-4 rounded-xl text-sm font-medium transition-all"
+                      style={{ border: '1px dashed rgba(232,197,71,0.3)', color: 'var(--muted)' }}
+                    >
+                      + Add New List
+                    </button>
+                  )}
+                </section>
+              )}
             </main>
           </div>
         </>
@@ -275,8 +391,8 @@ function ProfileListCard({ list }: { list: ListWithPreview }) {
   const isTheme  = list.list_type === 'theme'
   const isMovie  = list.category === 'movies'
   const accent   = isTheme ? themeColor(list.genre) : isMovie ? 'var(--accent)' : '#a78bfa'
-  const hoverBg  = isTheme ? `rgba(244,114,182,0.06)` : isMovie ? 'rgba(232,197,71,0.06)' : 'rgba(139,92,246,0.06)'
-  const hoverBorder = isTheme ? `rgba(244,114,182,0.4)` : isMovie ? 'rgba(232,197,71,0.4)' : 'rgba(139,92,246,0.4)'
+  const hoverBg  = isTheme ? `rgba(244,114,182,0.06)` : isMovie ? `rgba(232,197,71,0.06)` : `rgba(139,92,246,0.06)`
+  const hoverBorder = isTheme ? `rgba(244,114,182,0.4)` : isMovie ? `rgba(232,197,71,0.4)` : `rgba(139,92,246,0.4)`
 
   const isTiered = list.list_format === 'tiered'
   const isTierRanked = list.list_format === 'tier-ranked'
@@ -288,9 +404,7 @@ function ProfileListCard({ list }: { list: ListWithPreview }) {
       if (!map.has(e.rank)) map.set(e.rank, [])
       map.get(e.rank)!.push(e.title)
     }
-    Array.from(map.entries())
-      .sort(([a], [b]) => a - b)
-      .forEach(([rank, titles]) => tierGroups.push({ rank, titles }))
+    Array.from(map.entries()).sort(([a], [b]) => a - b).forEach(([rank, titles]) => tierGroups.push({ rank, titles }))
   }
 
   return (
