@@ -1,6 +1,11 @@
+'use client'
+
 import Link from 'next/link'
+import { useAuth } from '@/context/auth'
 
 export default function LandingPage() {
+  const { user, profile, loading, signInWithGoogle } = useAuth()
+
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center px-4 relative overflow-hidden"
@@ -47,13 +52,36 @@ export default function LandingPage() {
         {/* Divider */}
         <div className="w-16 h-px" style={{ background: 'var(--accent)' }} />
 
-        <Link
-          href="/home"
-          className="w-full py-3 rounded-lg font-semibold tracking-wide text-sm text-center transition-all"
-          style={{ background: 'var(--accent)', color: '#0a0a0f' }}
-        >
-          Enter →
-        </Link>
+        {!loading && (
+          <div className="w-full flex flex-col gap-3">
+            {user ? (
+              <Link
+                href="/home"
+                className="w-full py-3 rounded-lg font-semibold tracking-wide text-sm text-center transition-all"
+                style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+              >
+                {profile?.display_name ? `Continue as ${profile.display_name.split(' ')[0]} →` : 'Enter →'}
+              </Link>
+            ) : (
+              <>
+                <button
+                  onClick={signInWithGoogle}
+                  className="w-full py-3 rounded-lg font-semibold tracking-wide text-sm text-center transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
+                  style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+                >
+                  Sign in with Google
+                </button>
+                <Link
+                  href="/home"
+                  className="w-full py-3 rounded-lg font-medium text-sm text-center transition-opacity hover:opacity-70"
+                  style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}
+                >
+                  Browse without signing in
+                </Link>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

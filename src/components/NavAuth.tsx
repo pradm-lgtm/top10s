@@ -2,11 +2,21 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/auth'
 
 export function NavAuth() {
   const { user, profile, loading, signInWithGoogle, signOut } = useAuth()
   const [open, setOpen] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
+  const router = useRouter()
+
+  async function handleSignOut() {
+    setSigningOut(true)
+    setOpen(false)
+    await signOut()
+    router.push('/')
+  }
 
   if (loading) return <div className="w-8 h-8" />
 
@@ -67,11 +77,12 @@ export function NavAuth() {
               My Lists
             </Link>
             <button
-              onClick={() => { signOut(); setOpen(false) }}
-              className="w-full text-left px-4 py-2 text-sm transition-opacity hover:opacity-70"
+              onClick={handleSignOut}
+              disabled={signingOut}
+              className="w-full text-left px-4 py-2 text-sm transition-opacity hover:opacity-70 disabled:opacity-40"
               style={{ color: 'var(--muted)' }}
             >
-              Sign out
+              {signingOut ? 'Signing out…' : 'Sign out'}
             </button>
           </div>
         </>

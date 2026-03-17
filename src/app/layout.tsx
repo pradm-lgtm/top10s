@@ -4,6 +4,7 @@ import "./globals.css";
 import { AdminProvider } from "@/context/admin";
 import { AdminBar } from "@/components/AdminBar";
 import { AuthProvider } from "@/context/auth";
+import { OnboardingModal } from "@/components/OnboardingModal";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,6 +37,7 @@ export default function RootLayout({
             {children}
             <AdminBar />
           </AdminProvider>
+          <OnboardingModal />
         </AuthProvider>
       </body>
     </html>
