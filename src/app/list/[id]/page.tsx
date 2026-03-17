@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { fetchPosters } from '@/lib/tmdb'
 import { useAdmin } from '@/context/admin'
+import { useAuth } from '@/context/auth'
 import { EditableText } from '@/components/EditableText'
 import { EntryDrawer } from '@/components/EntryDrawer'
 import type { PosterInfo } from '@/lib/tmdb'
@@ -41,6 +42,10 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({})
   const [entryReactions, setEntryReactions] = useState<Record<string, Record<string, number>>>({})
   const { isAdmin } = useAdmin()
+  const { user } = useAuth()
+  const [isOwner, setIsOwner] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -65,7 +70,10 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       supabase.from('also_watched').select('*').eq('list_id', id).order('created_at'),
     ])
 
-    if (listRes.data) setList(listRes.data)
+    if (listRes.data) {
+      setList(listRes.data)
+      setIsOwner(!!user && listRes.data.owner_id === user.id)
+    }
     if (entriesRes.data) {
       setEntries(entriesRes.data)
       const category = listRes.data?.category ?? 'movies'
@@ -120,12 +128,37 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   }
 
   async function saveListField(field: string, value: string) {
-    await fetch(`/api/admin/lists/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [field]: value }),
-    })
+    if (isAdmin) {
+      await fetch(`/api/admin/lists/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value }),
+      })
+    } else if (isOwner) {
+      const { data: { session } } = await supabase.auth.getSession()
+      await fetch(`/api/lists/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ [field]: value }),
+      })
+    }
     setList((prev) => prev ? { ...prev, [field]: value } : prev)
+  }
+
+  async function deleteList() {
+    if (!confirm('Delete this list? This cannot be undone.')) return
+    setDeleting(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch(`/api/lists/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${session?.access_token}` },
+    })
+    if (res.ok) {
+      router.push('/home')
+    } else {
+      setDeleting(false)
+      alert('Failed to delete list.')
+    }
   }
 
   async function saveEntryField(entryId: string, field: string, value: string | number) {
@@ -186,7 +219,15 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
 
   async function deleteEntry(entryId: string) {
     if (!confirm('Delete this entry?')) return
-    await fetch(`/api/admin/entries/${entryId}`, { method: 'DELETE' })
+    if (isAdmin) {
+      await fetch(`/api/admin/entries/${entryId}`, { method: 'DELETE' })
+    } else if (isOwner) {
+      const { data: { session } } = await supabase.auth.getSession()
+      await fetch(`/api/lists/${id}/entries/${entryId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session?.access_token}` },
+      })
+    }
     setEntries((prev) => prev.filter((e) => e.id !== entryId))
   }
 
@@ -317,15 +358,58 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               <span className="ml-1.5 text-xs tracking-[0.15em] uppercase">by Prad</span>
             </span>
           </Link>
-          <span
-            className="text-xs tracking-[0.3em] uppercase font-semibold px-2 py-1 rounded"
-            style={{
-              background: isMovie ? 'rgba(232,197,71,0.12)' : 'rgba(139,92,246,0.12)',
-              color: accentColor,
-            }}
-          >
-            {isMovie ? 'Movies' : 'TV Shows'}
-          </span>
+
+          <div className="flex items-center gap-2">
+            <span
+              className="text-xs tracking-[0.3em] uppercase font-semibold px-2 py-1 rounded"
+              style={{
+                background: isMovie ? 'rgba(232,197,71,0.12)' : 'rgba(139,92,246,0.12)',
+                color: accentColor,
+              }}
+            >
+              {isMovie ? 'Movies' : 'TV Shows'}
+            </span>
+
+            {/* Owner menu */}
+            {(isOwner || isAdmin) && (
+              <div className="relative">
+                <button
+                  onClick={() => setMenuOpen((o) => !o)}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-sm transition-opacity hover:opacity-70"
+                  style={{ color: 'var(--muted)', border: '1px solid var(--border)' }}
+                  aria-label="List options"
+                >
+                  ⋯
+                </button>
+                {menuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                    <div
+                      className="absolute right-0 top-10 z-50 rounded-xl py-1 min-w-[160px]"
+                      style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
+                    >
+                      <button
+                        onClick={() => setMenuOpen(false)}
+                        className="w-full text-left px-4 py-2.5 text-sm transition-opacity hover:opacity-70"
+                        style={{ color: 'var(--foreground)' }}
+                        title="Click the title or description to edit"
+                      >
+                        ✎ Edit details
+                      </button>
+                      <button
+                        onClick={() => { setMenuOpen(false); deleteList() }}
+                        disabled={deleting}
+                        className="w-full text-left px-4 py-2.5 text-sm transition-opacity hover:opacity-70 disabled:opacity-40"
+                        style={{ color: '#f87171' }}
+                      >
+                        {deleting ? 'Deleting…' : '🗑 Delete list'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -350,6 +434,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               value={list.title}
               onSave={(v) => saveListField('title', v)}
               className="text-3xl sm:text-4xl font-bold tracking-tight"
+              editable={isAdmin || isOwner}
             />
           </h1>
           <p className="text-base max-w-xl" style={{ color: 'var(--muted)' }}>
@@ -360,6 +445,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               placeholder="Add a description…"
               className="text-base"
               style={{ color: 'var(--muted)' }}
+              editable={isAdmin || isOwner}
             />
           </p>
         </div>
@@ -493,7 +579,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                         </div>
                       )
                     })()}
-                    {isAdmin && (
+                    {(isAdmin || isOwner) && (
                       <button
                         onClick={() => deleteEntry(entry.id)}
                         className="shrink-0 text-xs px-2 py-1 rounded opacity-40 hover:opacity-100 transition-opacity"
@@ -510,7 +596,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
           </ol>
 
           {/* Add Entry */}
-          {isAdmin && (
+          {(isAdmin || isOwner) && (
             <div className="mt-4">
               {addingEntry ? (
                 <form

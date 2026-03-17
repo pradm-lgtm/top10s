@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   DndContext,
@@ -22,96 +22,21 @@ import { CSS } from '@dnd-kit/utilities'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { AppHeader } from '@/components/AppHeader'
+import { ThoughtCloud } from '@/components/ThoughtCloud'
+import type { CloudResult } from '@/components/ThoughtCloud'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type Entry = {
   uid: string
-  tmdbId: number | null   // track which TMDB result this came from
+  tmdbId: number | null
   title: string
   notes: string
   posterUrl: string | null
   notesOpen: boolean
 }
 
-type TmdbResult = {
-  id: number
-  title?: string
-  name?: string
-  poster_path: string | null
-}
-
-// ─── TMDB helpers ────────────────────────────────────────────────────────────
-
-const TMDB_BASE = 'https://api.themoviedb.org/3'
-const TMDB_IMG  = 'https://image.tmdb.org/t/p/w185'
-
-function tmdbTitle(r: TmdbResult) { return r.title ?? r.name ?? '' }
-
-function dedupeById(results: TmdbResult[]): TmdbResult[] {
-  const seen = new Set<number>()
-  return results.filter((r) => {
-    if (seen.has(r.id)) return false
-    seen.add(r.id)
-    return true
-  })
-}
-
-async function discoverPage(
-  type: string, sort: string, page: number, extra: string, apiKey: string,
-): Promise<TmdbResult[]> {
-  try {
-    const res = await fetch(
-      `${TMDB_BASE}/discover/${type}?api_key=${apiKey}&sort_by=${sort}&page=${page}${extra}`,
-    )
-    if (!res.ok) return []
-    const data = await res.json()
-    return ((data.results ?? []) as TmdbResult[]).filter((r) => r.poster_path)
-  } catch { return [] }
-}
-
-async function loadSuggestions(
-  category: 'movies' | 'tv',
-  year: number | null,
-  apiKey: string,
-  page = 1,
-): Promise<TmdbResult[]> {
-  const type = category === 'movies' ? 'movie' : 'tv'
-  const yearParam = year
-    ? category === 'movies' ? `&primary_release_year=${year}` : `&first_air_date_year=${year}`
-    : ''
-  const minVotes = year ? '&vote_count.gte=50' : '&vote_count.gte=500'
-
-  const [popular, topRated] = await Promise.all([
-    discoverPage(type, 'popularity.desc', page, yearParam, apiKey),
-    discoverPage(type, 'vote_average.desc', page, yearParam + minVotes, apiKey),
-  ])
-
-  // Interleave: popular result, top-rated result, popular result, …
-  const merged: TmdbResult[] = []
-  const maxLen = Math.max(popular.length, topRated.length)
-  for (let i = 0; i < maxLen; i++) {
-    if (popular[i]) merged.push(popular[i])
-    if (topRated[i]) merged.push(topRated[i])
-  }
-  return dedupeById(merged)
-}
-
-async function searchTmdb(
-  query: string,
-  category: 'movies' | 'tv',
-  apiKey: string,
-): Promise<TmdbResult[]> {
-  const type = category === 'movies' ? 'movie' : 'tv'
-  try {
-    const res = await fetch(
-      `${TMDB_BASE}/search/${type}?api_key=${apiKey}&query=${encodeURIComponent(query)}&page=1`,
-    )
-    if (!res.ok) return []
-    const data = await res.json()
-    return dedupeById(((data.results ?? []) as TmdbResult[]).filter((r) => r.poster_path))
-  } catch { return [] }
-}
+const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
 
 // ─── Auto-detect year & category from title ──────────────────────────────────
 
@@ -173,7 +98,6 @@ function Step1({
   title, setTitle, category, setCategory,
   year, setYear, allTime, setAllTime,
   description, setDescription,
-  context, setContext,
   onNext,
 }: {
   title: string; setTitle: (v: string) => void
@@ -181,7 +105,6 @@ function Step1({
   year: number | null; setYear: (v: number | null) => void
   allTime: boolean; setAllTime: (v: boolean) => void
   description: string; setDescription: (v: string) => void
-  context: string; setContext: (v: string) => void
   onNext: () => void
 }) {
   function handleTitleChange(v: string) {
@@ -260,23 +183,6 @@ function Step1({
             onBlur={onBlurBorder}
           />
         )}
-      </div>
-
-      <div className="space-y-2">
-        <label className="text-xs font-semibold tracking-[0.15em] uppercase" style={{ color: 'var(--muted)' }}>
-          What kind of {category === 'movies' ? 'movies' : 'shows'} are you thinking of?{' '}
-          <span className="normal-case font-normal">(optional — helps with suggestions)</span>
-        </label>
-        <input
-          value={context}
-          onChange={(e) => setContext(e.target.value)}
-          placeholder={category === 'movies' ? 'e.g. feel-good comedies, Oscar winners, sci-fi thrillers…' : 'e.g. prestige dramas, reality TV, limited series…'}
-          maxLength={120}
-          className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-          style={inputStyle}
-          onFocus={onFocusAccent}
-          onBlur={onBlurBorder}
-        />
       </div>
 
       <div className="space-y-2">
@@ -417,64 +323,16 @@ function SortableEntry({
   )
 }
 
-// ─── Poster tile ──────────────────────────────────────────────────────────────
-
-function PosterTile({
-  result, added, onToggle,
-}: {
-  result: TmdbResult
-  added: boolean
-  onToggle: (result: TmdbResult) => void
-}) {
-  const t = tmdbTitle(result)
-  return (
-    <button
-      onClick={() => onToggle(result)}
-      title={t}
-      className="relative rounded-lg overflow-hidden transition-all active:scale-95"
-      style={{ aspectRatio: '2/3', display: 'block', width: '100%', cursor: 'pointer' }}
-    >
-      {result.poster_path ? (
-        <img src={`${TMDB_IMG}${result.poster_path}`} alt={t} className="w-full h-full object-cover" loading="lazy" />
-      ) : (
-        <div className="w-full h-full flex items-center justify-center text-xs p-1 text-center" style={{ background: 'var(--surface-2)', color: 'var(--muted)' }}>{t}</div>
-      )}
-      {/* Overlay — always rendered, opacity controlled */}
-      <div
-        className="absolute inset-0 flex items-center justify-center transition-opacity"
-        style={{
-          background: added ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0)',
-          opacity: added ? 1 : 0,
-        }}
-      >
-        <span className="text-white text-lg font-bold">{added ? '✓' : '+'}</span>
-      </div>
-      {/* Hover overlay via CSS — separate element so it doesn't interfere */}
-      <div
-        className="absolute inset-0 flex items-center justify-center"
-        style={{
-          background: 'rgba(0,0,0,0.4)',
-          opacity: 0,
-          transition: 'opacity 0.15s',
-        }}
-        onMouseEnter={(e) => { if (!added) (e.currentTarget as HTMLElement).style.opacity = '1' }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0' }}
-      >
-        {!added && <span className="text-white text-xl font-bold pointer-events-none">+</span>}
-      </div>
-    </button>
-  )
-}
-
 // ─── Step 3 — Entries ─────────────────────────────────────────────────────────
 
 function Step3({
-  category, year, context, entries, setEntries,
+  listTitle, category, year, description, entries, setEntries,
   onPublish, onBack, publishing, publishError,
 }: {
+  listTitle: string
   category: 'movies' | 'tv'
   year: number | null
-  context: string
+  description: string
   entries: Entry[]
   setEntries: React.Dispatch<React.SetStateAction<Entry[]>>
   onPublish: () => void
@@ -482,93 +340,19 @@ function Step3({
   publishing: boolean
   publishError: string | null
 }) {
-  const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? ''
-
-  // Suggestions state
-  const [suggestions, setSuggestions] = useState<TmdbResult[]>([])
-  const [suggPage, setSuggPage] = useState(1)
-  const [loadingSugg, setLoadingSugg] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-
-  // Refine input (changes the suggestion pool) — starts empty, context is just placeholder
-  const [refineInput, setRefineInput] = useState('')
-  const [refineApplied, setRefineApplied] = useState('')
-  const refineTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Search bar (direct title lookup)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<TmdbResult[]>([])
-  const [searching, setSearching] = useState(false)
-  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
-
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  // Set of TMDB IDs added
   const addedIds = new Set(entries.map((e) => e.tmdbId).filter(Boolean) as number[])
+  const catLabel = category === 'movies' ? 'movies' : 'shows'
 
-  // Load/reload suggestions when refineApplied changes
-  useEffect(() => {
-    if (!apiKey || apiKey === 'your-tmdb-api-key') { setLoadingSugg(false); return }
-    setLoadingSugg(true)
-    setSuggestions([])
-    setSuggPage(1)
-    const load = async () => {
-      if (refineApplied.trim()) {
-        const results = await searchTmdb(refineApplied.trim(), category, apiKey)
-        if (results.length > 0) {
-          setSuggestions(results)
-        } else {
-          // Fall back to default suggestions when refine returns nothing
-          const fallback = await loadSuggestions(category, year, apiKey, 1)
-          setSuggestions(fallback)
-        }
-      } else {
-        const results = await loadSuggestions(category, year, apiKey, 1)
-        setSuggestions(results)
-      }
-      setLoadingSugg(false)
-    }
-    load()
-  }, [refineApplied, category, year, apiKey])
-
-  // Debounced search
-  useEffect(() => {
-    if (searchTimeout.current) clearTimeout(searchTimeout.current)
-    if (!searchQuery.trim()) { setSearchResults([]); return }
-    setSearching(true)
-    searchTimeout.current = setTimeout(async () => {
-      const res = await searchTmdb(searchQuery.trim(), category, apiKey)
-      setSearchResults(res)
-      setSearching(false)
-    }, 400)
-    return () => { if (searchTimeout.current) clearTimeout(searchTimeout.current) }
-  }, [searchQuery, category, apiKey])
-
-  async function loadMore() {
-    if (refineApplied.trim()) return // search mode, no pagination
-    setLoadingMore(true)
-    const nextPage = suggPage + 1
-    const more = await loadSuggestions(category, year, apiKey, nextPage)
-    setSuggestions((prev) => dedupeById([...prev, ...more]))
-    setSuggPage(nextPage)
-    setLoadingMore(false)
-  }
-
-  function applyRefine() {
-    if (refineTimeout.current) clearTimeout(refineTimeout.current)
-    setRefineApplied(refineInput)
-  }
-
-  function toggleEntry(result: TmdbResult) {
-    const t = tmdbTitle(result)
+  function toggleEntry(result: CloudResult) {
+    const t = result.title ?? result.name ?? ''
     if (addedIds.has(result.id)) {
-      // Remove
       setEntries((prev) => prev.filter((e) => e.tmdbId !== result.id))
     } else {
-      // Add
       setEntries((prev) => [
         ...prev,
         {
@@ -606,18 +390,14 @@ function Step3({
     setEntries((prev) => prev.map((e) => (e.uid === uid ? { ...e, notesOpen: !e.notesOpen } : e)))
   }
 
-  const displaySuggestions = searchQuery.trim() ? searchResults : suggestions
-  const catLabel = category === 'movies' ? 'movies' : 'shows'
-
   return (
     <div className="space-y-6">
 
-      {/* ── Ranked list (TOP) ── */}
+      {/* ── Ranked list ── */}
       <div>
         <p className="text-xs font-semibold tracking-[0.15em] uppercase mb-3" style={{ color: 'var(--muted)' }}>
           Your List {entries.length > 0 ? `(${entries.length})` : ''}
         </p>
-
         {entries.length === 0 ? (
           <p className="text-sm py-6 text-center rounded-xl" style={{ color: 'var(--muted)', border: '1px dashed var(--border)' }}>
             Tap a poster below to add it to your list.
@@ -667,107 +447,15 @@ function Step3({
         <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
       </div>
 
-      {/* ── Refine suggestions input ── */}
-      <div className="space-y-2">
-        <label className="text-xs font-semibold tracking-[0.15em] uppercase" style={{ color: 'var(--muted)' }}>
-          Refine suggestions
-        </label>
-        <div className="flex gap-2">
-          <input
-            value={refineInput}
-            onChange={(e) => setRefineInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && applyRefine()}
-            placeholder={context.trim() ? context : `e.g. Oscar winners, feel-good ${catLabel}, more like Dune…`}
-            maxLength={120}
-            className="flex-1 px-4 py-2.5 rounded-xl text-sm outline-none"
-            style={inputStyle}
-            onFocus={onFocusAccent}
-            onBlur={onBlurBorder}
-          />
-          <button
-            onClick={applyRefine}
-            className="px-4 py-2.5 rounded-xl text-sm font-semibold transition-opacity hover:opacity-80"
-            style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
-          >
-            Go
-          </button>
-        </div>
-        <p className="text-xs" style={{ color: 'var(--muted)' }}>
-          {refineApplied.trim() && suggestions.length > 0
-            ? `Showing results for "${refineApplied}"`
-            : refineApplied.trim() && suggestions.length === 0
-            ? `No results for "${refineApplied}" — showing defaults`
-            : year ? `Popular & top-rated ${catLabel} from ${year}` : `All-time popular & top-rated ${catLabel}`}
-        </p>
-      </div>
-
-      {/* ── Poster grid ── */}
-      {loadingSugg || (searching && searchQuery.trim()) ? (
-        <div className="flex justify-center py-8">
-          <div className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
-        </div>
-      ) : displaySuggestions.length === 0 && (refineApplied.trim() || searchQuery.trim()) ? (
-        <p className="text-sm py-4 text-center" style={{ color: 'var(--muted)' }}>No results found. Try different keywords.</p>
-      ) : (
-        <>
-          <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))' }}>
-            {displaySuggestions.map((result) => (
-              <PosterTile
-                key={result.id}
-                result={result}
-                added={addedIds.has(result.id)}
-                onToggle={toggleEntry}
-              />
-            ))}
-          </div>
-          {!searchQuery.trim() && !refineApplied.trim() && (
-            <button
-              onClick={loadMore}
-              disabled={loadingMore}
-              className="w-full py-2.5 rounded-xl text-sm font-medium disabled:opacity-40 transition-opacity hover:opacity-80"
-              style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}
-            >
-              {loadingMore ? 'Loading…' : 'Load more'}
-            </button>
-          )}
-        </>
-      )}
-
-      {/* ── Direct search bar (bottom) ── */}
-      <div className="space-y-2">
-        <label className="text-xs font-semibold tracking-[0.15em] uppercase" style={{ color: 'var(--muted)' }}>
-          Search by title
-        </label>
-        <div className="relative">
-          <input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={`Find a specific ${category === 'movies' ? 'movie' : 'show'}…`}
-            className="w-full pl-9 pr-8 py-2.5 rounded-xl text-sm outline-none"
-            style={inputStyle}
-            onFocus={onFocusAccent}
-            onBlur={onBlurBorder}
-          />
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--muted)' }}>
-            {searching ? '⟳' : '⌕'}
-          </span>
-          {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-xs" style={{ color: 'var(--muted)' }}>✕</button>
-          )}
-        </div>
-        {searchQuery.trim() && !searching && searchResults.length > 0 && (
-          <div className="grid gap-2 pt-1" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))' }}>
-            {searchResults.map((result) => (
-              <PosterTile
-                key={result.id}
-                result={result}
-                added={addedIds.has(result.id)}
-                onToggle={toggleEntry}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      {/* ── Thought Cloud ── */}
+      <ThoughtCloud
+        listTitle={listTitle}
+        category={category}
+        year={year}
+        description={description}
+        addedIds={addedIds}
+        onToggle={toggleEntry}
+      />
     </div>
   )
 }
@@ -784,7 +472,6 @@ export default function CreatePage() {
   const [year, setYear] = useState<number | null>(null)
   const [allTime, setAllTime] = useState(false)
   const [description, setDescription] = useState('')
-  const [context, setContext] = useState('')
   const [entries, setEntries] = useState<Entry[]>([])
   const [publishing, setPublishing] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
@@ -858,7 +545,6 @@ export default function CreatePage() {
             year={year} setYear={setYear}
             allTime={allTime} setAllTime={setAllTime}
             description={description} setDescription={setDescription}
-            context={context} setContext={setContext}
             onNext={() => setStep(2)}
           />
         )}
@@ -867,9 +553,10 @@ export default function CreatePage() {
         )}
         {step === 3 && (
           <Step3
+            listTitle={title}
             category={category}
             year={allTime ? null : year}
-            context={context}
+            description={description}
             entries={entries}
             setEntries={setEntries}
             onPublish={publish}

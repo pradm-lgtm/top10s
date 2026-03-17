@@ -11,6 +11,7 @@ type Props = {
   className?: string
   style?: React.CSSProperties
   renderValue?: (value: string) => React.ReactNode
+  editable?: boolean
 }
 
 export function EditableText({
@@ -21,8 +22,10 @@ export function EditableText({
   className,
   style,
   renderValue,
+  editable,
 }: Props) {
   const { isAdmin } = useAdmin()
+  const canEdit = editable ?? isAdmin
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
   const [saving, setSaving] = useState(false)
@@ -37,7 +40,7 @@ export function EditableText({
     if (!editing) setDraft(value)
   }, [value, editing])
 
-  if (!isAdmin) {
+  if (!canEdit) {
     return renderValue ? (
       <>{renderValue(value)}</>
     ) : (

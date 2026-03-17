@@ -1,227 +1,418 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { AppHeader } from '@/components/AppHeader'
+import { useAuth } from '@/context/auth'
 import type { List, ListEntry } from '@/types'
 
 type OwnerInfo = { username: string; display_name: string | null; avatar_url: string | null }
-type ListWithPreview = List & { entries: ListEntry[]; profiles: OwnerInfo | null }
+type RichList = List & { entries: ListEntry[]; profiles: OwnerInfo | null; reactionCount: number }
 
-const GENRE_COLORS: Record<string, string> = {
-  'rom-com':  '#f472b6',
-  'horror':   '#f87171',
-  'action':   '#fb923c',
-  'drama':    '#60a5fa',
-  'scifi':    '#34d399',
-  'comedy':   '#facc15',
-  'animated': '#a78bfa',
+// ── Owner chip ─────────────────────────────────────────────────────────────
+
+function OwnerChip({ owner, onClick }: { owner: OwnerInfo; onClick?: (e: React.MouseEvent) => void }) {
+  const initial = (owner.display_name ?? owner.username)[0].toUpperCase()
+  return (
+    <Link href={`/${owner.username}`} onClick={onClick} className="flex items-center gap-1.5 w-fit">
+      {owner.avatar_url ? (
+        <img src={owner.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover shrink-0" />
+      ) : (
+        <div
+          className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+          style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+        >
+          {initial}
+        </div>
+      )}
+      <span className="text-xs" style={{ color: 'var(--muted)' }}>
+        {owner.display_name ?? owner.username}
+      </span>
+    </Link>
+  )
 }
 
-function themeColor(genre: string | null) {
-  return genre ? (GENRE_COLORS[genre] ?? '#f472b6') : '#f472b6'
+// ── Poster stack ────────────────────────────────────────────────────────────
+
+function PosterStack({ entries, size = 'md' }: { entries: ListEntry[]; size?: 'sm' | 'md' }) {
+  const withPosters = entries.filter((e) => e.image_url).slice(0, 3)
+  if (withPosters.length === 0) return null
+
+  const w = size === 'sm' ? 36 : 48
+  const h = size === 'sm' ? 54 : 72
+  const overlap = size === 'sm' ? 10 : 14
+  const totalW = w + (withPosters.length - 1) * (w - overlap)
+
+  return (
+    <div style={{ position: 'relative', width: totalW, height: h, flexShrink: 0 }}>
+      {withPosters.map((entry, i) => (
+        <img
+          key={entry.id}
+          src={entry.image_url!}
+          alt={entry.title}
+          style={{
+            position: 'absolute',
+            left: i * (w - overlap),
+            width: w,
+            height: h,
+            objectFit: 'cover',
+            borderRadius: 6,
+            border: '2px solid var(--background)',
+            zIndex: i,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+          }}
+        />
+      ))}
+    </div>
+  )
 }
+
+// ── All-time card ───────────────────────────────────────────────────────────
+
+function AllTimeCard({ list }: { list: RichList }) {
+  const router = useRouter()
+  const isMovie = list.category === 'movies'
+  const accent = isMovie ? 'var(--accent)' : '#a78bfa'
+  const hoverBorder = isMovie ? 'rgba(232,197,71,0.4)' : 'rgba(139,92,246,0.4)'
+  const hoverShadow = isMovie ? '0 4px 24px rgba(232,197,71,0.07)' : '0 4px 24px rgba(139,92,246,0.07)'
+
+  return (
+    <div
+      className="cursor-pointer rounded-xl p-4 flex flex-col gap-3 transition-all duration-200 hover:translate-y-[-2px]"
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+      onClick={() => router.push(`/list/${list.id}`)}
+      onMouseEnter={(e) => { e.currentTarget.style.borderColor = hoverBorder; e.currentTarget.style.boxShadow = hoverShadow }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = '' }}
+    >
+      {list.profiles && <OwnerChip owner={list.profiles} onClick={(e) => e.stopPropagation()} />}
+
+      <h3 className="font-semibold text-base leading-tight">{list.title}</h3>
+
+      <div className="flex items-start gap-4">
+        <PosterStack entries={list.entries} size="md" />
+        <ol className="flex-1 min-w-0 space-y-1.5 pt-1">
+          {list.entries.slice(0, 3).map((entry) => (
+            <li key={entry.id} className="flex items-center gap-2 text-xs min-w-0">
+              <span className="font-bold w-4 shrink-0 text-right" style={{ color: accent }}>{entry.rank}</span>
+              <span className="truncate" style={{ color: 'var(--muted)' }}>{entry.title}</span>
+            </li>
+          ))}
+          {list.entries.length === 0 && (
+            <li className="text-xs italic" style={{ color: 'var(--muted)' }}>Coming soon…</li>
+          )}
+        </ol>
+      </div>
+
+      {list.reactionCount > 0 && (
+        <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
+          {list.reactionCount} reaction{list.reactionCount !== 1 ? 's' : ''}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ── Recent card (horizontal strip) ─────────────────────────────────────────
+
+function RecentCard({ list }: { list: RichList }) {
+  const router = useRouter()
+  const isMovie = list.category === 'movies'
+  const accent = isMovie ? 'var(--accent)' : '#a78bfa'
+
+  return (
+    <div
+      className="cursor-pointer rounded-xl p-3 flex flex-col gap-2.5 shrink-0 transition-all duration-200 hover:translate-y-[-2px]"
+      style={{ width: 156, background: 'var(--surface)', border: '1px solid var(--border)' }}
+      onClick={() => router.push(`/list/${list.id}`)}
+    >
+      <PosterStack entries={list.entries} size="sm" />
+      <div className="min-w-0">
+        <p className="text-xs font-semibold leading-snug line-clamp-2">{list.title}</p>
+        {list.profiles && (
+          <p className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--muted)' }}>
+            {list.profiles.display_name ?? list.profiles.username}
+          </p>
+        )}
+      </div>
+      <span className="text-[10px] font-medium" style={{ color: accent }}>
+        {isMovie ? '🎬' : '📺'} {list.year ?? 'All time'}
+      </span>
+    </div>
+  )
+}
+
+// ── Year card ──────────────────────────────────────────────────────────────
+
+function YearCard({ list }: { list: RichList }) {
+  const router = useRouter()
+  const isMovie = list.category === 'movies'
+  const accent = isMovie ? 'var(--accent)' : '#a78bfa'
+  const hoverBorder = isMovie ? 'rgba(232,197,71,0.4)' : 'rgba(139,92,246,0.4)'
+  const hoverShadow = isMovie ? '0 4px 24px rgba(232,197,71,0.07)' : '0 4px 24px rgba(139,92,246,0.07)'
+
+  return (
+    <div
+      className="cursor-pointer rounded-xl p-4 flex flex-col gap-3 transition-all duration-200 hover:translate-y-[-2px]"
+      style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
+      onClick={() => router.push(`/list/${list.id}`)}
+      onMouseEnter={(e) => { e.currentTarget.style.borderColor = hoverBorder; e.currentTarget.style.boxShadow = hoverShadow }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = '' }}
+    >
+      {list.profiles && <OwnerChip owner={list.profiles} onClick={(e) => e.stopPropagation()} />}
+      <h3 className="font-semibold text-sm leading-tight">{list.title}</h3>
+      <div className="flex items-start gap-3">
+        <PosterStack entries={list.entries} size="sm" />
+        <ol className="flex-1 min-w-0 space-y-1.5 pt-0.5">
+          {list.entries.slice(0, 3).map((entry) => (
+            <li key={entry.id} className="flex items-center gap-2 text-xs min-w-0">
+              <span className="font-bold w-4 shrink-0 text-right" style={{ color: accent }}>{entry.rank}</span>
+              <span className="truncate" style={{ color: 'var(--muted)' }}>{entry.title}</span>
+            </li>
+          ))}
+          {list.entries.length === 0 && (
+            <li className="text-xs italic" style={{ color: 'var(--muted)' }}>Coming soon…</li>
+          )}
+        </ol>
+      </div>
+    </div>
+  )
+}
+
+// ── Category label ─────────────────────────────────────────────────────────
+
+function CategoryLabel({ category }: { category: 'movies' | 'tv' }) {
+  const isMovie = category === 'movies'
+  return (
+    <div className="flex items-center gap-1.5 mb-3">
+      <span className="text-sm">{isMovie ? '🎬' : '📺'}</span>
+      <span className="text-xs font-semibold tracking-[0.15em] uppercase" style={{ color: isMovie ? 'var(--accent)' : '#a78bfa' }}>
+        {isMovie ? 'Movies' : 'TV Shows'}
+      </span>
+    </div>
+  )
+}
+
+// ── Main page ───────────────────────────────────────────────────────────────
 
 export default function HomePage() {
-  const [lists, setLists] = useState<ListWithPreview[]>([])
+  const { user } = useAuth()
+  const [lists, setLists] = useState<RichList[]>([])
   const [loading, setLoading] = useState(true)
+  const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set())
+  const didInitExpand = useRef(false)
 
-  useEffect(() => {
-    fetchLists()
-  }, [])
+  useEffect(() => { fetchLists() }, [])
 
   async function fetchLists() {
-    let raw: (List & { profiles?: OwnerInfo | null })[] | null = null
-
-    const { data: withJoin, error: joinError } = await supabase
+    const { data: raw, error } = await supabase
       .from('lists')
       .select('*, profiles(username, display_name, avatar_url)')
       .order('created_at', { ascending: false })
 
-    if (!joinError) {
-      raw = withJoin
-    } else {
-      const { data: plain } = await supabase
-        .from('lists')
-        .select('*')
-        .order('created_at', { ascending: false })
-      raw = plain
-    }
-
-    if (!raw) { setLoading(false); return }
+    if (error || !raw) { setLoading(false); return }
 
     const listIds = raw.map((l) => l.id)
-    const { data: entries } = await supabase
-      .from('list_entries')
-      .select('*')
-      .in('list_id', listIds)
-      .lte('rank', 3)
-      .order('rank', { ascending: true })
+
+    const [{ data: entries }, { data: reactions }] = await Promise.all([
+      supabase.from('list_entries').select('*').in('list_id', listIds).lte('rank', 3).order('rank', { ascending: true }),
+      supabase.from('reactions').select('list_id').in('list_id', listIds),
+    ])
 
     const entryMap: Record<string, ListEntry[]> = {}
-    for (const entry of entries ?? []) {
-      if (!entryMap[entry.list_id]) entryMap[entry.list_id] = []
-      entryMap[entry.list_id].push(entry)
+    for (const e of entries ?? []) {
+      if (!entryMap[e.list_id]) entryMap[e.list_id] = []
+      entryMap[e.list_id].push(e)
     }
 
-    setLists(raw.map((list) => ({
+    const reactionMap: Record<string, number> = {}
+    for (const r of reactions ?? []) {
+      reactionMap[r.list_id] = (reactionMap[r.list_id] ?? 0) + 1
+    }
+
+    const richLists: RichList[] = raw.map((list) => ({
       ...list,
       entries: entryMap[list.id] ?? [],
       profiles: list.profiles ?? null,
-    })))
+      reactionCount: reactionMap[list.id] ?? 0,
+    }))
+
+    // Auto-expand most recent year
+    if (!didInitExpand.current) {
+      didInitExpand.current = true
+      const years = richLists
+        .map((l) => l.year)
+        .filter((y): y is number => y !== null)
+      if (years.length > 0) {
+        setExpandedYears(new Set([Math.max(...years)]))
+      }
+    }
+
+    setLists(richLists)
     setLoading(false)
   }
+
+  function toggleYear(y: number) {
+    setExpandedYears((prev) => {
+      const next = new Set(prev)
+      next.has(y) ? next.delete(y) : next.add(y)
+      return next
+    })
+  }
+
+  const allTimeLists  = lists.filter((l) => l.year === null)
+  const allTimeMovies = allTimeLists.filter((l) => l.category === 'movies')
+  const allTimeTV     = allTimeLists.filter((l) => l.category === 'tv')
+
+  const recentLists = lists.slice(0, 5)
+
+  const annualLists = lists.filter((l) => l.year !== null)
+  const years = [...new Set(annualLists.map((l) => l.year as number))].sort((a, b) => b - a)
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
       <AppHeader />
 
-      <div className="max-w-5xl mx-auto px-4 pt-10 pb-20">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight mb-1">All Lists</h1>
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>
+      <div className="max-w-5xl mx-auto px-4 pt-10 pb-24">
+
+        {/* ── Page header ── */}
+        <div className="mb-14">
+          <h1 className="text-3xl font-bold tracking-tight">Ranked</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>
             The best in film &amp; TV, ranked by people who care too much.
           </p>
         </div>
 
         {loading && (
           <div className="flex justify-center py-20">
-            <div
-              className="w-8 h-8 rounded-full border-2 animate-spin"
-              style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }}
-            />
+            <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
           </div>
         )}
 
         {!loading && lists.length === 0 && (
-          <div className="text-center py-20" style={{ color: 'var(--muted)' }}>
-            No lists yet. Check back soon.
+          <div className="text-center py-20">
+            <p className="text-sm mb-4" style={{ color: 'var(--muted)' }}>No lists yet.</p>
+            {user && (
+              <Link href="/create" className="text-sm font-semibold" style={{ color: 'var(--accent)' }}>
+                Create the first one →
+              </Link>
+            )}
           </div>
         )}
 
         {!loading && lists.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {lists.map((list) => (
-              <ListCard key={list.id} list={list} />
-            ))}
+          <div className="space-y-16">
+
+            {/* ── Section 1: All Time ── */}
+            {allTimeLists.length > 0 && (
+              <section>
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold tracking-tight">All Time</h2>
+                  <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>The definitive lists — no year limits.</p>
+                </div>
+
+                {allTimeMovies.length > 0 && allTimeTV.length > 0 ? (
+                  /* Both categories — side by side */
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                    <div>
+                      <CategoryLabel category="movies" />
+                      <div className="space-y-4">
+                        {allTimeMovies.map((l) => <AllTimeCard key={l.id} list={l} />)}
+                      </div>
+                    </div>
+                    <div>
+                      <CategoryLabel category="tv" />
+                      <div className="space-y-4">
+                        {allTimeTV.map((l) => <AllTimeCard key={l.id} list={l} />)}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Single category — full width with max-width cap */
+                  <div className="max-w-xl">
+                    {allTimeLists.length > 0 && <CategoryLabel category={allTimeLists[0].category} />}
+                    <div className="space-y-4">
+                      {allTimeLists.map((l) => <AllTimeCard key={l.id} list={l} />)}
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* ── Section 2: Recently Added ── */}
+            {recentLists.length > 0 && (
+              <section>
+                <div className="mb-4">
+                  <h2 className="text-2xl font-bold tracking-tight">Recently Added</h2>
+                </div>
+                <div
+                  className="flex gap-3 overflow-x-auto pb-2"
+                  style={{ scrollbarWidth: 'none' }}
+                >
+                  {recentLists.map((l) => <RecentCard key={l.id} list={l} />)}
+                </div>
+              </section>
+            )}
+
+            {/* ── Section 3: By Year ── */}
+            {years.length > 0 && (
+              <section>
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold tracking-tight">By Year</h2>
+                  <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>Year-by-year, side by side.</p>
+                </div>
+
+                <div className="space-y-3">
+                  {years.map((year) => {
+                    const yearMovies = annualLists.filter((l) => l.year === year && l.category === 'movies')
+                    const yearTV     = annualLists.filter((l) => l.year === year && l.category === 'tv')
+                    const isOpen     = expandedYears.has(year)
+
+                    return (
+                      <div key={year} className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+                        <button
+                          onClick={() => toggleYear(year)}
+                          className="w-full flex items-center justify-between px-5 py-4 text-left"
+                          style={{ background: 'var(--surface)' }}
+                        >
+                          <span className="font-bold text-lg">{year}</span>
+                          <span className="text-sm transition-transform duration-200" style={{ color: 'var(--muted)', display: 'inline-block', transform: isOpen ? 'rotate(180deg)' : 'none' }}>▼</span>
+                        </button>
+
+                        {isOpen && (
+                          <div
+                            className="px-5 py-5 grid grid-cols-1 sm:grid-cols-2 gap-6"
+                            style={{ borderTop: '1px solid var(--border)', background: 'var(--background)' }}
+                          >
+                            {yearMovies.length > 0 && (
+                              <div>
+                                <CategoryLabel category="movies" />
+                                <div className="space-y-3">
+                                  {yearMovies.map((l) => <YearCard key={l.id} list={l} />)}
+                                </div>
+                              </div>
+                            )}
+                            {yearTV.length > 0 && (
+                              <div>
+                                <CategoryLabel category="tv" />
+                                <div className="space-y-3">
+                                  {yearTV.map((l) => <YearCard key={l.id} list={l} />)}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            )}
+
           </div>
         )}
       </div>
     </div>
-  )
-}
-
-function ListCard({ list }: { list: ListWithPreview }) {
-  const isTheme  = list.list_type === 'theme'
-  const isMovie  = list.category === 'movies'
-  const accent   = isTheme ? themeColor(list.genre) : isMovie ? 'var(--accent)' : '#a78bfa'
-  const hoverBg  = isTheme ? `rgba(244,114,182,0.06)` : isMovie ? 'rgba(232,197,71,0.06)' : 'rgba(139,92,246,0.06)'
-  const hoverBorder = isTheme ? `rgba(244,114,182,0.4)` : isMovie ? `rgba(232,197,71,0.4)` : `rgba(139,92,246,0.4)`
-
-  const isTiered = list.list_format === 'tiered'
-  const isTierRanked = list.list_format === 'tier-ranked'
-
-  const tierGroups: { rank: number; titles: string[] }[] = []
-  if (isTiered) {
-    const map = new Map<number, string[]>()
-    for (const e of list.entries) {
-      if (!map.has(e.rank)) map.set(e.rank, [])
-      map.get(e.rank)!.push(e.title)
-    }
-    Array.from(map.entries()).sort(([a], [b]) => a - b).forEach(([rank, titles]) => tierGroups.push({ rank, titles }))
-  }
-
-  const owner = list.profiles
-  const ownerInitial = (owner?.display_name ?? owner?.username ?? '?')[0].toUpperCase()
-
-  return (
-    <Link href={`/list/${list.id}`} className="block group">
-      <div
-        className="rounded-xl p-5 transition-all duration-200 group-hover:translate-y-[-2px] flex flex-col"
-        style={{ background: 'var(--surface)', border: '1px solid var(--border)', height: '240px' }}
-        onMouseEnter={(e) => {
-          const el = e.currentTarget as HTMLDivElement
-          el.style.borderColor = hoverBorder
-          el.style.boxShadow = `0 4px 24px ${hoverBg}`
-        }}
-        onMouseLeave={(e) => {
-          const el = e.currentTarget as HTMLDivElement
-          el.style.borderColor = 'var(--border)'
-          el.style.boxShadow = ''
-        }}
-      >
-        {/* Owner */}
-        {owner && (
-          <Link
-            href={`/${owner.username}`}
-            onClick={(e) => e.stopPropagation()}
-            className="flex items-center gap-1.5 mb-3 shrink-0 w-fit"
-          >
-            {owner.avatar_url ? (
-              <img src={owner.avatar_url} alt="" className="w-5 h-5 rounded-full" />
-            ) : (
-              <div
-                className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
-                style={{ background: 'var(--accent)', color: '#0a0a0f' }}
-              >
-                {ownerInitial}
-              </div>
-            )}
-            <span className="text-xs" style={{ color: 'var(--muted)' }}>
-              {owner.display_name ?? owner.username}
-            </span>
-          </Link>
-        )}
-
-        {/* Title */}
-        <h3 className="font-semibold text-base leading-tight mb-3 shrink-0">{list.title}</h3>
-
-        {/* Preview */}
-        <div className="flex-1 min-h-0 relative overflow-hidden">
-          {isTierRanked ? (
-            <ol className="space-y-1.5">
-              {list.entries.map((entry) => (
-                <li key={entry.id} className="flex items-center gap-2.5 text-sm">
-                  <span className="text-xs font-bold w-5 shrink-0" style={{ color: accent }}>{entry.rank}</span>
-                  <span className="truncate">{entry.title}</span>
-                </li>
-              ))}
-            </ol>
-          ) : isTiered ? (
-            <div className="space-y-1.5">
-              {tierGroups.map(({ rank, titles }) => (
-                <div key={rank} className="flex items-baseline gap-2 text-sm">
-                  <span className="text-[10px] font-bold shrink-0 w-5" style={{ color: accent }}>{`T${rank}`}</span>
-                  <span className="truncate">{titles.join(', ')}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <ol className="space-y-1.5">
-              {list.entries.map((entry) => (
-                <li key={entry.id} className="flex items-center gap-2.5 text-sm">
-                  <span className="text-xs font-bold w-5 shrink-0" style={{ color: accent }}>{entry.rank}</span>
-                  <span className="truncate">{entry.title}</span>
-                </li>
-              ))}
-              {list.entries.length === 0 && (
-                <li className="text-xs italic" style={{ color: 'var(--muted)' }}>Coming soon…</li>
-              )}
-            </ol>
-          )}
-          <div
-            className="absolute bottom-0 left-0 right-0 h-10 pointer-events-none"
-            style={{ background: 'linear-gradient(to bottom, transparent, var(--surface))' }}
-          />
-        </div>
-
-        {/* Footer */}
-        <div className="mt-2 text-xs font-medium tracking-wide flex items-center gap-1 shrink-0" style={{ color: accent }}>
-          See full list
-          <span className="group-hover:translate-x-1 transition-transform inline-block">→</span>
-        </div>
-      </div>
-    </Link>
   )
 }
