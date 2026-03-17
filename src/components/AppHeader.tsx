@@ -1,13 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/context/auth'
 import { NavAuth } from '@/components/NavAuth'
 
 export function AppHeader() {
-  const { profile } = useAuth()
+  const { user, profile } = useAuth()
   const pathname = usePathname()
+  const router = useRouter()
 
   const isHome = pathname === '/home'
   const isProfile = profile && pathname === `/${profile.username}`
@@ -47,7 +48,16 @@ export function AppHeader() {
           )}
         </nav>
 
-        <NavAuth />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => user ? router.push('/create') : router.push('/')}
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-80"
+            style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+          >
+            + Create
+          </button>
+          <NavAuth />
+        </div>
       </div>
     </header>
   )
