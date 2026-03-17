@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-export default function AuthCallbackPage() {
+function Callback() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -15,7 +15,6 @@ export default function AuthCallbackPage() {
         router.replace('/home')
       })
     } else {
-      // No code — might be implicit flow with hash fragment, Supabase handles it automatically
       router.replace('/home')
     }
   }, [])
@@ -24,5 +23,17 @@ export default function AuthCallbackPage() {
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--background)' }}>
       <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
     </div>
+  )
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--background)' }}>
+        <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
+      </div>
+    }>
+      <Callback />
+    </Suspense>
   )
 }
