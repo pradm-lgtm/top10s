@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { NavAuth } from '@/components/NavAuth'
+import { AppHeader } from '@/components/AppHeader'
 import type { List, ListEntry } from '@/types'
 
 type OwnerInfo = { username: string; display_name: string | null; avatar_url: string | null }
@@ -75,17 +75,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
-      <header
-        className="sticky top-0 z-50 border-b backdrop-blur-md"
-        style={{ background: 'rgba(10,10,15,0.85)', borderColor: 'var(--border)' }}
-      >
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/home" className="text-base font-bold tracking-tight" style={{ color: 'var(--foreground)' }}>
-            Ranked
-          </Link>
-          <NavAuth />
-        </div>
-      </header>
+      <AppHeader />
 
       <div className="max-w-5xl mx-auto px-4 pt-10 pb-20">
         <div className="mb-8">

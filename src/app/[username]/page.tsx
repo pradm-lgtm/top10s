@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { NavAuth } from '@/components/NavAuth'
+import { AppHeader } from '@/components/AppHeader'
 import { useAuth } from '@/context/auth'
 import { useAdmin } from '@/context/admin'
 import type { List, ListEntry, Profile } from '@/types'
@@ -156,18 +156,7 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
-      {/* Header */}
-      <header
-        className="sticky top-0 z-50 border-b backdrop-blur-md"
-        style={{ background: 'rgba(10,10,15,0.85)', borderColor: 'var(--border)' }}
-      >
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/home" className="text-base font-bold tracking-tight" style={{ color: 'var(--foreground)' }}>
-            Ranked
-          </Link>
-          <NavAuth />
-        </div>
-      </header>
+      <AppHeader />
 
       {notFound ? (
         <div className="flex flex-col items-center justify-center py-32 gap-4">
