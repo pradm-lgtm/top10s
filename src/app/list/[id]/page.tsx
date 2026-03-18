@@ -9,6 +9,9 @@ import { useAdmin } from '@/context/admin'
 import { useAuth } from '@/context/auth'
 import { EditableText } from '@/components/EditableText'
 import { EntryDrawer } from '@/components/EntryDrawer'
+import { RichTextEditor } from '@/components/RichTextEditor'
+import { parseNotes, tiptapToHtml } from '@/lib/notes'
+import type { TiptapDoc } from '@/lib/notes'
 import type { PosterInfo } from '@/lib/tmdb'
 import type { List, ListEntry, Tier, Comment, ReactionCount, HonorableMention, AlsoWatched } from '@/types'
 import {
@@ -51,14 +54,14 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [addingEntry, setAddingEntry] = useState(false)
   const [newEntryTitle, setNewEntryTitle] = useState('')
   const [newEntryRank, setNewEntryRank] = useState('')
-  const [newEntryNotes, setNewEntryNotes] = useState('')
+  const [newEntryNotes, setNewEntryNotes] = useState<TiptapDoc | null>(null)
   const [newEntryPosterUrl, setNewEntryPosterUrl] = useState<string | null>(null)
   const [savingEntry, setSavingEntry] = useState(false)
   // Tiered add form
   const [addingTieredEntry, setAddingTieredEntry] = useState(false)
   const [newTieredTitle, setNewTieredTitle] = useState('')
   const [newTieredTierId, setNewTieredTierId] = useState<string | null>(null)
-  const [newTieredNotes, setNewTieredNotes] = useState('')
+  const [newTieredNotes, setNewTieredNotes] = useState<TiptapDoc | null>(null)
   const [newTieredPosterUrl, setNewTieredPosterUrl] = useState<string | null>(null)
   const [savingTieredEntry, setSavingTieredEntry] = useState(false)
   const [commentNameInput, setCommentNameInput] = useState('')
@@ -225,7 +228,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       body: JSON.stringify({
         rank,
         title: newEntryTitle.trim(),
-        notes: newEntryNotes.trim() || null,
+        notes: newEntryNotes ? JSON.stringify(newEntryNotes) : null,
         image_url: newEntryPosterUrl || null,
       }),
     })
@@ -238,7 +241,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       }
       setNewEntryTitle('')
       setNewEntryRank('')
-      setNewEntryNotes('')
+      setNewEntryNotes(null)
       setNewEntryPosterUrl(null)
       setAddingEntry(false)
     } else {
@@ -258,7 +261,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
       body: JSON.stringify({
         title: newTieredTitle.trim(),
-        notes: newTieredNotes.trim() || null,
+        notes: newTieredNotes ? JSON.stringify(newTieredNotes) : null,
         image_url: newTieredPosterUrl || null,
         ...(newTieredTierId && isUUID(newTieredTierId)
           ? { tier_id: newTieredTierId }
@@ -270,7 +273,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       setEntries((prev) => [...prev, entry])
       if (list) fetchPosters([entry], list.category, list.year).then(p => setPosters(prev => ({ ...prev, ...p })))
       setNewTieredTitle('')
-      setNewTieredNotes('')
+      setNewTieredNotes(null)
       setNewTieredPosterUrl(null)
       // keep tier selected for rapid adding
     } else {
@@ -792,13 +795,11 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                       style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
                     />
                   </div>
-                  <textarea
+                  <RichTextEditor
                     value={newEntryNotes}
-                    onChange={(e) => setNewEntryNotes(e.target.value)}
+                    onChange={setNewEntryNotes}
                     placeholder="Notes (optional)"
-                    rows={2}
-                    className="w-full px-3 py-2 rounded text-sm resize-none outline-none"
-                    style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                    minHeight={56}
                   />
                   <div className="flex gap-2">
                     <button
@@ -1553,7 +1554,7 @@ function TieredAddForm({
   title: string; setTitle: (v: string) => void
   posterUrl: string | null; setPosterUrl: (v: string | null) => void
   tierId: string | null; setTierId: (v: string | null) => void
-  notes: string; setNotes: (v: string) => void
+  notes: TiptapDoc | null; setNotes: (v: TiptapDoc | null) => void
   open: boolean; setOpen: (v: boolean) => void
   saving: boolean
   onSubmit: (e: React.FormEvent) => void
@@ -1585,13 +1586,11 @@ function TieredAddForm({
               placeholder={category === 'movies' ? 'Search movies…' : 'Search TV shows…'}
             />
           </div>
-          <textarea
+          <RichTextEditor
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            onChange={setNotes}
             placeholder="Notes (optional)"
-            rows={2}
-            className="w-full px-3 py-2 rounded-lg text-sm resize-none outline-none"
-            style={inputStyle}
+            minHeight={56}
           />
           <div className="space-y-1.5">
             <p className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Tier</p>
@@ -1650,27 +1649,94 @@ function ExpandableNotes({ value, onSave, editable = false, placeholder }: {
   placeholder?: string
 }) {
   const [expanded, setExpanded] = useState(false)
-  const needsClamp = value.length > 240
+  const [editing, setEditing] = useState(false)
+  const [editDoc, setEditDoc] = useState<TiptapDoc | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [overflows, setOverflows] = useState(false)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  const doc = parseNotes(value)
+  const isJson = !!doc
+  const html = isJson ? tiptapToHtml(doc) : null
+
+  useEffect(() => {
+    const el = contentRef.current
+    if (!el) return
+    setOverflows(el.scrollHeight > el.clientHeight + 2)
+  }, [value, expanded])
+
   if (!value && !editable) return null
+
+  if (editing) {
+    return (
+      <div className="w-full space-y-2" onClick={(e) => e.stopPropagation()}>
+        <RichTextEditor
+          value={doc ?? value}
+          onChange={setEditDoc}
+          placeholder={placeholder}
+          autoFocus
+          minHeight={72}
+        />
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={async (e) => {
+              e.stopPropagation()
+              if (!editDoc) return
+              setSaving(true)
+              await onSave?.(JSON.stringify(editDoc))
+              setSaving(false)
+              setEditing(false)
+            }}
+            className="px-3 py-1 rounded text-xs font-semibold"
+            style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setEditing(false) }}
+            className="px-3 py-1 rounded text-xs"
+            style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const CLAMP_HEIGHT = '5.6rem' // ≈ 4 lines at 14px/1.6
+
   return (
     <div className="w-full">
       <div
+        ref={contentRef}
+        className={isJson ? 'rich-notes' : undefined}
         style={{
           fontSize: 14,
           lineHeight: 1.6,
           color: 'var(--muted)',
-          overflow: expanded || !needsClamp ? 'visible' : 'hidden',
-          display: expanded || !needsClamp ? 'block' : '-webkit-box',
-          WebkitLineClamp: expanded || !needsClamp ? undefined : 4,
-          WebkitBoxOrient: 'vertical' as const,
-          whiteSpace: 'pre-wrap',
+          ...(isJson ? {
+            maxHeight: expanded ? 'none' : CLAMP_HEIGHT,
+            overflow: expanded ? 'visible' : 'hidden',
+          } : {
+            overflow: expanded || value.length <= 240 ? 'visible' : 'hidden',
+            display: expanded || value.length <= 240 ? 'block' : '-webkit-box',
+            WebkitLineClamp: expanded || value.length <= 240 ? undefined : 4,
+            WebkitBoxOrient: 'vertical' as const,
+            whiteSpace: 'pre-wrap',
+          }),
+          cursor: editable ? 'pointer' : 'default',
         }}
+        onClick={editable ? (e) => { e.stopPropagation(); setEditing(true) } : undefined}
+        title={editable ? 'Click to edit' : undefined}
       >
-        {editable && onSave ? (
-          <EditableText value={value} onSave={onSave} multiline placeholder={placeholder} className="text-sm" style={{ color: 'var(--muted)' }} editable={editable} />
+        {isJson ? (
+          <div dangerouslySetInnerHTML={{ __html: html! }} />
         ) : value}
       </div>
-      {needsClamp && (
+      {(isJson ? overflows || expanded : value.length > 240) && (
         <button
           onClick={(e) => { e.stopPropagation(); setExpanded(v => !v) }}
           className="text-xs mt-1"

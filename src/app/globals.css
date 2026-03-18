@@ -33,6 +33,15 @@ body {
   box-sizing: border-box;
 }
 
+/* Rich text notes display */
+.rich-notes p { margin: 0 0 0.4em 0; }
+.rich-notes p:last-child { margin-bottom: 0; }
+.rich-notes strong { color: var(--foreground); font-weight: 600; }
+.rich-notes em { font-style: italic; }
+.rich-notes ul { list-style: disc; padding-left: 1.2em; margin: 0.3em 0; }
+.rich-notes ol { list-style: decimal; padding-left: 1.2em; margin: 0.3em 0; }
+.rich-notes li { margin: 0.15em 0; }
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

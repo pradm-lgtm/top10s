@@ -26,6 +26,8 @@ import { useAuth } from '@/context/auth'
 import { AppHeader } from '@/components/AppHeader'
 import { ThoughtCloud } from '@/components/ThoughtCloud'
 import type { CloudResult } from '@/components/ThoughtCloud'
+import { RichTextEditor } from '@/components/RichTextEditor'
+import type { TiptapDoc } from '@/lib/notes'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -39,7 +41,7 @@ type Entry = {
   uid: string
   tmdbId: number | null
   title: string
-  notes: string
+  notes: TiptapDoc | null
   posterUrl: string | null
   notesOpen: boolean
   tierId: string | null
@@ -517,7 +519,7 @@ function SortableEntry({
 }: {
   entry: Entry; rank: number
   onRemove: (uid: string) => void
-  onNotesChange: (uid: string, notes: string) => void
+  onNotesChange: (uid: string, notes: TiptapDoc | null) => void
   onToggleNotes: (uid: string) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: entry.uid })
@@ -564,22 +566,15 @@ function SortableEntry({
       </div>
 
       {entry.notesOpen && (
-        <textarea
-          autoFocus
-          value={entry.notes}
-          onChange={(e) => onNotesChange(entry.uid, e.target.value)}
-          placeholder="Add a note about this entry…"
-          rows={2}
-          maxLength={300}
-          className="w-full px-4 py-2.5 text-sm resize-none outline-none"
-          style={{
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            borderTop: '1px solid var(--border)',
-            borderRadius: '0 0 12px 12px',
-            color: 'var(--foreground)',
-          }}
-        />
+        <div style={{ borderTop: '1px solid var(--border)', borderRadius: '0 0 12px 12px', overflow: 'hidden' }}>
+          <RichTextEditor
+            value={entry.notes}
+            onChange={(doc) => onNotesChange(entry.uid, doc)}
+            placeholder="Add a note about this entry…"
+            autoFocus
+            minHeight={56}
+          />
+        </div>
       )}
     </div>
   )
@@ -866,7 +861,7 @@ function Step3({
       uid: crypto.randomUUID(),
       tmdbId: result.id,
       title: result.title ?? result.name ?? '',
-      notes: '',
+      notes: null,
       posterUrl: result.poster_path ? `${TMDB_IMG}${result.poster_path}` : null,
       notesOpen: false,
       tierId: null,
@@ -878,7 +873,7 @@ function Step3({
       uid: crypto.randomUUID(),
       tmdbId: result.id,
       title: result.title ?? result.name ?? '',
-      notes: '',
+      notes: null,
       posterUrl: result.poster_path ? `${TMDB_IMG}${result.poster_path}` : null,
       notesOpen: false,
       tierId,
@@ -917,7 +912,7 @@ function Step3({
     }
   }
 
-  function updateNotes(uid: string, notes: string) {
+  function updateNotes(uid: string, notes: TiptapDoc | null) {
     setEntries((prev) => prev.map((e) => (e.uid === uid ? { ...e, notes } : e)))
   }
 
@@ -1184,7 +1179,7 @@ export default function CreatePage() {
           tier_id: e.tierId ? tierIdMap.get(e.tierId) ?? null : null,
           rank,
           title: e.title,
-          notes: e.notes.trim() || null,
+          notes: e.notes ? JSON.stringify(e.notes) : null,
           image_url: e.posterUrl || null,
         }
       })
@@ -1212,7 +1207,7 @@ export default function CreatePage() {
         rank: i + 1,
         tier_id: null,
         title: e.title,
-        notes: e.notes.trim() || null,
+        notes: e.notes ? JSON.stringify(e.notes) : null,
         image_url: e.posterUrl || null,
       }))
       for (const entryData of rankedEntries) {
