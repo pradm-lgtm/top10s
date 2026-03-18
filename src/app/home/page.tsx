@@ -403,18 +403,36 @@ export default function HomePage() {
                 </div>
 
                 {allTimeMovies.length > 0 && allTimeTV.length > 0 ? (
-                  /* Both categories — paired rows for equal heights */
+                  /* Both categories */
                   <div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 mb-1">
-                      <CategoryLabel category="movies" />
-                      <CategoryLabel category="tv" />
+                    {/* Mobile: grouped by category */}
+                    <div className="sm:hidden space-y-6">
+                      <div>
+                        <CategoryLabel category="movies" />
+                        <div className="space-y-4">
+                          {allTimeMovies.map((l) => <AllTimeCard key={l.id} list={l} posters={posters} />)}
+                        </div>
+                      </div>
+                      <div>
+                        <CategoryLabel category="tv" />
+                        <div className="space-y-4">
+                          {allTimeTV.map((l) => <AllTimeCard key={l.id} list={l} posters={posters} />)}
+                        </div>
+                      </div>
                     </div>
-                    <PairedCardGrid
-                      leftList={allTimeMovies}
-                      rightList={allTimeTV}
-                      posters={posters}
-                      Card={AllTimeCard}
-                    />
+                    {/* Desktop: side-by-side paired rows */}
+                    <div className="hidden sm:block">
+                      <div className="grid grid-cols-2 gap-8 mb-1">
+                        <CategoryLabel category="movies" />
+                        <CategoryLabel category="tv" />
+                      </div>
+                      <PairedCardGrid
+                        leftList={allTimeMovies}
+                        rightList={allTimeTV}
+                        posters={posters}
+                        Card={AllTimeCard}
+                      />
+                    </div>
                   </div>
                 ) : (
                   /* Single category */
@@ -475,16 +493,34 @@ export default function HomePage() {
                           >
                             {yearMovies.length > 0 && yearTV.length > 0 ? (
                               <div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-1">
-                                  <CategoryLabel category="movies" />
-                                  <CategoryLabel category="tv" />
+                                {/* Mobile: grouped by category */}
+                                <div className="sm:hidden space-y-6">
+                                  <div>
+                                    <CategoryLabel category="movies" />
+                                    <div className="space-y-3">
+                                      {yearMovies.map((l) => <YearCard key={l.id} list={l} posters={posters} />)}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <CategoryLabel category="tv" />
+                                    <div className="space-y-3">
+                                      {yearTV.map((l) => <YearCard key={l.id} list={l} posters={posters} />)}
+                                    </div>
+                                  </div>
                                 </div>
-                                <PairedCardGrid
-                                  leftList={yearMovies}
-                                  rightList={yearTV}
-                                  posters={posters}
-                                  Card={YearCard}
-                                />
+                                {/* Desktop: side-by-side paired rows */}
+                                <div className="hidden sm:block">
+                                  <div className="grid grid-cols-2 gap-6 mb-1">
+                                    <CategoryLabel category="movies" />
+                                    <CategoryLabel category="tv" />
+                                  </div>
+                                  <PairedCardGrid
+                                    leftList={yearMovies}
+                                    rightList={yearTV}
+                                    posters={posters}
+                                    Card={YearCard}
+                                  />
+                                </div>
                               </div>
                             ) : (
                               <div className="max-w-sm">
