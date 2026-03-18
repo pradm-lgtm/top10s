@@ -585,7 +585,17 @@ function SortableEntry({
   )
 }
 
-// ─── TierEntryCard (draggable poster in tier row or pool) ─────────────────────
+// ─── Genre map ───────────────────────────────────────────────────────────────
+
+const GENRE_MAP: Record<number, string> = {
+  28: 'Action', 12: 'Adventure', 16: 'Animation', 35: 'Comedy', 80: 'Crime',
+  99: 'Documentary', 18: 'Drama', 10751: 'Family', 14: 'Fantasy', 36: 'History',
+  27: 'Horror', 9648: 'Mystery', 10749: 'Romance', 878: 'Sci-Fi', 53: 'Thriller',
+  10752: 'War', 37: 'Western', 10759: 'Action & Adventure', 10762: 'Kids',
+  10765: 'Sci-Fi & Fantasy', 10766: 'Soap', 10768: 'War & Politics',
+}
+
+// ─── TierEntryCard (draggable poster in tier row) ────────────────────────────
 
 function TierEntryCard({
   entry, color, rank, onRemove,
@@ -627,7 +637,7 @@ function TierEntryCard({
         >✕</button>
       </div>
       <span className="text-center leading-tight" style={{
-        fontSize: '0.58rem', color: 'var(--muted)', width: 50, textAlign: 'center',
+        fontSize: '0.58rem', color: 'var(--muted)', width: 50,
         display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden',
       }}>{entry.title}</span>
     </div>
@@ -652,15 +662,13 @@ function DroppableTier({
         background: isOver ? `${tier.color}1a` : `${tier.color}08`,
         boxShadow: isOver ? `0 0 16px ${tier.color}30` : 'none',
       }}>
-      {/* Tier label column */}
       <div className="flex items-center justify-center shrink-0 w-14"
         style={{ borderRight: `2px solid ${tier.color}40`, background: `${tier.color}15` }}>
         <span className="text-lg font-black" style={{ color: tier.color }}>{tier.label || '?'}</span>
       </div>
-      {/* Entries */}
       <div className="flex flex-wrap gap-2 p-2.5 items-center flex-1 min-h-[80px]">
         {entries.length === 0 ? (
-          <span className="text-xs italic" style={{ color: `${tier.color}55` }}>Drop here</span>
+          <span className="text-xs italic" style={{ color: `${tier.color}55` }}>Empty</span>
         ) : (
           entries.map((entry, i) => (
             <TierEntryCard key={entry.uid} entry={entry} color={tier.color}
@@ -672,25 +680,144 @@ function DroppableTier({
   )
 }
 
-// ─── DroppablePool ────────────────────────────────────────────────────────────
+// ─── Add Entry Bottom Sheet ───────────────────────────────────────────────────
 
-function DroppablePool({ entries, onRemove }: { entries: Entry[]; onRemove: (uid: string) => void }) {
-  const { setNodeRef, isOver } = useDroppable({ id: 'pool' })
-  if (entries.length === 0 && !isOver) return null
+type SheetState = {
+  result: import('@/components/ThoughtCloud').CloudResult
+  alreadyAdded: boolean
+}
+
+function AddEntrySheet({
+  sheet, tiers, listFormat, onAddRanked, onAddToTier, onRemove, onClose,
+}: {
+  sheet: SheetState | null
+  tiers: TierDef[]
+  listFormat: 'ranked' | 'tiered' | 'tiered-ranked'
+  onAddRanked: (result: import('@/components/ThoughtCloud').CloudResult) => void
+  onAddToTier: (result: import('@/components/ThoughtCloud').CloudResult, tierId: string) => void
+  onRemove: (result: import('@/components/ThoughtCloud').CloudResult) => void
+  onClose: () => void
+}) {
+  const isOpen = sheet !== null
+  const isTiered = listFormat === 'tiered' || listFormat === 'tiered-ranked'
+
+  // Body scroll lock
+  useEffect(() => {
+    if (isOpen) document.body.style.overflow = 'hidden'
+    else document.body.style.overflow = ''
+    return () => { document.body.style.overflow = '' }
+  }, [isOpen])
+
+  const title = sheet ? (sheet.result.title ?? sheet.result.name ?? '') : ''
+  const posterUrl = sheet?.result.poster_path ? `${TMDB_IMG}${sheet.result.poster_path}` : null
+  const year = (sheet?.result.release_date ?? sheet?.result.first_air_date ?? '').slice(0, 4)
+  const genres = (sheet?.result.genre_ids ?? []).slice(0, 3).map((id) => GENRE_MAP[id]).filter(Boolean)
+
   return (
-    <div ref={setNodeRef} className="rounded-xl transition-all duration-150"
-      style={{
-        border: `1px dashed ${isOver ? 'var(--accent)' : 'var(--border)'}`,
-        background: isOver ? 'rgba(232,197,71,0.06)' : 'transparent',
-        minHeight: 56, padding: '8px 10px',
-      }}>
-      <p className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--muted)' }}>Unranked</p>
-      <div className="flex flex-wrap gap-2">
-        {entries.map((e) => (
-          <TierEntryCard key={e.uid} entry={e} color="#6b7280" onRemove={onRemove} />
-        ))}
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40 transition-opacity duration-300"
+        style={{
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(3px)',
+          opacity: isOpen ? 1 : 0,
+          pointerEvents: isOpen ? 'auto' : 'none',
+        }}
+        onClick={onClose}
+      />
+
+      {/* Sheet panel */}
+      <div
+        className="fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl"
+        style={{
+          background: 'var(--surface)',
+          maxHeight: '88vh',
+          overflowY: 'auto',
+          transform: isOpen ? 'translateY(0)' : 'translateY(100%)',
+          transition: 'transform 0.32s cubic-bezier(0.32, 0.72, 0, 1)',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
+        {/* Handle */}
+        <div className="flex justify-center pt-3 pb-1 sticky top-0" style={{ background: 'var(--surface)' }}>
+          <div className="w-10 h-1 rounded-full" style={{ background: 'var(--border)' }} />
+        </div>
+
+        {sheet && (
+          <div className="px-5 pb-10 pt-4 space-y-6">
+            {/* Movie info row */}
+            <div className="flex gap-4 items-start">
+              {posterUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={posterUrl} alt={title} className="rounded-xl object-cover shrink-0"
+                  style={{ width: 80, height: 120, boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }} />
+              ) : (
+                <div className="rounded-xl shrink-0 flex items-center justify-center"
+                  style={{ width: 80, height: 120, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                  <span className="text-3xl">🎬</span>
+                </div>
+              )}
+              <div className="pt-1 min-w-0">
+                <h3 className="text-xl font-bold leading-tight">{title}</h3>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {year && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      style={{ background: 'var(--surface-2)', color: 'var(--muted)' }}>{year}</span>
+                  )}
+                  {genres.map((g) => (
+                    <span key={g} className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      style={{ background: 'var(--surface-2)', color: 'var(--muted)' }}>{g}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Action area */}
+            {sheet.alreadyAdded ? (
+              <button
+                onClick={() => { onRemove(sheet.result); onClose() }}
+                className="w-full py-4 rounded-2xl text-base font-bold transition-all active:scale-[0.97]"
+                style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
+              >
+                Remove from list
+              </button>
+            ) : isTiered ? (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold tracking-widest uppercase text-center" style={{ color: 'var(--muted)' }}>
+                  Add to tier
+                </p>
+                <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(tiers.length, 4)}, 1fr)` }}>
+                  {tiers.map((tier) => (
+                    <button
+                      key={tier.tempId}
+                      onClick={() => { onAddToTier(sheet.result, tier.tempId); onClose() }}
+                      className="py-5 rounded-2xl text-2xl font-black transition-all active:scale-95"
+                      style={{
+                        background: `${tier.color}20`,
+                        border: `2px solid ${tier.color}80`,
+                        color: tier.color,
+                        minHeight: 72,
+                      }}
+                    >
+                      {tier.label || '?'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => { onAddRanked(sheet.result); onClose() }}
+                className="w-full py-5 rounded-2xl text-lg font-bold transition-all active:scale-[0.97]"
+                style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+              >
+                Add to list
+              </button>
+            )}
+          </div>
+        )}
       </div>
-    </div>
+    </>
   )
 }
 
@@ -722,30 +849,44 @@ function Step3({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
+  const [sheet, setSheet] = useState<SheetState | null>(null)
   const [editingTiers, setEditingTiers] = useState(false)
 
   const isTiered = listFormat === 'tiered' || listFormat === 'tiered-ranked'
-  const allEntryIds = new Set(entries.map((e) => e.tmdbId).filter(Boolean) as number[])
+  const addedTmdbIds = new Set(entries.map((e) => e.tmdbId).filter(Boolean) as number[])
   const catLabel = category === 'movies' ? 'movies' : 'shows'
 
+  // Open bottom sheet instead of directly toggling
   function handleCloudToggle(result: CloudResult) {
-    const t = result.title ?? result.name ?? ''
-    if (allEntryIds.has(result.id)) {
-      setEntries((prev) => prev.filter((e) => e.tmdbId !== result.id))
-    } else {
-      setEntries((prev) => [
-        ...prev,
-        {
-          uid: crypto.randomUUID(),
-          tmdbId: result.id,
-          title: t,
-          notes: '',
-          posterUrl: result.poster_path ? `${TMDB_IMG}${result.poster_path}` : null,
-          notesOpen: false,
-          tierId: null, // goes into the pool for tiered, or just added for ranked
-        },
-      ])
-    }
+    setSheet({ result, alreadyAdded: addedTmdbIds.has(result.id) })
+  }
+
+  function addRanked(result: CloudResult) {
+    setEntries((prev) => [...prev, {
+      uid: crypto.randomUUID(),
+      tmdbId: result.id,
+      title: result.title ?? result.name ?? '',
+      notes: '',
+      posterUrl: result.poster_path ? `${TMDB_IMG}${result.poster_path}` : null,
+      notesOpen: false,
+      tierId: null,
+    }])
+  }
+
+  function addToTier(result: CloudResult, tierId: string) {
+    setEntries((prev) => [...prev, {
+      uid: crypto.randomUUID(),
+      tmdbId: result.id,
+      title: result.title ?? result.name ?? '',
+      notes: '',
+      posterUrl: result.poster_path ? `${TMDB_IMG}${result.poster_path}` : null,
+      notesOpen: false,
+      tierId,
+    }])
+  }
+
+  function removeByResult(result: CloudResult) {
+    setEntries((prev) => prev.filter((e) => e.tmdbId !== result.id))
   }
 
   function removeEntry(uid: string) {
@@ -769,17 +910,10 @@ function Step3({
       return
     }
 
-    // Tiered: determine drop zone
-    const activeEntry = entries.find(e => e.uid === activeId)
-    if (!activeEntry) return
-
-    const overTier = tiers.find(t => t.tempId === overId)
+    // Tiered: move between tier zones
+    const overTier = tiers.find((t) => t.tempId === overId)
     if (overTier) {
-      setEntries(prev => prev.map(e => e.uid === activeId ? { ...e, tierId: overTier.tempId } : e))
-      return
-    }
-    if (overId === 'pool') {
-      setEntries(prev => prev.map(e => e.uid === activeId ? { ...e, tierId: null } : e))
+      setEntries((prev) => prev.map((e) => e.uid === activeId ? { ...e, tierId: overTier.tempId } : e))
     }
   }
 
@@ -791,7 +925,7 @@ function Step3({
     setEntries((prev) => prev.map((e) => (e.uid === uid ? { ...e, notesOpen: !e.notesOpen } : e)))
   }
 
-  // Tier editor helpers (same as Step2 custom mode)
+  // Tier editor helpers
   function cycleColor(idx: number) {
     setTiers(tiers.map((t, i) => {
       if (i !== idx) return t
@@ -805,7 +939,7 @@ function Step3({
   function removeTier(idx: number) {
     const removed = tiers[idx]
     setTiers(tiers.filter((_, i) => i !== idx))
-    setEntries(prev => prev.map(e => e.tierId === removed.tempId ? { ...e, tierId: null } : e))
+    setEntries((prev) => prev.map((e) => e.tierId === removed.tempId ? { ...e, tierId: null } : e))
   }
   function addTier() {
     const color = TIER_COLOR_PRESETS[tiers.length % TIER_COLOR_PRESETS.length]
@@ -819,21 +953,31 @@ function Step3({
     setTiers(arr)
   }
 
-  const poolEntries = entries.filter(e => e.tierId === null)
+  const poolEntries = entries.filter((e) => e.tierId === null)
 
   return (
     <div className="space-y-6">
 
+      {/* ── Bottom sheet (always rendered for animation) ── */}
+      <AddEntrySheet
+        sheet={sheet}
+        tiers={tiers}
+        listFormat={listFormat}
+        onAddRanked={addRanked}
+        onAddToTier={addToTier}
+        onRemove={removeByResult}
+        onClose={() => setSheet(null)}
+      />
+
       {/* ── Tier list ── */}
       {isTiered ? (
         <div className="space-y-3">
-          {/* Header row */}
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold tracking-[0.15em] uppercase" style={{ color: 'var(--muted)' }}>
               Your List {entries.length > 0 ? `(${entries.length})` : ''}
             </p>
             <button
-              onClick={() => setEditingTiers(v => !v)}
+              onClick={() => setEditingTiers((v) => !v)}
               className="text-xs px-2.5 py-1 rounded-lg transition-opacity hover:opacity-70"
               style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}
             >
@@ -841,7 +985,6 @@ function Step3({
             </button>
           </div>
 
-          {/* Inline tier editor */}
           {editingTiers && (
             <div className="rounded-xl p-4 space-y-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
               {tiers.map((t, idx) => (
@@ -850,7 +993,7 @@ function Step3({
                     <button onClick={() => moveTier(idx, -1)} disabled={idx === 0} className="text-xs px-1 disabled:opacity-20" style={{ color: 'var(--muted)' }}>▲</button>
                     <button onClick={() => moveTier(idx, 1)} disabled={idx === tiers.length - 1} className="text-xs px-1 disabled:opacity-20" style={{ color: 'var(--muted)' }}>▼</button>
                   </div>
-                  <button onClick={() => cycleColor(idx)} className="w-6 h-6 rounded shrink-0" style={{ background: t.color, border: '2px solid rgba(255,255,255,0.15)' }} title="Cycle color" />
+                  <button onClick={() => cycleColor(idx)} className="w-6 h-6 rounded shrink-0" style={{ background: t.color, border: '2px solid rgba(255,255,255,0.15)' }} />
                   <input value={t.label} onChange={(e) => updateTierLabel(idx, e.target.value)} placeholder="Tier label" maxLength={20}
                     className="flex-1 px-2 py-1 rounded-lg text-sm outline-none"
                     style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }} />
@@ -858,40 +1001,41 @@ function Step3({
                     style={{ color: 'var(--muted)', border: '1px solid var(--border)' }}>✕</button>
                 </div>
               ))}
-              <button onClick={addTier} className="w-full py-1.5 rounded-lg text-sm hover:opacity-70 transition-opacity"
+              <button onClick={addTier} className="w-full py-1.5 rounded-lg text-sm hover:opacity-70"
                 style={{ border: '1px dashed var(--border)', color: 'var(--muted)' }}>+ Add tier</button>
             </div>
           )}
 
-          {/* Tier drop zones + pool */}
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <div className="space-y-2">
-              {tiers.map((tier) => (
-                <DroppableTier
-                  key={tier.tempId}
-                  tier={tier}
-                  entries={entries.filter(e => e.tierId === tier.tempId)}
-                  listFormat={listFormat as 'tiered' | 'tiered-ranked'}
-                  onRemove={removeEntry}
-                />
-              ))}
-            </div>
-
-            {/* Unranked pool */}
-            <div className="mt-3">
-              <DroppablePool entries={poolEntries} onRemove={removeEntry} />
-              {poolEntries.length === 0 && entries.length === 0 && (
-                <p className="text-sm py-5 text-center rounded-xl" style={{ color: 'var(--muted)', border: '1px dashed var(--border)' }}>
-                  Tap a poster below — drag it into a tier above.
-                </p>
-              )}
-              {poolEntries.length > 0 && (
-                <p className="text-xs mt-2 text-center" style={{ color: 'var(--muted)' }}>
-                  Drag into a tier ↑
-                </p>
-              )}
-            </div>
-          </DndContext>
+          {entries.length === 0 ? (
+            <p className="text-sm py-5 text-center rounded-xl" style={{ color: 'var(--muted)', border: '1px dashed var(--border)' }}>
+              Tap a poster below to add it to a tier
+            </p>
+          ) : (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <div className="space-y-2">
+                {tiers.map((tier) => (
+                  <DroppableTier
+                    key={tier.tempId}
+                    tier={tier}
+                    entries={entries.filter((e) => e.tierId === tier.tempId)}
+                    listFormat={listFormat as 'tiered' | 'tiered-ranked'}
+                    onRemove={removeEntry}
+                  />
+                ))}
+                {/* Unassigned entries (e.g. after a tier is deleted) */}
+                {poolEntries.length > 0 && (
+                  <div className="rounded-xl p-3 space-y-1" style={{ border: '1px dashed var(--border)' }}>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--muted)' }}>Unassigned</p>
+                    <div className="flex flex-wrap gap-2">
+                      {poolEntries.map((e) => (
+                        <TierEntryCard key={e.uid} entry={e} color="#6b7280" onRemove={removeEntry} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </DndContext>
+          )}
         </div>
       ) : (
         /* ── Ranked list ── */
@@ -901,7 +1045,7 @@ function Step3({
           </p>
           {entries.length === 0 ? (
             <p className="text-sm py-6 text-center rounded-xl" style={{ color: 'var(--muted)', border: '1px dashed var(--border)' }}>
-              Tap a poster below to add it to your list.
+              Tap a poster below to add it to your list
             </p>
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -936,27 +1080,25 @@ function Step3({
         </button>
       </div>
 
-      {/* ── Divider ── */}
+      {/* ── Add section ── */}
       <div className="flex items-center gap-3">
         <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
         <span className="text-xs font-semibold tracking-[0.15em] uppercase" style={{ color: 'var(--muted)' }}>Add {catLabel}</span>
         <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
       </div>
 
-      {/* ── Thought Cloud ── */}
       <ThoughtCloud
         listTitle={listTitle}
         category={category}
         yearFrom={yearFrom}
         yearTo={yearTo}
         description={description}
-        addedIds={allEntryIds}
+        addedIds={addedTmdbIds}
         onToggle={handleCloudToggle}
       />
     </div>
   )
 }
-
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
 export default function CreatePage() {
