@@ -1592,6 +1592,14 @@ function TieredAddForm({
               placeholder={category === 'movies' ? 'Search movies…' : 'Search TV shows…'}
             />
           </div>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Notes (optional)"
+            rows={2}
+            className="w-full px-3 py-2 rounded-lg text-sm resize-none outline-none"
+            style={inputStyle}
+          />
           <div className="space-y-1.5">
             <p className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Tier</p>
             {tiers.length === 0 && (
@@ -1615,14 +1623,6 @@ function TieredAddForm({
               ))}
             </div>
           </div>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Notes (optional)"
-            rows={2}
-            className="w-full px-3 py-2 rounded-lg text-sm resize-none outline-none"
-            style={inputStyle}
-          />
           <div className="flex gap-2">
             <button
               type="submit"
