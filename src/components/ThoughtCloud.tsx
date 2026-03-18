@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import ReactDOM from 'react-dom'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -15,25 +14,10 @@ export type CloudResult = {
   genre_ids?: number[]
 }
 
-type TmdbDetail = {
-  director: string | null
-  cast: string[]
-  genres: string[]
-  year: string | null
-}
-
-type PreviewState = {
-  result: CloudResult
-  rect: DOMRect
-  detail: TmdbDetail | null
-  loadingDetail: boolean
-}
-
 // ─── TMDB helpers ─────────────────────────────────────────────────────────────
 
 const TMDB_BASE = 'https://api.themoviedb.org/3'
 const TMDB_SM   = 'https://image.tmdb.org/t/p/w185'
-const TMDB_MD   = 'https://image.tmdb.org/t/p/w342'
 
 function cloudTitle(r: CloudResult) { return r.title ?? r.name ?? '' }
 
@@ -119,12 +103,10 @@ async function tmdbDiscover(
   } catch { return [] }
 }
 
-// Search TMDB for a specific title (Claude-generated), return best match with poster
 async function tmdbSearchOne(
   title: string, category: 'movies' | 'tv', yearFrom: number | null, yearTo: number | null, apiKey: string,
 ): Promise<CloudResult | null> {
   const type = category === 'movies' ? 'movie' : 'tv'
-  // Only use year hint for exact year (not range) — ranges are already in the title search
   const yearHint = (yearFrom !== null && yearTo !== null && yearFrom === yearTo) ? yearFrom : null
   const yearParam = yearHint
     ? category === 'movies' ? `&year=${yearHint}` : `&first_air_date_year=${yearHint}`
@@ -140,7 +122,6 @@ async function tmdbSearchOne(
   } catch { return null }
 }
 
-// Search TMDB for a user-typed query (freeform)
 async function tmdbSearch(
   query: string, category: 'movies' | 'tv', apiKey: string,
 ): Promise<CloudResult[]> {
@@ -153,7 +134,6 @@ async function tmdbSearch(
   } catch { return [] }
 }
 
-// Fetch Claude-generated titles then resolve each on TMDB
 async function claudeSuggest(
   listTitle: string, category: 'movies' | 'tv', yearFrom: number | null, yearTo: number | null,
   context: string, genre: string, apiKey: string,
@@ -168,7 +148,6 @@ async function claudeSuggest(
     const { titles } = await res.json()
     if (!Array.isArray(titles) || titles.length === 0) return []
 
-    // Resolve all titles on TMDB in parallel (batches of 8 to avoid rate limits)
     const results: CloudResult[] = []
     for (let i = 0; i < titles.length; i += 8) {
       const batch = titles.slice(i, i + 8)
@@ -181,24 +160,6 @@ async function claudeSuggest(
   } catch { return [] }
 }
 
-async function fetchDetail(id: number, category: 'movies' | 'tv', apiKey: string): Promise<TmdbDetail> {
-  const type = category === 'movies' ? 'movie' : 'tv'
-  try {
-    const res = await fetch(`${TMDB_BASE}/${type}/${id}?api_key=${apiKey}&append_to_response=credits`)
-    if (!res.ok) return { director: null, cast: [], genres: [], year: null }
-    const d = await res.json()
-    const director = category === 'movies'
-      ? ((d.credits?.crew ?? []) as { job: string; name: string }[]).find((c) => c.job === 'Director')?.name ?? null
-      : (d.created_by as { name: string }[] | undefined)?.[0]?.name ?? null
-    const cast = ((d.credits?.cast ?? []) as { name: string }[]).slice(0, 3).map((c) => c.name)
-    const genres = ((d.genres ?? []) as { name: string }[]).slice(0, 2).map((g) => g.name)
-    const year = category === 'movies'
-      ? ((d.release_date ?? '') as string).split('-')[0] || null
-      : ((d.first_air_date ?? '') as string).split('-')[0] || null
-    return { director, cast, genres, year }
-  } catch { return { director: null, cast: [], genres: [], year: null } }
-}
-
 // ─── Genre chips ──────────────────────────────────────────────────────────────
 
 const MOVIE_CHIPS = ['Action', 'Comedy', 'Drama', 'Horror', 'Sci-Fi', 'Romance', 'Thriller', 'Animation']
@@ -206,53 +167,16 @@ const TV_CHIPS    = ['Drama', 'Comedy', 'Reality', 'Crime', 'Sci-Fi', 'Animation
 
 // ─── PosterNode ───────────────────────────────────────────────────────────────
 
-interface PosterNodeProps {
+function PosterNode({ result, added, onToggle }: {
   result: CloudResult
   added: boolean
   onToggle: (r: CloudResult) => void
-  onShowPreview: (r: CloudResult, rect: DOMRect) => void
-  onScheduleHide: () => void
-  onCancelHide: () => void
-}
-
-function PosterNode({ result, added, onToggle, onShowPreview, onScheduleHide, onCancelHide }: PosterNodeProps) {
-  const nodeRef = useRef<HTMLDivElement>(null)
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const longPressFired = useRef(false)
+}) {
   const t = cloudTitle(result)
-
-  function handlePointerDown() {
-    longPressFired.current = false
-    longPressTimer.current = setTimeout(() => {
-      longPressFired.current = true
-      if (nodeRef.current) onShowPreview(result, nodeRef.current.getBoundingClientRect())
-    }, 400)
-  }
-
-  function handlePointerUp() {
-    if (longPressTimer.current) clearTimeout(longPressTimer.current)
-  }
-
-  function handleClick() {
-    if (longPressFired.current) { longPressFired.current = false; return }
-    onToggle(result)
-  }
-
-  function handleMouseEnter() {
-    onCancelHide()
-    if (nodeRef.current) onShowPreview(result, nodeRef.current.getBoundingClientRect())
-  }
-
   return (
     <div
-      ref={nodeRef}
       title={t}
-      onClick={handleClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={onScheduleHide}
-      onPointerDown={handlePointerDown}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
+      onClick={() => onToggle(result)}
       style={{ width: 64, height: 94, position: 'relative', borderRadius: 8, overflow: 'hidden', cursor: 'pointer', flexShrink: 0 }}
     >
       {result.poster_path && (
@@ -275,7 +199,7 @@ function PosterNode({ result, added, onToggle, onShowPreview, onScheduleHide, on
         <span style={{ fontSize: 22, fontWeight: 700, color: '#0a0a0f' }}>✓</span>
       </div>
 
-      {/* Hover add overlay */}
+      {/* Hover add overlay (desktop only) */}
       {!added && (
         <div
           style={{
@@ -291,73 +215,6 @@ function PosterNode({ result, added, onToggle, onShowPreview, onScheduleHide, on
           <span style={{ fontSize: 22, fontWeight: 700, color: 'white', pointerEvents: 'none' }}>+</span>
         </div>
       )}
-    </div>
-  )
-}
-
-// ─── PreviewCard ──────────────────────────────────────────────────────────────
-
-function PreviewCard({
-  preview, added, onAdd, onClose, onCancelHide,
-}: {
-  preview: PreviewState
-  added: boolean
-  onAdd: () => void
-  onClose: () => void
-  onCancelHide: () => void
-}) {
-  const { result, rect, detail, loadingDetail } = preview
-  const t = cloudTitle(result)
-  const CARD_W = 200
-  const CARD_H = 310
-  const vw = typeof window !== 'undefined' ? window.innerWidth : 800
-  const vh = typeof window !== 'undefined' ? window.innerHeight : 600
-
-  let left = rect.right + 10
-  if (left + CARD_W > vw - 8) left = rect.left - CARD_W - 10
-  if (left < 8) left = 8
-
-  let top = rect.top - 10
-  if (top + CARD_H > vh - 8) top = vh - CARD_H - 8
-  if (top < 8) top = 8
-
-  return (
-    <div
-      onMouseEnter={onCancelHide}
-      onMouseLeave={onClose}
-      style={{
-        position: 'fixed', left, top, width: CARD_W,
-        background: 'var(--surface)', border: '1px solid var(--border)',
-        borderRadius: 12, padding: 12, boxShadow: '0 8px 40px rgba(0,0,0,0.7)', zIndex: 9999,
-      }}
-    >
-      {result.poster_path && (
-        <img src={`${TMDB_MD}${result.poster_path}`} alt={t} style={{ width: '100%', borderRadius: 8, marginBottom: 10, display: 'block' }} />
-      )}
-      <p style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.35, marginBottom: 6, color: 'var(--foreground)' }}>{t}</p>
-      {loadingDetail ? (
-        <p style={{ fontSize: 11, color: 'var(--muted)' }}>Loading…</p>
-      ) : detail && (
-        <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.6, marginBottom: 2 }}>
-          {detail.year && <p>{detail.year}</p>}
-          {detail.genres.length > 0 && <p>{detail.genres.join(' · ')}</p>}
-          {detail.director && <p style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Dir: {detail.director}</p>}
-          {detail.cast.length > 0 && <p style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detail.cast.slice(0, 2).join(', ')}</p>}
-        </div>
-      )}
-      <button
-        onClick={onAdd}
-        style={{
-          marginTop: 8, width: '100%', padding: '6px 0',
-          background: added ? 'var(--surface-2)' : 'var(--accent)',
-          color: added ? 'var(--muted)' : '#0a0a0f',
-          borderRadius: 8, fontSize: 12, fontWeight: 600,
-          cursor: added ? 'default' : 'pointer', border: '1px solid var(--border)',
-          transition: 'background 0.2s',
-        }}
-      >
-        {added ? '✓ Added' : '+ Add to list'}
-      </button>
     </div>
   )
 }
@@ -387,15 +244,9 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
   const [searchResults, setSearchResults] = useState<CloudResult[]>([])
   const [searching, setSearching]         = useState(false)
 
-  const [preview, setPreview]             = useState<PreviewState | null>(null)
-  const [mounted, setMounted]             = useState(false)
-
-  const hideTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sentinelRef    = useRef<HTMLDivElement>(null)
   const gridRef        = useRef<HTMLDivElement>(null)
-
-  useEffect(() => { setMounted(true) }, [])
 
   const loadSuggestions = useCallback(async () => {
     if (!apiKey) { setLoading(false); return }
@@ -403,16 +254,13 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
     setLoading(true)
     setSuggestions([])
 
-    // Auto-detect genre from list title + description
     const effectiveGenre = detectGenreFromText(listTitle + ' ' + description)
     const genreId = effectiveGenre ? genreMap[effectiveGenre] : undefined
 
-    // 1. Fast TMDB discover (genre-filtered when detectable)
     const tmdbResults = await tmdbDiscover(category, yearFrom, yearTo, apiKey, genreId)
     setSuggestions(tmdbResults)
     setLoading(false)
 
-    // 2. Claude suggestions — prepend when ready
     setClaudeLoading(true)
     const claudeResults = await claudeSuggest(listTitle, category, yearFrom, yearTo, description, effectiveGenre, apiKey)
     setClaudeLoading(false)
@@ -457,23 +305,6 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
     obs.observe(sentinel)
     return () => obs.disconnect()
   }, [loadMore])
-
-  // ── Preview ─────────────────────────────────────────────────────────────────
-
-  function scheduleHide() {
-    hideTimerRef.current = setTimeout(() => setPreview(null), 150)
-  }
-
-  function cancelHide() {
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
-  }
-
-  async function showPreview(result: CloudResult, rect: DOMRect) {
-    cancelHide()
-    setPreview({ result, rect, detail: null, loadingDetail: true })
-    const detail = await fetchDetail(result.id, category, apiKey)
-    setPreview((prev) => prev?.result.id === result.id ? { ...prev, detail, loadingDetail: false } : prev)
-  }
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -550,9 +381,6 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
                 result={result}
                 added={addedIds.has(result.id)}
                 onToggle={onToggle}
-                onShowPreview={showPreview}
-                onScheduleHide={scheduleHide}
-                onCancelHide={cancelHide}
               />
             ))}
 
@@ -562,18 +390,6 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
           </div>
         )}
       </div>
-
-      {/* ── Preview card ── */}
-      {mounted && preview && ReactDOM.createPortal(
-        <PreviewCard
-          preview={preview}
-          added={addedIds.has(preview.result.id)}
-          onAdd={() => { onToggle(preview.result); setPreview(null) }}
-          onClose={scheduleHide}
-          onCancelHide={cancelHide}
-        />,
-        document.body,
-      )}
     </div>
   )
 }
