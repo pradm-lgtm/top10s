@@ -31,6 +31,7 @@ export function RichTextEditor({
   const editor = useEditor({
     extensions: [StarterKit],
     content: initialContent,
+    immediatelyRender: false,
     autofocus: autoFocus,
     editorProps: {
       attributes: {
