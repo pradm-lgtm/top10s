@@ -1713,7 +1713,7 @@ function TieredEntries({
                 return (
                   <div key={entry.id} className="flex flex-col items-center gap-1" style={{ width: '56px', position: 'relative' }}>
                     {(isOwner || isAdmin) && onDelete && (
-                      <button onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }} className="absolute -top-1.5 -right-1.5 z-10 w-4 h-4 rounded-full flex items-center justify-center text-[9px]" style={{ background: '#ef4444', color: '#fff', border: '1px solid rgba(0,0,0,0.3)' }}>✕</button>
+                      <button onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }} className="absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: '#ef4444', color: '#fff', border: '1px solid rgba(0,0,0,0.3)' }}>✕</button>
                     )}
                     {imgEl}
                     <span className="text-center leading-tight" style={{ color: 'var(--muted)', fontSize: '0.65rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden', width: '100%' }}>{entry.title}</span>
@@ -1731,73 +1731,8 @@ function TieredEntries({
         )}
         {tierData.map((tier, i) => {
           const tierEntries = entriesByTier.get(tier.id) ?? []
-          if (tierEntries.length === 0) return null
           const color = tier.color ?? TIER_COLORS[i] ?? accentColor
           const label = tier.label
-          const isTop = i === 0
-
-          if (isTop) {
-            const hero = tierEntries[0]
-            const heroPoster = hero.image_url ?? posters[hero.id]?.poster
-            const heroImdb = posters[hero.id]?.imdbUrl
-            return (
-              <div
-                key={tier.id}
-                className={`rounded-xl overflow-hidden flex items-stretch${!isAdmin ? ' cursor-pointer' : ''}`}
-                style={{
-                  border: `1px solid ${selectedEntryId === hero.id ? color : `${color}55`}`,
-                  background: `linear-gradient(135deg, ${color}18 0%, ${color}06 60%, transparent 100%)`,
-                  boxShadow: selectedEntryId === hero.id ? `0 0 32px ${color}40` : `0 0 32px ${color}20`,
-                  minHeight: '110px',
-                }}
-                onClick={(e) => {
-                  if (isAdmin) return
-                  if ((e.target as HTMLElement).closest('a')) return
-                  onEntryClick?.(hero)
-                }}
-              >
-                <div
-                  className="flex flex-col items-center justify-center px-4 shrink-0 text-center w-24"
-                  style={{ borderRight: `2px solid ${color}40` }}
-                >
-                  <span className="text-2xl font-black" style={{ color }}>★</span>
-                  <span className="text-[9px] leading-tight mt-1 font-semibold uppercase tracking-widest" style={{ color }}>
-                    {label}
-                  </span>
-                </div>
-                <div className="flex-1 flex items-center gap-5 px-5 py-4">
-                  <div className="min-w-0">
-                    <p className="text-[10px] uppercase tracking-[0.2em] font-semibold mb-1" style={{ color: `${color}99` }}>
-                      #1 Pick
-                    </p>
-                    <h3 className="text-xl font-bold leading-snug flex items-center gap-1.5" style={{ color }}>
-                      {heroImdb ? (
-                        <a href={heroImdb} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>
-                          {hero.title}
-                        </a>
-                      ) : hero.title}
-                    </h3>
-                  </div>
-                  {heroPoster && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={heroPoster}
-                      alt={hero.title}
-                      className="shrink-0 rounded-lg object-cover ml-auto"
-                      style={{ width: '56px', height: '84px', boxShadow: `0 4px 20px ${color}50`, border: `2px solid ${color}60` }}
-                    />
-                  )}
-                  {(isOwner || isAdmin) && onDelete && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onDelete(hero.id) }}
-                      className="shrink-0 self-start w-5 h-5 flex items-center justify-center rounded-full text-[9px]"
-                      style={{ background: '#ef4444', color: '#fff', border: '1px solid rgba(0,0,0,0.3)' }}
-                    >✕</button>
-                  )}
-                </div>
-              </div>
-            )
-          }
 
           return (
             <div
@@ -1812,6 +1747,9 @@ function TieredEntries({
                 <span className="text-sm font-bold" style={{ color }}>{label}</span>
               </div>
               <div className="flex flex-wrap gap-2 p-3 items-start" style={{ background: `${color}05` }}>
+                {tierEntries.length === 0 && (
+                  <span className="text-xs italic self-center" style={{ color: 'var(--muted)' }}>Empty</span>
+                )}
                 {tierEntries.map((entry) => {
                   const poster = entry.image_url ?? posters[entry.id]?.poster
                   const imdbUrl = posters[entry.id]?.imdbUrl
@@ -2044,7 +1982,7 @@ function TieredEntries({
                     }}
                   >
                     {(isOwner || isAdmin) && onDelete && (
-                      <button onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }} className="absolute -top-1.5 -right-1.5 z-10 w-4 h-4 rounded-full flex items-center justify-center text-[9px]" style={{ background: '#ef4444', color: '#fff', border: '1px solid rgba(0,0,0,0.3)' }}>✕</button>
+                      <button onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }} className="absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: '#ef4444', color: '#fff', border: '1px solid rgba(0,0,0,0.3)' }}>✕</button>
                     )}
                     {imdbUrl ? (
                       <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="w-full">
