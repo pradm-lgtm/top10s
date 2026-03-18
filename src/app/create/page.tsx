@@ -1189,18 +1189,45 @@ export default function CreatePage() {
         }
       })
 
-      await supabase.from('list_entries').insert(entriesToInsert)
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      for (const entryData of entriesToInsert) {
+        const res = await fetch(`/api/lists/${list.id}/entries`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(entryData),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          setPublishError(`Failed to add entry "${entryData.title}": ${err.error ?? 'unknown error'}`)
+          setPublishing(false)
+          return
+        }
+      }
     } else if (listFormat === 'ranked' && entries.length > 0) {
-      await supabase.from('list_entries').insert(
-        entries.map((e, i) => ({
-          list_id: list.id,
-          rank: i + 1,
-          tier_id: null,
-          title: e.title,
-          notes: e.notes.trim() || null,
-          image_url: e.posterUrl || null,
-        }))
-      )
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      const rankedEntries = entries.map((e, i) => ({
+        list_id: list.id,
+        rank: i + 1,
+        tier_id: null,
+        title: e.title,
+        notes: e.notes.trim() || null,
+        image_url: e.posterUrl || null,
+      }))
+      for (const entryData of rankedEntries) {
+        const res = await fetch(`/api/lists/${list.id}/entries`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(entryData),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          setPublishError(`Failed to add entry "${entryData.title}": ${err.error ?? 'unknown error'}`)
+          setPublishing(false)
+          return
+        }
+      }
     }
 
     router.push(`/list/${list.id}`)

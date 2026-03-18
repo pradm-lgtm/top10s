@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, use, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -11,6 +11,24 @@ import { EditableText } from '@/components/EditableText'
 import { EntryDrawer } from '@/components/EntryDrawer'
 import type { PosterInfo } from '@/lib/tmdb'
 import type { List, ListEntry, Tier, Comment, ReactionCount, HonorableMention, AlsoWatched } from '@/types'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  useDroppable,
+  useDraggable,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 const EMOJIS = ['🔥', '❤️', '😮', '😂', '👏']
 
@@ -34,12 +52,14 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [newEntryTitle, setNewEntryTitle] = useState('')
   const [newEntryRank, setNewEntryRank] = useState('')
   const [newEntryNotes, setNewEntryNotes] = useState('')
+  const [newEntryPosterUrl, setNewEntryPosterUrl] = useState<string | null>(null)
   const [savingEntry, setSavingEntry] = useState(false)
   // Tiered add form
   const [addingTieredEntry, setAddingTieredEntry] = useState(false)
   const [newTieredTitle, setNewTieredTitle] = useState('')
   const [newTieredTierId, setNewTieredTierId] = useState<string | null>(null)
   const [newTieredNotes, setNewTieredNotes] = useState('')
+  const [newTieredPosterUrl, setNewTieredPosterUrl] = useState<string | null>(null)
   const [savingTieredEntry, setSavingTieredEntry] = useState(false)
   const [commentNameInput, setCommentNameInput] = useState('')
   const [pendingListReaction, setPendingListReaction] = useState<string | null>(null)
@@ -54,7 +74,13 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [menuOpen, setMenuOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [editMode, setEditMode] = useState(false)
+  const [saving, setSaving] = useState(false)
   const router = useRouter()
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } })
+  )
 
   useEffect(() => {
     const name = localStorage.getItem('visitor_name')
@@ -189,27 +215,35 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
 
   async function addEntry(e: React.FormEvent) {
     e.preventDefault()
-    if (!newEntryTitle.trim() || !newEntryRank) return
+    if (!newEntryTitle.trim()) return
     setSavingEntry(true)
-    const res = await fetch('/api/admin/entries', {
+    const rank = newEntryRank ? Number(newEntryRank) : (Math.max(0, ...entries.map(e => e.rank ?? 0)) + 1)
+    const session = await getSession()
+    const res = await fetch(`/api/lists/${id}/entries`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
       body: JSON.stringify({
-        list_id: id,
-        rank: Number(newEntryRank),
+        rank,
         title: newEntryTitle.trim(),
         notes: newEntryNotes.trim() || null,
+        image_url: newEntryPosterUrl || null,
       }),
     })
     if (res.ok) {
       const entry = await res.json()
-      setEntries((prev) =>
-        [...prev, entry].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
-      )
+      setEntries((prev) => [...prev, entry].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0)))
+      // Immediately fetch poster for the new entry
+      if (list) {
+        fetchPosters([entry], list.category, list.year).then(p => setPosters(prev => ({ ...prev, ...p })))
+      }
       setNewEntryTitle('')
       setNewEntryRank('')
       setNewEntryNotes('')
+      setNewEntryPosterUrl(null)
       setAddingEntry(false)
+    } else {
+      const err = await res.json().catch(() => ({}))
+      alert(err.error ?? 'Failed to add entry')
     }
     setSavingEntry(false)
   }
@@ -222,14 +256,26 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     const res = await fetch(`/api/lists/${id}/entries`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
-      body: JSON.stringify({ title: newTieredTitle.trim(), tier_id: newTieredTierId, notes: newTieredNotes.trim() || null }),
+      body: JSON.stringify({
+        title: newTieredTitle.trim(),
+        notes: newTieredNotes.trim() || null,
+        image_url: newTieredPosterUrl || null,
+        ...(newTieredTierId && isUUID(newTieredTierId)
+          ? { tier_id: newTieredTierId }
+          : { tier: newTieredTierId }),
+      }),
     })
     if (res.ok) {
       const entry = await res.json()
       setEntries((prev) => [...prev, entry])
+      if (list) fetchPosters([entry], list.category, list.year).then(p => setPosters(prev => ({ ...prev, ...p })))
       setNewTieredTitle('')
       setNewTieredNotes('')
+      setNewTieredPosterUrl(null)
       // keep tier selected for rapid adding
+    } else {
+      const err = await res.json().catch(() => ({}))
+      alert(`Failed to add entry: ${err.error ?? res.status}`)
     }
     setSavingTieredEntry(false)
   }
@@ -264,6 +310,141 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       })
     }
     setEntries((prev) => prev.filter((e) => e.id !== entryId))
+  }
+
+  async function getSession() {
+    const { data: { session } } = await supabase.auth.getSession()
+    return session
+  }
+
+  async function handleRankedDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIdx = entries.findIndex(e => e.id === active.id)
+    const newIdx = entries.findIndex(e => e.id === over.id)
+    if (oldIdx === -1 || newIdx === -1) return
+    const reordered = arrayMove(entries, oldIdx, newIdx).map((e, i) => ({ ...e, rank: i + 1 }))
+    setEntries(reordered)
+    setSaving(true)
+    const session = await getSession()
+    await Promise.all(
+      reordered
+        .filter((e, i) => e.rank !== entries[i]?.rank)
+        .map(e =>
+          fetch(`/api/lists/${id}/entries/${e.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+            body: JSON.stringify({ rank: e.rank }),
+          })
+        )
+    )
+    setSaving(false)
+  }
+
+  async function moveEntryToTier(entryId: string, tierId: string) {
+    setSaving(true)
+    const session = await getSession()
+    await fetch(`/api/lists/${id}/entries/${entryId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+      body: JSON.stringify({ tier_id: tierId }),
+    })
+    setEntries(prev => prev.map(e => e.id === entryId ? { ...e, tier_id: tierId } : e))
+    setSaving(false)
+  }
+
+  async function addTier(label: string, color: string) {
+    setSaving(true)
+    const session = await getSession()
+    const res = await fetch(`/api/lists/${id}/tiers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+      body: JSON.stringify({ label, color, position: tiers.length }),
+    })
+    if (res.ok) {
+      const tier = await res.json()
+      setTiers(prev => [...prev, tier])
+    }
+    setSaving(false)
+  }
+
+  async function updateTier(tierId: string, fields: Partial<Pick<Tier, 'label' | 'color' | 'position'>>) {
+    setSaving(true)
+    const session = await getSession()
+    await fetch(`/api/lists/${id}/tiers/${tierId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+      body: JSON.stringify(fields),
+    })
+    setTiers(prev => prev.map(t => t.id === tierId ? { ...t, ...fields } : t))
+    setSaving(false)
+  }
+
+  async function deleteTier(tierId: string) {
+    const hasEntries = entries.some(e => e.tier_id === tierId)
+    if (hasEntries) { alert('Move all entries out of this tier before deleting it.'); return }
+    if (!confirm('Delete this tier?')) return
+    setSaving(true)
+    const session = await getSession()
+    const res = await fetch(`/api/lists/${id}/tiers/${tierId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${session?.access_token}` },
+    })
+    if (res.ok) setTiers(prev => prev.filter(t => t.id !== tierId))
+    setSaving(false)
+  }
+
+  function isUUID(s: string) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
+  }
+
+  async function handleTierItemDragEnd(tierId: string, draggedId: string, overId: string) {
+    // tierId may be a DB UUID (new format) or a legacy tier string
+    const tierEntries = isUUID(tierId)
+      ? entries.filter(e => e.tier_id === tierId).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
+      : entries.filter(e => (e.tier ?? '') === tierId).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
+    const oldIdx = tierEntries.findIndex(e => e.id === draggedId)
+    const newIdx = tierEntries.findIndex(e => e.id === overId)
+    if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return
+    const reordered = arrayMove(tierEntries, oldIdx, newIdx)
+    const ranks = tierEntries.map(e => e.rank ?? 0).sort((a, b) => a - b)
+    const updated = reordered.map((e, i) => ({ ...e, rank: ranks[i] }))
+    setEntries(prev => {
+      const ids = new Set(updated.map(e => e.id))
+      return [...prev.filter(e => !ids.has(e.id)), ...updated].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
+    })
+    setSaving(true)
+    const session = await getSession()
+    await Promise.all(updated.map(e =>
+      fetch(`/api/lists/${id}/entries/${e.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ rank: e.rank }),
+      })
+    ))
+    setSaving(false)
+  }
+
+  async function handleTiersDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIdx = tiers.findIndex(t => t.id === active.id)
+    const newIdx = tiers.findIndex(t => t.id === over.id)
+    if (oldIdx === -1 || newIdx === -1) return
+    const reordered = arrayMove(tiers, oldIdx, newIdx).map((t, i) => ({ ...t, position: i }))
+    setTiers(reordered)
+    setSaving(true)
+    const session = await getSession()
+    await Promise.all(
+      reordered.map(t =>
+        fetch(`/api/lists/${id}/tiers/${t.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+          body: JSON.stringify({ position: t.position }),
+        })
+      )
+    )
+    setSaving(false)
   }
 
   async function registerVisitor(name: string): Promise<string> {
@@ -345,6 +526,12 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
 
   const isMovie = list?.category === 'movies'
   const accentColor = isMovie ? 'var(--accent)' : '#a78bfa'
+
+  // For legacy lists (no DB tiers), derive virtual tiers from entry.tier strings
+  const effectiveTiers: Tier[] = tiers.length > 0
+    ? tiers
+    : [...new Map(entries.filter(e => e.tier).map(e => [e.tier!, e.tier!])).keys()]
+        .map((t, i) => ({ id: t, list_id: id, label: t, color: null, position: i, created_at: '' }))
 
   if (loading) {
     return (
@@ -452,7 +639,22 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       {editMode && (
         <div className="px-4 py-2.5 flex items-center gap-3 text-sm font-medium" style={{ background: 'rgba(232,197,71,0.12)', borderBottom: '1px solid rgba(232,197,71,0.25)', color: 'var(--accent)' }}>
           <span>✎ Editing</span>
-          <span className="text-xs font-normal" style={{ color: 'var(--muted)' }}>Tap title or description to rename · Use ✕ to remove entries · + Add Entry to add</span>
+          <span className="text-xs font-normal" style={{ color: 'var(--muted)' }}>Drag ⠿ to reorder · ✕ to remove</span>
+          <button
+            onClick={() => {
+              if (list?.list_format === 'ranked') {
+                setAddingEntry(true)
+              } else {
+                setAddingTieredEntry(true)
+              }
+              setTimeout(() => document.getElementById('add-entry-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
+            }}
+            className="text-xs font-semibold px-2 py-0.5 rounded"
+            style={{ background: 'rgba(232,197,71,0.25)', color: 'var(--accent)' }}
+          >
+            + Add Entry
+          </button>
+          {saving && <span className="ml-auto text-xs" style={{ color: 'var(--muted)' }}>Saving…</span>}
         </div>
       )}
 
@@ -499,154 +701,66 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         <section>
           {list.list_format === 'tiered' ? (
             <>
-              <TieredEntries entries={entries} tiers={tiers} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
-              {(isOwner || isAdmin) && editMode && <TieredAddForm tiers={tiers} title={newTieredTitle} setTitle={setNewTieredTitle} tierId={newTieredTierId} setTierId={setNewTieredTierId} notes={newTieredNotes} setNotes={setNewTieredNotes} open={addingTieredEntry} setOpen={setAddingTieredEntry} saving={savingTieredEntry} onSubmit={addTieredEntry} />}
+              {(isOwner || isAdmin) && editMode && (
+                <TierEditPanel
+                  tiers={tiers}
+                  sensors={sensors}
+                  onDragEnd={handleTiersDragEnd}
+                  onUpdate={updateTier}
+                  onDelete={deleteTier}
+                  onAdd={addTier}
+                  hasEntries={(tierId) => entries.some(e => e.tier_id === tierId)}
+                />
+              )}
+              <TieredEntries entries={entries} tiers={tiers} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} onMoveTier={editMode ? moveEntryToTier : undefined} editMode={editMode} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
+              {(isOwner || isAdmin) && editMode && <TieredAddForm tiers={effectiveTiers} category={list.category} title={newTieredTitle} setTitle={setNewTieredTitle} posterUrl={newTieredPosterUrl} setPosterUrl={setNewTieredPosterUrl} tierId={newTieredTierId} setTierId={setNewTieredTierId} notes={newTieredNotes} setNotes={setNewTieredNotes} open={addingTieredEntry} setOpen={setAddingTieredEntry} saving={savingTieredEntry} onSubmit={addTieredEntry} />}
             </>
           ) : list.list_format === 'tier-ranked' ? (
             <>
-              <TierRankedEntries entries={entries} tiers={tiers} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
-              {(isOwner || isAdmin) && editMode && <TieredAddForm tiers={tiers} title={newTieredTitle} setTitle={setNewTieredTitle} tierId={newTieredTierId} setTierId={setNewTieredTierId} notes={newTieredNotes} setNotes={setNewTieredNotes} open={addingTieredEntry} setOpen={setAddingTieredEntry} saving={savingTieredEntry} onSubmit={addTieredEntry} />}
+              {(isOwner || isAdmin) && editMode && (
+                <TierEditPanel
+                  tiers={tiers}
+                  sensors={sensors}
+                  onDragEnd={handleTiersDragEnd}
+                  onUpdate={updateTier}
+                  onDelete={deleteTier}
+                  onAdd={addTier}
+                  hasEntries={(tierId) => entries.some(e => e.tier_id === tierId)}
+                />
+              )}
+              <TierRankedEntries entries={entries} tiers={tiers} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} onMoveTier={editMode ? moveEntryToTier : undefined} onTierItemDragEnd={editMode ? handleTierItemDragEnd : undefined} editMode={editMode} sensors={sensors} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
+              {(isOwner || isAdmin) && editMode && <TieredAddForm tiers={effectiveTiers} category={list.category} title={newTieredTitle} setTitle={setNewTieredTitle} posterUrl={newTieredPosterUrl} setPosterUrl={setNewTieredPosterUrl} tierId={newTieredTierId} setTierId={setNewTieredTierId} notes={newTieredNotes} setNotes={setNewTieredNotes} open={addingTieredEntry} setOpen={setAddingTieredEntry} saving={savingTieredEntry} onSubmit={addTieredEntry} />}
             </>
           ) : (
           <>
-          <ol className="space-y-3">
-            {entries.map((entry, i) => (
-              <li key={entry.id}>
-                <div
-                  className={`rounded-xl p-4 sm:p-5 flex gap-4 items-start transition-colors${!isAdmin ? ' cursor-pointer' : ''}`}
-                  style={{
-                    background: selectedEntry?.id === entry.id ? `${accentColor}08` : 'var(--surface)',
-                    border: `1px solid ${selectedEntry?.id === entry.id ? `${accentColor}40` : 'var(--border)'}`,
-                    borderLeft: `3px solid ${i === 0 ? accentColor : selectedEntry?.id === entry.id ? `${accentColor}60` : 'var(--border)'}`,
-                  }}
-                  onClick={(e) => {
-                    if (isAdmin) return
-                    if ((e.target as HTMLElement).closest('a')) return
-                    handleEntryClick(entry)
-                  }}
-                >
-                  {/* Rank */}
-                  <div
-                    className="text-2xl font-bold w-9 shrink-0 tabular-nums leading-none mt-0.5"
-                    style={{
-                      color: i === 0 ? accentColor : i < 3 ? 'var(--foreground)' : 'var(--muted)',
-                    }}
-                  >
-                    <EditableText
-                      value={String(entry.rank ?? i + 1)}
-                      onSave={(v) => saveEntryField(entry.id, 'rank', Number(v))}
-                      className="text-2xl font-bold tabular-nums"
-                      style={{ color: i === 0 ? accentColor : i < 3 ? 'var(--foreground)' : 'var(--muted)' }}
-                    />
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0 flex items-center gap-3">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-base leading-snug">
-                        <EditableText
-                          value={entry.title}
-                          onSave={(v) => saveEntryField(entry.id, 'title', v)}
-                          className="font-semibold text-base"
-                          renderValue={(v) =>
-                            posters[entry.id]?.imdbUrl && !isAdmin ? (
-                              <a
-                                href={posters[entry.id].imdbUrl!}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="hover:underline"
-                                style={{ color: 'inherit' }}
-                              >
-                                {v}
-                              </a>
-                            ) : <>{v}</>
-                          }
-                        />
-                      </h3>
-                      <div className="text-sm mt-1 leading-relaxed" style={{ color: 'var(--muted)' }}>
-                        <EditableText
-                          value={entry.notes ?? ''}
-                          onSave={(v) => saveEntryField(entry.id, 'notes', v)}
-                          multiline
-                          placeholder="Add notes…"
-                          className="text-sm"
-                          style={{ color: 'var(--muted)' }}
-                        />
-                      </div>
-                      <div className="mt-1.5 flex items-center gap-2.5 flex-wrap">
-                        {commentCounts[entry.id] > 0 && (
-                          <span className="text-xs" style={{ color: 'var(--muted)' }}>
-                            💬 {commentCounts[entry.id]}
-                          </span>
-                        )}
-                        {['🔥', '❤️', '😮', '😂', '👏']
-                          .filter(e => (entryReactions[entry.id]?.[e] ?? 0) > 0)
-                          .map(e => (
-                            <span key={e} className="text-xs" style={{ color: 'var(--muted)' }}>
-                              {e} {entryReactions[entry.id][e]}
-                            </span>
-                          ))}
-                      </div>
-                    </div>
-                    {/* Thumbnail — right aligned */}
-                    {(() => {
-                      const info = posters[entry.id]
-                      const src = entry.image_url ?? info?.poster
-                      const imdbUrl = info?.imdbUrl
-                      const img = src ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={src}
-                          alt={entry.title}
-                          className="w-12 h-[4.5rem] object-cover rounded shrink-0"
-                          style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }}
-                        />
-                      ) : null
-                      if (src) return imdbUrl ? (
-                        <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                          {img}
-                        </a>
-                      ) : img
-                      const pending = !(entry.id in posters)
-                      return (
-                        <div
-                          className="w-12 h-[4.5rem] rounded shrink-0 flex items-end justify-center pb-1 overflow-hidden"
-                          style={{
-                            background: 'var(--surface-2)',
-                            border: '1px solid var(--border)',
-                            opacity: pending ? 0.4 : 1,
-                          }}
-                        >
-                          {!pending && (
-                            <span
-                              className="text-[9px] text-center leading-tight px-1"
-                              style={{ color: 'var(--muted)' }}
-                            >
-                              {entry.title}
-                            </span>
-                          )}
-                        </div>
-                      )
-                    })()}
-                    {(isAdmin || isOwner) && editMode && (
-                      <button
-                        onClick={() => deleteEntry(entry.id)}
-                        className="shrink-0 text-xs px-2 py-1 rounded opacity-60 hover:opacity-100 transition-opacity"
-                        style={{ border: '1px solid #f87171', color: '#f87171' }}
-                        title="Delete entry"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ol>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleRankedDragEnd}>
+            <SortableContext items={entries.map(e => e.id)} strategy={verticalListSortingStrategy}>
+              <ol className="space-y-3">
+                {entries.map((entry, i) => (
+                  <SortableRankedEntry
+                    key={entry.id}
+                    entry={entry}
+                    index={i}
+                    accentColor={accentColor}
+                    posters={posters}
+                    editMode={editMode}
+                    isAdmin={isAdmin}
+                    isOwner={isOwner}
+                    selectedEntryId={selectedEntry?.id ?? null}
+                    commentCounts={commentCounts}
+                    entryReactions={entryReactions}
+                    onEntryClick={handleEntryClick}
+                    onDelete={deleteEntry}
+                    saveEntryField={saveEntryField}
+                  />
+                ))}
+              </ol>
+            </SortableContext>
+          </DndContext>
 
           {/* Add Entry */}
           {(isAdmin || isOwner) && editMode && (
-            <div className="mt-4">
+            <div id="add-entry-form" className="mt-4">
               {addingEntry ? (
                 <form
                   onSubmit={addEntry}
@@ -656,21 +770,24 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                   <p className="text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--accent)' }}>
                     New Entry
                   </p>
-                  <div className="flex gap-3">
+                  <TmdbSearchInput
+                    category={list.category}
+                    value={newEntryTitle}
+                    onChange={(v) => { setNewEntryTitle(v); if (!v.trim()) setNewEntryPosterUrl(null) }}
+                    onSelect={(title, posterUrl) => { setNewEntryTitle(title); setNewEntryPosterUrl(posterUrl) }}
+                    placeholder={list.category === 'movies' ? 'Search movies…' : 'Search TV shows…'}
+                  />
+                  <div className="flex items-center gap-3">
+                    {newEntryPosterUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={newEntryPosterUrl} alt="" className="w-8 h-12 object-cover rounded shrink-0" />
+                    )}
                     <input
                       type="number"
                       value={newEntryRank}
                       onChange={(e) => setNewEntryRank(e.target.value)}
-                      placeholder="Rank"
+                      placeholder={`Rank (optional, default: ${Math.max(0, ...entries.map(e => e.rank ?? 0)) + 1})`}
                       min={1}
-                      className="w-20 px-3 py-2 rounded text-sm outline-none"
-                      style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
-                    />
-                    <input
-                      type="text"
-                      value={newEntryTitle}
-                      onChange={(e) => setNewEntryTitle(e.target.value)}
-                      placeholder="Title"
                       className="flex-1 px-3 py-2 rounded text-sm outline-none"
                       style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
                     />
@@ -686,7 +803,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                   <div className="flex gap-2">
                     <button
                       type="submit"
-                      disabled={savingEntry || !newEntryTitle.trim() || !newEntryRank}
+                      disabled={savingEntry || !newEntryTitle.trim()}
                       className="px-4 py-2 rounded text-sm font-semibold disabled:opacity-40"
                       style={{ background: 'var(--accent)', color: '#0a0a0f' }}
                     >
@@ -694,7 +811,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                     </button>
                     <button
                       type="button"
-                      onClick={() => setAddingEntry(false)}
+                      onClick={() => { setAddingEntry(false); setNewEntryTitle(''); setNewEntryPosterUrl(null) }}
                       className="px-4 py-2 rounded text-sm"
                       style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}
                     >
@@ -1031,14 +1148,417 @@ const TIER_COLORS = [
   '#6b7280', // grey
 ]
 
+const SWATCH_COLORS = ['#e8c547', '#34d399', '#60a5fa', '#a78bfa', '#fb923c', '#f87171', '#f472b6', '#38bdf8', '#4ade80', '#6b7280']
+
+// ─── SortableRankedEntry ──────────────────────────────────────────────────────
+
+function SortableRankedEntry({
+  entry, index, accentColor, posters, editMode, isAdmin, isOwner,
+  selectedEntryId, commentCounts, entryReactions, onEntryClick, onDelete, saveEntryField,
+}: {
+  entry: ListEntry
+  index: number
+  accentColor: string
+  posters: Record<string, PosterInfo>
+  editMode: boolean
+  isAdmin: boolean
+  isOwner: boolean
+  selectedEntryId: string | null
+  commentCounts: Record<string, number>
+  entryReactions: Record<string, Record<string, number>>
+  onEntryClick: (e: ListEntry) => void
+  onDelete: (id: string) => void
+  saveEntryField: (id: string, field: string, value: string | number) => Promise<void>
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: entry.id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+  const info = posters[entry.id]
+  const src = entry.image_url ?? info?.poster
+  const imdbUrl = info?.imdbUrl
+  const pending = !(entry.id in posters)
+
+  return (
+    <li ref={setNodeRef} style={style}>
+      <div
+        className={`rounded-xl p-4 sm:p-5 flex gap-4 items-start transition-colors${!isAdmin && !editMode ? ' cursor-pointer' : ''}`}
+        style={{
+          background: selectedEntryId === entry.id ? `${accentColor}08` : 'var(--surface)',
+          border: `1px solid ${selectedEntryId === entry.id ? `${accentColor}40` : 'var(--border)'}`,
+          borderLeft: `3px solid ${index === 0 ? accentColor : selectedEntryId === entry.id ? `${accentColor}60` : 'var(--border)'}`,
+        }}
+        onClick={(e) => {
+          if (isAdmin || editMode) return
+          if ((e.target as HTMLElement).closest('a')) return
+          onEntryClick(entry)
+        }}
+      >
+        {/* Drag handle */}
+        {editMode && (
+          <button
+            {...listeners}
+            {...attributes}
+            className="shrink-0 self-center text-lg cursor-grab active:cursor-grabbing select-none"
+            style={{ color: 'var(--muted)', touchAction: 'none' }}
+            aria-label="Drag to reorder"
+          >
+            ⠿
+          </button>
+        )}
+
+        {/* Rank */}
+        <div
+          className="text-2xl font-bold w-9 shrink-0 tabular-nums leading-none mt-0.5"
+          style={{ color: index === 0 ? accentColor : index < 3 ? 'var(--foreground)' : 'var(--muted)' }}
+        >
+          {entry.rank ?? index + 1}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0 flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-base leading-snug">
+              <EditableText
+                value={entry.title}
+                onSave={(v) => saveEntryField(entry.id, 'title', v)}
+                className="font-semibold text-base"
+                editable={isAdmin && !editMode}
+                renderValue={(v) =>
+                  imdbUrl && !isAdmin ? (
+                    <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>{v}</a>
+                  ) : <>{v}</>
+                }
+              />
+            </h3>
+            <div className="text-sm mt-1 leading-relaxed" style={{ color: 'var(--muted)' }}>
+              <EditableText
+                value={entry.notes ?? ''}
+                onSave={(v) => saveEntryField(entry.id, 'notes', v)}
+                multiline
+                placeholder="Add notes…"
+                className="text-sm"
+                style={{ color: 'var(--muted)' }}
+                editable={isAdmin && !editMode}
+              />
+            </div>
+            <div className="mt-1.5 flex items-center gap-2.5 flex-wrap">
+              {commentCounts[entry.id] > 0 && (
+                <span className="text-xs" style={{ color: 'var(--muted)' }}>💬 {commentCounts[entry.id]}</span>
+              )}
+              {['🔥', '❤️', '😮', '😂', '👏']
+                .filter(e => (entryReactions[entry.id]?.[e] ?? 0) > 0)
+                .map(e => (
+                  <span key={e} className="text-xs" style={{ color: 'var(--muted)' }}>
+                    {e} {entryReactions[entry.id][e]}
+                  </span>
+                ))}
+            </div>
+          </div>
+
+          {/* Thumbnail */}
+          {src ? (
+            imdbUrl ? (
+              <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={src} alt={entry.title} className="w-12 h-[4.5rem] object-cover rounded shrink-0" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
+              </a>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={src} alt={entry.title} className="w-12 h-[4.5rem] object-cover rounded shrink-0" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
+            )
+          ) : (
+            <div
+              className="w-12 h-[4.5rem] rounded shrink-0 flex items-end justify-center pb-1 overflow-hidden"
+              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', opacity: pending ? 0.4 : 1 }}
+            >
+              {!pending && <span className="text-[9px] text-center leading-tight px-1" style={{ color: 'var(--muted)' }}>{entry.title}</span>}
+            </div>
+          )}
+
+          {(isAdmin || isOwner) && editMode && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }}
+              className="shrink-0 text-xs px-2 py-1 rounded opacity-60 hover:opacity-100 transition-opacity"
+              style={{ border: '1px solid #f87171', color: '#f87171' }}
+              title="Delete entry"
+            >✕</button>
+          )}
+        </div>
+      </div>
+    </li>
+  )
+}
+
+// ─── TierEditPanel ────────────────────────────────────────────────────────────
+
+function SortableTierRow({
+  tier,
+  onUpdate,
+  onDelete,
+  hasEntries,
+}: {
+  tier: Tier
+  onUpdate: (id: string, fields: Partial<Pick<Tier, 'label' | 'color'>>) => void
+  onDelete: (id: string) => void
+  hasEntries: boolean
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tier.id })
+  const [editing, setEditing] = useState(false)
+  const [label, setLabel] = useState(tier.label)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { setLabel(tier.label) }, [tier.label])
+  useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
+
+  function commitLabel() {
+    setEditing(false)
+    if (label.trim() && label.trim() !== tier.label) onUpdate(tier.id, { label: label.trim() })
+    else setLabel(tier.label)
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, background: 'var(--surface-2)', border: '1px solid var(--border)' }}
+      className="flex items-center gap-2 rounded-lg px-2 py-2"
+    >
+      <button
+        {...listeners}
+        {...attributes}
+        className="text-base cursor-grab active:cursor-grabbing select-none shrink-0"
+        style={{ color: 'var(--muted)', touchAction: 'none' }}
+      >⠿</button>
+
+      {/* Color swatches */}
+      <div className="flex gap-1 shrink-0">
+        {SWATCH_COLORS.map(c => (
+          <button
+            key={c}
+            onClick={() => onUpdate(tier.id, { color: c })}
+            className="w-4 h-4 rounded-full transition-transform hover:scale-110"
+            style={{
+              background: c,
+              outline: tier.color === c ? `2px solid white` : 'none',
+              outlineOffset: '1px',
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Label */}
+      <div
+        className="flex-1 min-w-0 px-2 py-1 rounded cursor-text"
+        style={{ background: 'var(--surface)', border: `1px solid ${editing ? (tier.color ?? '#e8c547') : 'transparent'}` }}
+        onClick={() => setEditing(true)}
+      >
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={label}
+            onChange={e => setLabel(e.target.value)}
+            onBlur={commitLabel}
+            onKeyDown={e => { if (e.key === 'Enter') commitLabel(); if (e.key === 'Escape') { setEditing(false); setLabel(tier.label) } }}
+            className="w-full bg-transparent outline-none text-sm font-semibold"
+            style={{ color: tier.color ?? 'var(--foreground)' }}
+          />
+        ) : (
+          <span className="text-sm font-semibold" style={{ color: tier.color ?? 'var(--foreground)' }}>{tier.label}</span>
+        )}
+      </div>
+
+      <button
+        onClick={() => onDelete(tier.id)}
+        disabled={hasEntries}
+        className="shrink-0 w-6 h-6 flex items-center justify-center rounded text-xs transition-opacity disabled:opacity-20 hover:opacity-70"
+        style={{ color: '#f87171' }}
+        title={hasEntries ? 'Move entries out first' : 'Delete tier'}
+      >✕</button>
+    </div>
+  )
+}
+
+function TierEditPanel({
+  tiers,
+  sensors,
+  onDragEnd,
+  onUpdate,
+  onDelete,
+  onAdd,
+  hasEntries,
+}: {
+  tiers: Tier[]
+  sensors: ReturnType<typeof useSensors>
+  onDragEnd: (e: DragEndEvent) => void
+  onUpdate: (id: string, fields: Partial<Pick<Tier, 'label' | 'color' | 'position'>>) => void
+  onDelete: (id: string) => void
+  onAdd: (label: string, color: string) => void
+  hasEntries: (tierId: string) => boolean
+}) {
+  const [newLabel, setNewLabel] = useState('')
+  const [newColor, setNewColor] = useState(SWATCH_COLORS[0])
+  const [adding, setAdding] = useState(false)
+
+  return (
+    <div className="mb-6 rounded-xl p-4 space-y-3" style={{ background: 'var(--surface)', border: '1px solid rgba(232,197,71,0.25)' }}>
+      <p className="text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--accent)' }}>Manage Tiers</p>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <SortableContext items={tiers.map(t => t.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-2">
+            {tiers.map(tier => (
+              <SortableTierRow
+                key={tier.id}
+                tier={tier}
+                onUpdate={onUpdate}
+                onDelete={onDelete}
+                hasEntries={hasEntries(tier.id)}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
+
+      {adding ? (
+        <div className="flex items-center gap-2 pt-1">
+          <div className="flex gap-1 shrink-0">
+            {SWATCH_COLORS.map(c => (
+              <button
+                key={c}
+                onClick={() => setNewColor(c)}
+                className="w-4 h-4 rounded-full transition-transform hover:scale-110"
+                style={{ background: c, outline: newColor === c ? '2px solid white' : 'none', outlineOffset: '1px' }}
+              />
+            ))}
+          </div>
+          <input
+            autoFocus
+            value={newLabel}
+            onChange={e => setNewLabel(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && newLabel.trim()) { onAdd(newLabel.trim(), newColor); setNewLabel(''); setAdding(false) }
+              if (e.key === 'Escape') { setAdding(false); setNewLabel('') }
+            }}
+            placeholder="Tier name…"
+            className="flex-1 px-2 py-1 rounded text-sm outline-none"
+            style={{ background: 'var(--surface-2)', border: `1px solid ${newColor}`, color: 'var(--foreground)' }}
+          />
+          <button
+            onClick={() => { if (newLabel.trim()) { onAdd(newLabel.trim(), newColor); setNewLabel(''); setAdding(false) } }}
+            disabled={!newLabel.trim()}
+            className="px-3 py-1 rounded text-xs font-semibold disabled:opacity-40"
+            style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+          >Add</button>
+          <button onClick={() => { setAdding(false); setNewLabel('') }} className="px-2 py-1 rounded text-xs" style={{ color: 'var(--muted)' }}>✕</button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setAdding(true)}
+          className="text-xs font-medium transition-opacity hover:opacity-70"
+          style={{ color: 'var(--accent)' }}
+        >+ Add tier</button>
+      )}
+    </div>
+  )
+}
+
+// ─── TmdbSearchInput ──────────────────────────────────────────────────────────
+
+type TmdbResult = { id: number; title: string; year: string; posterUrl: string | null }
+
+function TmdbSearchInput({
+  category, value, onChange, onSelect, placeholder,
+}: {
+  category: string
+  value: string
+  onChange: (v: string) => void
+  onSelect: (title: string, posterUrl: string | null) => void
+  placeholder?: string
+}) {
+  const [results, setResults] = useState<TmdbResult[]>([])
+  const [open, setOpen] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? ''
+  const type = category === 'movies' ? 'movie' : 'tv'
+
+  useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    if (!value.trim() || !apiKey) { setResults([]); setOpen(false); return }
+    timerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(value.trim())}&api_key=${apiKey}&page=1`
+        )
+        if (!res.ok) return
+        const data = await res.json()
+        const items: TmdbResult[] = (data.results ?? []).slice(0, 6).map((r: { id: number; title?: string; name?: string; release_date?: string; first_air_date?: string; poster_path?: string }) => ({
+          id: r.id,
+          title: r.title ?? r.name ?? '',
+          year: (r.release_date ?? r.first_air_date ?? '').slice(0, 4),
+          posterUrl: r.poster_path ? `https://image.tmdb.org/t/p/w92${r.poster_path}` : null,
+        }))
+        setResults(items)
+        setOpen(items.length > 0)
+      } catch { /* ignore */ }
+    }, 350)
+    return () => { if (timerRef.current) clearTimeout(timerRef.current) }
+  }, [value, type, apiKey])
+
+  return (
+    <div className="relative flex-1">
+      <input
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(false) }}
+        onFocus={() => { if (results.length > 0) setOpen(true) }}
+        placeholder={placeholder ?? 'Search…'}
+        autoComplete="off"
+        className="w-full px-3 py-2 rounded text-sm outline-none"
+        style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+      />
+      {open && results.length > 0 && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute z-20 left-0 right-0 top-full mt-1 rounded-xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+            {results.map(r => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => { onSelect(r.title, r.posterUrl); setOpen(false); setResults([]) }}
+                className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors"
+                style={{ borderBottom: '1px solid var(--border)' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                {r.posterUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={r.posterUrl} alt="" className="w-8 h-12 object-cover rounded shrink-0" />
+                ) : (
+                  <div className="w-8 h-12 rounded shrink-0" style={{ background: 'var(--surface-2)' }} />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: 'var(--foreground)' }}>{r.title}</p>
+                  {r.year && <p className="text-xs" style={{ color: 'var(--muted)' }}>{r.year}</p>}
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── TieredAddForm ────────────────────────────────────────────────────────────
 
 function TieredAddForm({
-  tiers, title, setTitle, tierId, setTierId, notes, setNotes,
+  tiers, category, title, setTitle, posterUrl, setPosterUrl, tierId, setTierId, notes, setNotes,
   open, setOpen, saving, onSubmit,
 }: {
   tiers: Tier[]
+  category: string
   title: string; setTitle: (v: string) => void
+  posterUrl: string | null; setPosterUrl: (v: string | null) => void
   tierId: string | null; setTierId: (v: string | null) => void
   notes: string; setNotes: (v: string) => void
   open: boolean; setOpen: (v: boolean) => void
@@ -1046,21 +1566,37 @@ function TieredAddForm({
   onSubmit: (e: React.FormEvent) => void
 }) {
   const inputStyle = { background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }
+
+  // Auto-select first tier when form opens and no tier is selected
+  useEffect(() => {
+    if (open && !tierId && tiers.length > 0) {
+      setTierId(tiers[0].id)
+    }
+  }, [open, tiers])
+
   return (
-    <div className="mt-4">
+    <div id="add-entry-form" className="mt-4">
       {open ? (
         <form onSubmit={onSubmit} className="rounded-xl p-4 space-y-4" style={{ background: 'var(--surface)', border: '1px solid var(--accent)33' }}>
           <p className="text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--accent)' }}>Add Entry</p>
-          <input
-            autoFocus
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Title"
-            className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-            style={inputStyle}
-          />
+          <div className="flex items-center gap-3">
+            {posterUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={posterUrl} alt="" className="w-8 h-12 object-cover rounded shrink-0" />
+            )}
+            <TmdbSearchInput
+              category={category}
+              value={title}
+              onChange={(v) => { setTitle(v); if (!v.trim()) setPosterUrl(null) }}
+              onSelect={(t, p) => { setTitle(t); setPosterUrl(p) }}
+              placeholder={category === 'movies' ? 'Search movies…' : 'Search TV shows…'}
+            />
+          </div>
           <div className="space-y-1.5">
             <p className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Tier</p>
+            {tiers.length === 0 && (
+              <p className="text-xs italic" style={{ color: 'var(--muted)' }}>No tiers yet — use the Manage Tiers panel above to create tiers first.</p>
+            )}
             <div className="flex flex-wrap gap-2">
               {tiers.map((tier) => (
                 <button
@@ -1123,6 +1659,8 @@ function TieredEntries({
   isAdmin = false,
   isOwner = false,
   onDelete,
+  onMoveTier,
+  editMode = false,
   saveEntryField,
   onEntryClick,
   commentCounts = {},
@@ -1137,6 +1675,8 @@ function TieredEntries({
   isAdmin?: boolean
   isOwner?: boolean
   onDelete?: (id: string) => void
+  onMoveTier?: (entryId: string, tierId: string) => void
+  editMode?: boolean
   saveEntryField?: (id: string, field: string, value: string | number) => Promise<void>
   onEntryClick?: (entry: ListEntry) => void
   commentCounts?: Record<string, number>
@@ -1152,8 +1692,43 @@ function TieredEntries({
       entriesByTier.get(key)!.push(entry)
     }
 
+    const unassigned = entriesByTier.get('none') ?? []
+
     return (
       <div className="space-y-2">
+        {unassigned.length > 0 && (
+          <div className="rounded-xl overflow-hidden flex items-stretch" style={{ border: '1px solid var(--border)' }}>
+            <div className="flex flex-col items-center justify-center py-3 shrink-0 text-center w-24" style={{ background: 'var(--surface-2)', borderRight: '2px solid var(--border)' }}>
+              <span className="text-xs font-bold" style={{ color: 'var(--muted)' }}>Unassigned</span>
+            </div>
+            <div className="flex flex-wrap gap-2 p-3 items-start">
+              {unassigned.map((entry) => {
+                const poster = entry.image_url ?? posters[entry.id]?.poster
+                const imgEl = poster ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={poster} alt={entry.title} className="rounded object-cover w-full" style={{ height: '78px' }} />
+                ) : (
+                  <div className="rounded w-full" style={{ height: '78px', background: 'var(--surface-2)' }} />
+                )
+                return (
+                  <div key={entry.id} className="flex flex-col items-center gap-1" style={{ width: '56px', position: 'relative' }}>
+                    {(isOwner || isAdmin) && onDelete && (
+                      <button onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }} className="absolute -top-1.5 -right-1.5 z-10 w-4 h-4 rounded-full flex items-center justify-center text-[9px]" style={{ background: '#ef4444', color: '#fff', border: '1px solid rgba(0,0,0,0.3)' }}>✕</button>
+                    )}
+                    {imgEl}
+                    <span className="text-center leading-tight" style={{ color: 'var(--muted)', fontSize: '0.65rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden', width: '100%' }}>{entry.title}</span>
+                    {editMode && onMoveTier && (
+                      <select value={entry.tier_id ?? ''} onChange={e => { e.stopPropagation(); onMoveTier(entry.id, e.target.value) }} onClick={e => e.stopPropagation()} className="w-full rounded outline-none cursor-pointer" style={{ fontSize: '0.6rem', background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)', padding: '1px 2px' }}>
+                        <option value="">Move to tier…</option>
+                        {tierData.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                      </select>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
         {tierData.map((tier, i) => {
           const tierEntries = entriesByTier.get(tier.id) ?? []
           if (tierEntries.length === 0) return null
@@ -1212,6 +1787,13 @@ function TieredEntries({
                       style={{ width: '56px', height: '84px', boxShadow: `0 4px 20px ${color}50`, border: `2px solid ${color}60` }}
                     />
                   )}
+                  {(isOwner || isAdmin) && onDelete && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onDelete(hero.id) }}
+                      className="shrink-0 self-start w-5 h-5 flex items-center justify-center rounded-full text-[9px]"
+                      style={{ background: '#ef4444', color: '#fff', border: '1px solid rgba(0,0,0,0.3)' }}
+                    >✕</button>
+                  )}
                 </div>
               </div>
             )
@@ -1242,10 +1824,10 @@ function TieredEntries({
                   return (
                     <div
                       key={entry.id}
-                      className={`flex flex-col items-center gap-1${!isAdmin ? ' cursor-pointer' : ''}`}
+                      className={`flex flex-col items-center gap-1${!isAdmin && !editMode ? ' cursor-pointer' : ''}`}
                       style={{ width: '56px', position: 'relative', outline: selectedEntryId === entry.id ? `2px solid ${color}` : 'none', outlineOffset: '2px', borderRadius: '4px' }}
                       onClick={(e) => {
-                        if (isAdmin) return
+                        if (isAdmin || editMode) return
                         if ((e.target as HTMLElement).closest('a')) return
                         onEntryClick?.(entry)
                       }}
@@ -1264,15 +1846,26 @@ function TieredEntries({
                       >
                         {imdbUrl ? <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>{entry.title}</a> : entry.title}
                       </span>
-                      {(entry.notes || isAdmin) && (
+                      {editMode && onMoveTier && (
+                        <select
+                          value={entry.tier_id ?? ''}
+                          onChange={e => { e.stopPropagation(); onMoveTier(entry.id, e.target.value) }}
+                          onClick={e => e.stopPropagation()}
+                          className="w-full rounded outline-none cursor-pointer"
+                          style={{ fontSize: '0.6rem', background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)', padding: '1px 2px' }}
+                        >
+                          {tierData.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                        </select>
+                      )}
+                      {!editMode && (entry.notes || isAdmin) && (
                         <div className="w-full text-center" style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>
                           <EditableText value={entry.notes ?? ''} onSave={(v) => saveEntryField ? saveEntryField(entry.id, 'notes', v) : Promise.resolve()} multiline placeholder="Notes…" className="text-[0.6rem]" style={{ color: 'var(--muted)' }} />
                         </div>
                       )}
-                      {(commentCounts[entry.id] ?? 0) > 0 && (
+                      {!editMode && (commentCounts[entry.id] ?? 0) > 0 && (
                         <span style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>💬 {commentCounts[entry.id]}</span>
                       )}
-                      {['🔥', '❤️', '😮', '😂', '👏']
+                      {!editMode && ['🔥', '❤️', '😮', '😂', '👏']
                         .filter(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0)
                         .map(e => (
                           <span key={e} style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>{e}{entryReactions![entry.id][e]}</span>
@@ -1436,19 +2029,23 @@ function TieredEntries({
                 return (
                   <div
                     key={entry.id}
-                    className={`flex flex-col items-center gap-1${!isAdmin ? ' cursor-pointer' : ''}`}
+                    className={`flex flex-col items-center gap-1${!isAdmin && !editMode ? ' cursor-pointer' : ''}`}
                     style={{
                       width: '56px',
+                      position: 'relative',
                       outline: selectedEntryId === entry.id ? `2px solid ${color}` : 'none',
                       outlineOffset: '2px',
                       borderRadius: '4px',
                     }}
                     onClick={(e) => {
-                      if (isAdmin) return
+                      if (isAdmin || editMode) return
                       if ((e.target as HTMLElement).closest('a')) return
                       onEntryClick?.(entry)
                     }}
                   >
+                    {(isOwner || isAdmin) && onDelete && (
+                      <button onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }} className="absolute -top-1.5 -right-1.5 z-10 w-4 h-4 rounded-full flex items-center justify-center text-[9px]" style={{ background: '#ef4444', color: '#fff', border: '1px solid rgba(0,0,0,0.3)' }}>✕</button>
+                    )}
                     {imdbUrl ? (
                       <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="w-full">
                         {imgEl}
@@ -1473,7 +2070,7 @@ function TieredEntries({
                         </a>
                       ) : entry.title}
                     </span>
-                    {(entry.notes || isAdmin) && (
+                    {!editMode && (entry.notes || isAdmin) && (
                       <div className="w-full text-center" style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>
                         <EditableText
                           value={entry.notes ?? ''}
@@ -1511,6 +2108,86 @@ function TieredEntries({
   )
 }
 
+function SortableTierRankedEntry({
+  entry, color, editMode, isAdmin, isOwner, onDelete, onMoveTier, tiers,
+  posters, onEntryClick, commentCounts, entryReactions, selectedEntryId,
+}: {
+  entry: ListEntry; color: string; editMode: boolean; isAdmin: boolean; isOwner: boolean
+  onDelete?: (id: string) => void; onMoveTier?: (entryId: string, tierId: string) => void
+  tiers: Tier[]; posters: Record<string, PosterInfo>; onEntryClick?: (e: ListEntry) => void
+  commentCounts: Record<string, number>; entryReactions: Record<string, Record<string, number>>
+  selectedEntryId: string | null
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: entry.id })
+  const info = posters[entry.id]
+  const src = entry.image_url ?? info?.poster
+  const imdbUrl = info?.imdbUrl
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1,
+        background: selectedEntryId === entry.id ? `${color}10` : 'var(--surface)',
+        border: `1px solid ${selectedEntryId === entry.id ? `${color}40` : 'var(--border)'}`,
+      }}
+      className={`flex items-start gap-3 rounded-lg px-3 py-2 transition-colors${!isAdmin && !editMode ? ' cursor-pointer' : ''}`}
+      onClick={(e) => {
+        if (isAdmin || editMode) return
+        if ((e.target as HTMLElement).closest('a')) return
+        onEntryClick?.(entry)
+      }}
+    >
+      {editMode && (
+        <button {...listeners} {...attributes} className="shrink-0 self-center text-base cursor-grab active:cursor-grabbing select-none" style={{ color: 'var(--muted)', touchAction: 'none' }}>⠿</button>
+      )}
+      <span className="text-xs font-bold w-6 shrink-0 text-right tabular-nums mt-2.5" style={{ color: `${color}70` }}>{entry.rank}</span>
+      {src ? (
+        imdbUrl ? (
+          <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 mt-1">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
+          </a>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded shrink-0 mt-1" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
+        )
+      ) : (
+        <div className="w-8 h-12 rounded shrink-0 mt-1" style={{ background: `${color}15`, border: `1px solid ${color}20` }} />
+      )}
+      <div className="flex-1 min-w-0 py-1.5">
+        <span className="font-medium text-sm">
+          {imdbUrl && !isAdmin ? (
+            <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'var(--foreground)' }}>{entry.title}</a>
+          ) : entry.title}
+        </span>
+        {editMode && onMoveTier && (
+          <select
+            value={entry.tier_id ?? ''}
+            onChange={e => { e.stopPropagation(); onMoveTier(entry.id, e.target.value) }}
+            onClick={e => e.stopPropagation()}
+            className="mt-1 w-full text-xs rounded outline-none cursor-pointer"
+            style={{ background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)', padding: '2px 4px' }}
+          >
+            {tiers.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        )}
+        {!editMode && (
+          <div className="mt-1 flex items-center gap-2 flex-wrap">
+            {(commentCounts[entry.id] ?? 0) > 0 && <span className="text-xs" style={{ color: 'var(--muted)' }}>💬 {commentCounts[entry.id]}</span>}
+            {['🔥', '❤️', '😮', '😂', '👏'].filter(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0).map(e => (
+              <span key={e} className="text-xs" style={{ color: 'var(--muted)' }}>{e} {entryReactions![entry.id][e]}</span>
+            ))}
+          </div>
+        )}
+      </div>
+      {(isOwner || isAdmin) && onDelete && (
+        <button onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }} className="shrink-0 self-center w-6 h-6 flex items-center justify-center rounded-full text-xs opacity-40 hover:opacity-100 transition-opacity" style={{ border: '1px solid #f87171', color: '#f87171' }}>✕</button>
+      )}
+    </div>
+  )
+}
+
 function TierRankedEntries({
   entries,
   tiers: tierData,
@@ -1519,6 +2196,10 @@ function TierRankedEntries({
   isAdmin = false,
   isOwner = false,
   onDelete,
+  onMoveTier,
+  onTierItemDragEnd,
+  editMode = false,
+  sensors,
   saveEntryField,
   onEntryClick,
   commentCounts = {},
@@ -1532,12 +2213,26 @@ function TierRankedEntries({
   isAdmin?: boolean
   isOwner?: boolean
   onDelete?: (id: string) => void
+  onMoveTier?: (entryId: string, tierId: string) => void
+  onTierItemDragEnd?: (tierId: string, activeId: string, overId: string) => void
+  editMode?: boolean
+  sensors?: ReturnType<typeof useSensors>
   saveEntryField?: (id: string, field: string, value: string | number) => Promise<void>
   onEntryClick?: (entry: ListEntry) => void
   commentCounts?: Record<string, number>
   entryReactions?: Record<string, Record<string, number>>
   selectedEntryId?: string | null
 }) {
+  const fallbackSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+  const activeSensors = sensors ?? fallbackSensors
+
+  function handleDragEnd(event: DragEndEvent, tierId: string) {
+    const { active, over } = event
+    if (over && active.id !== over.id) {
+      onTierItemDragEnd?.(tierId, String(active.id), String(over.id))
+    }
+  }
+
   // New format: group by tier_id using tiers data
   if (tierData.length > 0) {
     const entriesByTier = new Map<string, ListEntry[]>()
@@ -1547,8 +2242,38 @@ function TierRankedEntries({
       entriesByTier.get(key)!.push(entry)
     }
 
+    const unassignedTR = entriesByTier.get('none') ?? []
+
     return (
       <div className="space-y-10">
+        {unassignedTR.length > 0 && (
+          <div>
+            <div className="rounded-xl overflow-hidden mb-4 px-6 py-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+              <p className="text-sm font-semibold" style={{ color: 'var(--muted)' }}>Unassigned entries</p>
+              {editMode && <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Use the tier dropdown on each entry to assign it</p>}
+            </div>
+            <div className="space-y-1.5">
+              {unassignedTR.map((entry) => (
+                <SortableTierRankedEntry
+                  key={entry.id}
+                  entry={entry}
+                  color="var(--muted)"
+                  editMode={editMode}
+                  isAdmin={isAdmin}
+                  isOwner={isOwner}
+                  onDelete={onDelete}
+                  onMoveTier={onMoveTier}
+                  tiers={tierData}
+                  posters={posters}
+                  onEntryClick={onEntryClick}
+                  commentCounts={commentCounts}
+                  entryReactions={entryReactions}
+                  selectedEntryId={selectedEntryId ?? null}
+                />
+              ))}
+            </div>
+          </div>
+        )}
         {tierData.map((tier, tierIndex) => {
           const tierEntries = entriesByTier.get(tier.id) ?? []
           if (tierEntries.length === 0) return null
@@ -1560,83 +2285,35 @@ function TierRankedEntries({
                 className="relative rounded-xl overflow-hidden mb-4 px-6 py-5"
                 style={{ background: `linear-gradient(135deg, ${color}22 0%, ${color}08 100%)`, border: `1px solid ${color}35` }}
               >
-                <span
-                  className="absolute right-5 top-1/2 -translate-y-1/2 font-black select-none pointer-events-none leading-none"
-                  style={{ fontSize: '5rem', color: `${color}12` }}
-                >
-                  {tierIndex + 1}
-                </span>
-                <p className="text-[10px] tracking-[0.3em] uppercase font-semibold mb-1" style={{ color: `${color}70` }}>
-                  Tier {tierIndex + 1}
-                </p>
+                <span className="absolute right-5 top-1/2 -translate-y-1/2 font-black select-none pointer-events-none leading-none" style={{ fontSize: '5rem', color: `${color}12` }}>{tierIndex + 1}</span>
+                <p className="text-[10px] tracking-[0.3em] uppercase font-semibold mb-1" style={{ color: `${color}70` }}>Tier {tierIndex + 1}</p>
                 <h3 className="text-lg font-bold" style={{ color }}>{tier.label}</h3>
               </div>
 
-              <div className="space-y-1.5">
-                {tierEntries.map((entry) => {
-                  const info = posters[entry.id]
-                  const src = entry.image_url ?? info?.poster
-                  const imdbUrl = info?.imdbUrl
-                  return (
-                    <div
-                      key={entry.id}
-                      className={`flex items-start gap-3 rounded-lg px-3 py-2 transition-colors${!isAdmin ? ' cursor-pointer' : ''}`}
-                      style={{ background: selectedEntryId === entry.id ? `${color}10` : 'var(--surface)', border: `1px solid ${selectedEntryId === entry.id ? `${color}40` : 'var(--border)'}` }}
-                      onClick={(e) => {
-                        if (isAdmin) return
-                        if ((e.target as HTMLElement).closest('a')) return
-                        onEntryClick?.(entry)
-                      }}
-                    >
-                      <span className="text-xs font-bold w-6 shrink-0 text-right tabular-nums mt-2.5" style={{ color: `${color}70` }}>
-                        {entry.rank}
-                      </span>
-                      {src ? (
-                        imdbUrl ? (
-                          <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 mt-1">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
-                          </a>
-                        ) : (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded shrink-0 mt-1" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
-                        )
-                      ) : (
-                        <div className="w-8 h-12 rounded shrink-0 mt-1" style={{ background: `${color}15`, border: `1px solid ${color}20` }} />
-                      )}
-                      <div className="flex-1 min-w-0 py-1.5">
-                        <span className="font-medium text-sm">
-                          {imdbUrl && !isAdmin ? (
-                            <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'var(--foreground)' }}>{entry.title}</a>
-                          ) : entry.title}
-                        </span>
-                        {(entry.notes || isAdmin) && (
-                          <div className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--muted)' }}>
-                            <EditableText value={entry.notes ?? ''} onSave={(v) => saveEntryField ? saveEntryField(entry.id, 'notes', v) : Promise.resolve()} multiline placeholder="Add notes…" className="text-xs" style={{ color: 'var(--muted)' }} />
-                          </div>
-                        )}
-                        <div className="mt-1 flex items-center gap-2 flex-wrap">
-                          {commentCounts[entry.id] > 0 && (
-                            <span className="text-xs" style={{ color: 'var(--muted)' }}>💬 {commentCounts[entry.id]}</span>
-                          )}
-                          {['🔥', '❤️', '😮', '😂', '👏']
-                            .filter(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0)
-                            .map(e => (
-                              <span key={e} className="text-xs" style={{ color: 'var(--muted)' }}>{e} {entryReactions![entry.id][e]}</span>
-                            ))}
-                        </div>
-                      </div>
-                      {(isOwner || isAdmin) && onDelete && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }}
-                          className="shrink-0 self-center w-6 h-6 flex items-center justify-center rounded-full text-xs opacity-40 hover:opacity-100 transition-opacity"
-                          style={{ border: '1px solid #f87171', color: '#f87171' }}
-                        >✕</button>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
+              <DndContext sensors={activeSensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDragEnd(e, tier.id)}>
+                <SortableContext items={tierEntries.map(e => e.id)} strategy={verticalListSortingStrategy}>
+                  <div className="space-y-1.5">
+                    {tierEntries.map((entry) => (
+                      <SortableTierRankedEntry
+                        key={entry.id}
+                        entry={entry}
+                        color={color}
+                        editMode={editMode}
+                        isAdmin={isAdmin}
+                        isOwner={isOwner}
+                        onDelete={onDelete}
+                        onMoveTier={onMoveTier}
+                        tiers={tierData}
+                        posters={posters}
+                        onEntryClick={onEntryClick}
+                        commentCounts={commentCounts}
+                        entryReactions={entryReactions}
+                        selectedEntryId={selectedEntryId ?? null}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
             </div>
           )
         })}
@@ -1689,90 +2366,31 @@ function TierRankedEntries({
               <h3 className="text-lg font-bold" style={{ color }}>{tier}</h3>
             </div>
 
-            {/* Entries */}
-            <div className="space-y-1.5">
-              {tierEntries.map((entry) => {
-                const info = posters[entry.id]
-                const src = entry.image_url ?? info?.poster
-                const imdbUrl = info?.imdbUrl
-
-                return (
-                  <div
-                    key={entry.id}
-                    className={`flex items-start gap-3 rounded-lg px-3 py-2 transition-colors${!isAdmin ? ' cursor-pointer' : ''}`}
-                    style={{
-                      background: selectedEntryId === entry.id ? `${color}10` : 'var(--surface)',
-                      border: `1px solid ${selectedEntryId === entry.id ? `${color}40` : 'var(--border)'}`,
-                    }}
-                    onClick={(e) => {
-                      if (isAdmin) return
-                      if ((e.target as HTMLElement).closest('a')) return
-                      onEntryClick?.(entry)
-                    }}
-                  >
-                    {/* Global rank */}
-                    <span
-                      className="text-xs font-bold w-6 shrink-0 text-right tabular-nums mt-2.5"
-                      style={{ color: `${color}70` }}
-                    >
-                      {entry.rank}
-                    </span>
-
-                    {/* Poster */}
-                    {src ? (
-                      imdbUrl ? (
-                        <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 mt-1">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
-                        </a>
-                      ) : (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded shrink-0 mt-1" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
-                      )
-                    ) : (
-                      <div className="w-8 h-12 rounded shrink-0 mt-1" style={{ background: `${color}15`, border: `1px solid ${color}20` }} />
-                    )}
-
-                    {/* Title + Notes */}
-                    <div className="flex-1 min-w-0 py-1.5">
-                      <span className="font-medium text-sm">
-                        {imdbUrl && !isAdmin ? (
-                          <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'var(--foreground)' }}>
-                            {entry.title}
-                          </a>
-                        ) : entry.title}
-                      </span>
-                      {(entry.notes || isAdmin) && (
-                        <div className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--muted)' }}>
-                          <EditableText
-                            value={entry.notes ?? ''}
-                            onSave={(v) => saveEntryField ? saveEntryField(entry.id, 'notes', v) : Promise.resolve()}
-                            multiline
-                            placeholder="Add notes…"
-                            className="text-xs"
-                            style={{ color: 'var(--muted)' }}
-                          />
-                        </div>
-                      )}
-                      <div className="mt-1 flex items-center gap-2 flex-wrap">
-                        {commentCounts[entry.id] > 0 && (
-                          <span className="text-xs" style={{ color: 'var(--muted)' }}>
-                            💬 {commentCounts[entry.id]}
-                          </span>
-                        )}
-                        {['🔥', '❤️', '😮', '😂', '👏']
-                          .filter(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0)
-                          .map(e => (
-                            <span key={e} className="text-xs" style={{ color: 'var(--muted)' }}>
-                              {e} {entryReactions![entry.id][e]}
-                            </span>
-                          ))}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+            {/* Entries — legacy path now uses same sortable component as new format */}
+            <DndContext sensors={activeSensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDragEnd(e, tier)}>
+              <SortableContext items={tierEntries.map(e => e.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-1.5">
+                  {tierEntries.map((entry) => (
+                    <SortableTierRankedEntry
+                      key={entry.id}
+                      entry={entry}
+                      color={color}
+                      editMode={editMode}
+                      isAdmin={isAdmin}
+                      isOwner={isOwner}
+                      onDelete={onDelete}
+                      onMoveTier={undefined}
+                      tiers={[]}
+                      posters={posters}
+                      onEntryClick={onEntryClick}
+                      commentCounts={commentCounts}
+                      entryReactions={entryReactions}
+                      selectedEntryId={selectedEntryId ?? null}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
           </div>
         )
       })}

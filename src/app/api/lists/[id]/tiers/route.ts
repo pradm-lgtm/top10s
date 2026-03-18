@@ -25,24 +25,15 @@ export async function POST(
   }
 
   const body = await req.json()
-  const { title, tier_id, tier, notes, rank, image_url } = body
+  const { label, color, position } = body
+  if (!label?.trim()) return NextResponse.json({ error: 'Label required' }, { status: 400 })
 
-  if (!title?.trim()) return NextResponse.json({ error: 'Title required' }, { status: 400 })
-
-  const { data: entry, error } = await supabase
-    .from('list_entries')
-    .insert({
-      list_id: id,
-      title: title.trim(),
-      tier_id: tier_id ?? null,
-      tier: tier ?? null,
-      rank: rank ?? 0,
-      notes: notes?.trim() || null,
-      image_url: image_url ?? null,
-    })
+  const { data: tier, error } = await supabase
+    .from('tiers')
+    .insert({ list_id: id, label: label.trim(), color: color ?? null, position: position ?? 0 })
     .select()
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(entry)
+  return NextResponse.json(tier)
 }

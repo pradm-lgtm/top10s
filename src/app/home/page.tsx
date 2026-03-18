@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { fetchPoster } from '@/lib/tmdb'
 import { AppHeader } from '@/components/AppHeader'
 import { useAuth } from '@/context/auth'
 import type { List, ListEntry } from '@/types'
@@ -36,42 +37,69 @@ function OwnerChip({ owner, onClick }: { owner: OwnerInfo; onClick?: (e: React.M
 
 // ── Poster stack ────────────────────────────────────────────────────────────
 
-function PosterStack({ entries, size = 'md' }: { entries: ListEntry[]; size?: 'sm' | 'md' }) {
-  const withPosters = entries.filter((e) => e.image_url).slice(0, 3)
-  if (withPosters.length === 0) return null
+function PosterStack({
+  entries,
+  size = 'md',
+  posters = {},
+}: {
+  entries: ListEntry[]
+  size?: 'sm' | 'md'
+  posters?: Record<string, string | null>
+}) {
+  const top3 = entries.slice(0, 3)
+  if (top3.length === 0) return null
 
   const w = size === 'sm' ? 36 : 48
   const h = size === 'sm' ? 54 : 72
   const overlap = size === 'sm' ? 10 : 14
-  const totalW = w + (withPosters.length - 1) * (w - overlap)
+  const totalW = w + (top3.length - 1) * (w - overlap)
 
   return (
     <div style={{ position: 'relative', width: totalW, height: h, flexShrink: 0 }}>
-      {withPosters.map((entry, i) => (
-        <img
-          key={entry.id}
-          src={entry.image_url!}
-          alt={entry.title}
-          style={{
-            position: 'absolute',
-            left: i * (w - overlap),
-            width: w,
-            height: h,
-            objectFit: 'cover',
-            borderRadius: 6,
-            border: '2px solid var(--background)',
-            zIndex: i,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
-          }}
-        />
-      ))}
+      {top3.map((entry, i) => {
+        const url = entry.image_url ?? posters[entry.id] ?? null
+        return url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={entry.id}
+            src={url}
+            alt={entry.title}
+            style={{
+              position: 'absolute',
+              left: i * (w - overlap),
+              width: w,
+              height: h,
+              objectFit: 'cover',
+              borderRadius: 6,
+              border: '2px solid var(--background)',
+              zIndex: i,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+            }}
+          />
+        ) : (
+          <div
+            key={entry.id}
+            style={{
+              position: 'absolute',
+              left: i * (w - overlap),
+              width: w,
+              height: h,
+              borderRadius: 6,
+              border: '2px solid var(--background)',
+              zIndex: i,
+              background: 'var(--surface-2)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+            }}
+          />
+        )
+      })}
     </div>
   )
 }
 
 // ── All-time card ───────────────────────────────────────────────────────────
 
-function AllTimeCard({ list }: { list: RichList }) {
+function AllTimeCard({ list, posters }: { list: RichList; posters: Record<string, string | null> }) {
   const router = useRouter()
   const isMovie = list.category === 'movies'
   const accent = isMovie ? 'var(--accent)' : '#a78bfa'
@@ -80,7 +108,7 @@ function AllTimeCard({ list }: { list: RichList }) {
 
   return (
     <div
-      className="cursor-pointer rounded-xl p-4 flex flex-col gap-3 transition-all duration-200 hover:translate-y-[-2px]"
+      className="cursor-pointer rounded-xl p-4 flex flex-col gap-3 h-full transition-all duration-200 hover:translate-y-[-2px]"
       style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
       onClick={() => router.push(`/list/${list.id}`)}
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = hoverBorder; e.currentTarget.style.boxShadow = hoverShadow }}
@@ -91,11 +119,13 @@ function AllTimeCard({ list }: { list: RichList }) {
       <h3 className="font-semibold text-base leading-tight">{list.title}</h3>
 
       <div className="flex items-start gap-4">
-        <PosterStack entries={list.entries} size="md" />
+        <PosterStack entries={list.entries} size="md" posters={posters} />
         <ol className="flex-1 min-w-0 space-y-1.5 pt-1">
           {list.entries.slice(0, 3).map((entry) => (
             <li key={entry.id} className="flex items-center gap-2 text-xs min-w-0">
-              <span className="font-bold w-4 shrink-0 text-right" style={{ color: accent }}>{entry.rank}</span>
+              {entry.rank != null && entry.rank > 0 && (
+                <span className="font-bold w-4 shrink-0 text-right" style={{ color: accent }}>{entry.rank}</span>
+              )}
               <span className="truncate" style={{ color: 'var(--muted)' }}>{entry.title}</span>
             </li>
           ))}
@@ -104,6 +134,8 @@ function AllTimeCard({ list }: { list: RichList }) {
           )}
         </ol>
       </div>
+
+      <div className="flex-1" />
 
       {list.reactionCount > 0 && (
         <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
@@ -116,7 +148,7 @@ function AllTimeCard({ list }: { list: RichList }) {
 
 // ── Recent card (horizontal strip) ─────────────────────────────────────────
 
-function RecentCard({ list }: { list: RichList }) {
+function RecentCard({ list, posters }: { list: RichList; posters: Record<string, string | null> }) {
   const router = useRouter()
   const isMovie = list.category === 'movies'
   const accent = isMovie ? 'var(--accent)' : '#a78bfa'
@@ -127,7 +159,7 @@ function RecentCard({ list }: { list: RichList }) {
       style={{ width: 156, background: 'var(--surface)', border: '1px solid var(--border)' }}
       onClick={() => router.push(`/list/${list.id}`)}
     >
-      <PosterStack entries={list.entries} size="sm" />
+      <PosterStack entries={list.entries} size="sm" posters={posters} />
       <div className="min-w-0">
         <p className="text-xs font-semibold leading-snug line-clamp-2">{list.title}</p>
         {list.profiles && (
@@ -145,7 +177,7 @@ function RecentCard({ list }: { list: RichList }) {
 
 // ── Year card ──────────────────────────────────────────────────────────────
 
-function YearCard({ list }: { list: RichList }) {
+function YearCard({ list, posters }: { list: RichList; posters: Record<string, string | null> }) {
   const router = useRouter()
   const isMovie = list.category === 'movies'
   const accent = isMovie ? 'var(--accent)' : '#a78bfa'
@@ -154,7 +186,7 @@ function YearCard({ list }: { list: RichList }) {
 
   return (
     <div
-      className="cursor-pointer rounded-xl p-4 flex flex-col gap-3 transition-all duration-200 hover:translate-y-[-2px]"
+      className="cursor-pointer rounded-xl p-4 flex flex-col gap-3 h-full transition-all duration-200 hover:translate-y-[-2px]"
       style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
       onClick={() => router.push(`/list/${list.id}`)}
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = hoverBorder; e.currentTarget.style.boxShadow = hoverShadow }}
@@ -163,11 +195,13 @@ function YearCard({ list }: { list: RichList }) {
       {list.profiles && <OwnerChip owner={list.profiles} onClick={(e) => e.stopPropagation()} />}
       <h3 className="font-semibold text-sm leading-tight">{list.title}</h3>
       <div className="flex items-start gap-3">
-        <PosterStack entries={list.entries} size="sm" />
+        <PosterStack entries={list.entries} size="sm" posters={posters} />
         <ol className="flex-1 min-w-0 space-y-1.5 pt-0.5">
           {list.entries.slice(0, 3).map((entry) => (
             <li key={entry.id} className="flex items-center gap-2 text-xs min-w-0">
-              <span className="font-bold w-4 shrink-0 text-right" style={{ color: accent }}>{entry.rank}</span>
+              {entry.rank != null && entry.rank > 0 && (
+                <span className="font-bold w-4 shrink-0 text-right" style={{ color: accent }}>{entry.rank}</span>
+              )}
               <span className="truncate" style={{ color: 'var(--muted)' }}>{entry.title}</span>
             </li>
           ))}
@@ -176,6 +210,14 @@ function YearCard({ list }: { list: RichList }) {
           )}
         </ol>
       </div>
+
+      <div className="flex-1" />
+
+      {list.reactionCount > 0 && (
+        <p className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>
+          {list.reactionCount} reaction{list.reactionCount !== 1 ? 's' : ''}
+        </p>
+      )}
     </div>
   )
 }
@@ -194,11 +236,42 @@ function CategoryLabel({ category }: { category: 'movies' | 'tv' }) {
   )
 }
 
+// ── Paired card grid (same-height rows) ────────────────────────────────────
+
+function PairedCardGrid<T extends RichList>({
+  leftList,
+  rightList,
+  posters,
+  Card,
+}: {
+  leftList: T[]
+  rightList: T[]
+  posters: Record<string, string | null>
+  Card: React.ComponentType<{ list: T; posters: Record<string, string | null> }>
+}) {
+  const rowCount = Math.max(leftList.length, rightList.length)
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: rowCount }).map((_, i) => (
+        <div key={i} className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+          <div className="flex flex-col">
+            {leftList[i] && <Card list={leftList[i]} posters={posters} />}
+          </div>
+          <div className="flex flex-col">
+            {rightList[i] && <Card list={rightList[i]} posters={posters} />}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Main page ───────────────────────────────────────────────────────────────
 
 export default function HomePage() {
   const { user } = useAuth()
   const [lists, setLists] = useState<RichList[]>([])
+  const [posters, setPosters] = useState<Record<string, string | null>>({})
   const [loading, setLoading] = useState(true)
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set())
   const didInitExpand = useRef(false)
@@ -223,7 +296,7 @@ export default function HomePage() {
     const entryMap: Record<string, ListEntry[]> = {}
     for (const e of entries ?? []) {
       if (!entryMap[e.list_id]) entryMap[e.list_id] = []
-      entryMap[e.list_id].push(e)
+      if (entryMap[e.list_id].length < 3) entryMap[e.list_id].push(e)
     }
 
     const reactionMap: Record<string, number> = {}
@@ -241,16 +314,33 @@ export default function HomePage() {
     // Auto-expand most recent year
     if (!didInitExpand.current) {
       didInitExpand.current = true
-      const years = richLists
-        .map((l) => l.year)
-        .filter((y): y is number => y !== null)
-      if (years.length > 0) {
-        setExpandedYears(new Set([Math.max(...years)]))
-      }
+      const years = richLists.map((l) => l.year).filter((y): y is number => y !== null)
+      if (years.length > 0) setExpandedYears(new Set([Math.max(...years)]))
     }
 
     setLists(richLists)
     setLoading(false)
+
+    // Fetch TMDB posters for entries that don't have one stored
+    const needPosters = richLists.flatMap((l) =>
+      l.entries.filter((e) => !e.image_url).map((e) => ({
+        id: e.id,
+        title: e.title,
+        category: l.category as 'movies' | 'tv',
+        year: l.year,
+      }))
+    )
+    if (needPosters.length > 0) {
+      const results = await Promise.all(
+        needPosters.map(async ({ id, title, category, year }) => ({
+          id,
+          url: (await fetchPoster(title, category, year)).poster,
+        }))
+      )
+      const map: Record<string, string | null> = {}
+      for (const { id, url } of results) map[id] = url
+      setPosters(map)
+    }
   }
 
   function toggleYear(y: number) {
@@ -313,27 +403,25 @@ export default function HomePage() {
                 </div>
 
                 {allTimeMovies.length > 0 && allTimeTV.length > 0 ? (
-                  /* Both categories — side by side */
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
-                    <div>
+                  /* Both categories — paired rows for equal heights */
+                  <div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 mb-1">
                       <CategoryLabel category="movies" />
-                      <div className="space-y-4">
-                        {allTimeMovies.map((l) => <AllTimeCard key={l.id} list={l} />)}
-                      </div>
-                    </div>
-                    <div>
                       <CategoryLabel category="tv" />
-                      <div className="space-y-4">
-                        {allTimeTV.map((l) => <AllTimeCard key={l.id} list={l} />)}
-                      </div>
                     </div>
+                    <PairedCardGrid
+                      leftList={allTimeMovies}
+                      rightList={allTimeTV}
+                      posters={posters}
+                      Card={AllTimeCard}
+                    />
                   </div>
                 ) : (
-                  /* Single category — full width with max-width cap */
+                  /* Single category */
                   <div className="max-w-xl">
                     {allTimeLists.length > 0 && <CategoryLabel category={allTimeLists[0].category} />}
                     <div className="space-y-4">
-                      {allTimeLists.map((l) => <AllTimeCard key={l.id} list={l} />)}
+                      {allTimeLists.map((l) => <AllTimeCard key={l.id} list={l} posters={posters} />)}
                     </div>
                   </div>
                 )}
@@ -350,7 +438,7 @@ export default function HomePage() {
                   className="flex gap-3 overflow-x-auto pb-2"
                   style={{ scrollbarWidth: 'none' }}
                 >
-                  {recentLists.map((l) => <RecentCard key={l.id} list={l} />)}
+                  {recentLists.map((l) => <RecentCard key={l.id} list={l} posters={posters} />)}
                 </div>
               </section>
             )}
@@ -382,22 +470,28 @@ export default function HomePage() {
 
                         {isOpen && (
                           <div
-                            className="px-5 py-5 grid grid-cols-1 sm:grid-cols-2 gap-6"
+                            className="px-5 py-5"
                             style={{ borderTop: '1px solid var(--border)', background: 'var(--background)' }}
                           >
-                            {yearMovies.length > 0 && (
+                            {yearMovies.length > 0 && yearTV.length > 0 ? (
                               <div>
-                                <CategoryLabel category="movies" />
-                                <div className="space-y-3">
-                                  {yearMovies.map((l) => <YearCard key={l.id} list={l} />)}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-1">
+                                  <CategoryLabel category="movies" />
+                                  <CategoryLabel category="tv" />
                                 </div>
+                                <PairedCardGrid
+                                  leftList={yearMovies}
+                                  rightList={yearTV}
+                                  posters={posters}
+                                  Card={YearCard}
+                                />
                               </div>
-                            )}
-                            {yearTV.length > 0 && (
-                              <div>
-                                <CategoryLabel category="tv" />
+                            ) : (
+                              <div className="max-w-sm">
+                                {yearMovies.length > 0 && <CategoryLabel category="movies" />}
+                                {yearTV.length > 0 && <CategoryLabel category="tv" />}
                                 <div className="space-y-3">
-                                  {yearTV.map((l) => <YearCard key={l.id} list={l} />)}
+                                  {[...yearMovies, ...yearTV].map((l) => <YearCard key={l.id} list={l} posters={posters} />)}
                                 </div>
                               </div>
                             )}
