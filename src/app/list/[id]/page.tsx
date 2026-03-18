@@ -63,6 +63,11 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     fetchAll(vid)
   }, [id])
 
+  // Re-evaluate ownership whenever auth resolves (user loads after initial fetch)
+  useEffect(() => {
+    if (list) setIsOwner(!!user && list.owner_id === user.id)
+  }, [user, list])
+
   async function fetchAll(vid: string) {
     const [listRes, entriesRes, commentsRes, reactionsRes, hmRes, awRes, tiersRes] = await Promise.all([
       supabase.from('lists').select('*').eq('id', id).single(),
