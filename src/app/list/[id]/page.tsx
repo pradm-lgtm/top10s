@@ -53,6 +53,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [isOwner, setIsOwner] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [editMode, setEditMode] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -404,48 +405,56 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               {isMovie ? 'Movies' : 'TV Shows'}
             </span>
 
-            {/* Owner menu */}
+            {/* Owner controls */}
             {(isOwner || isAdmin) && (
-              <div className="relative">
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setMenuOpen((o) => !o)}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg text-sm transition-opacity hover:opacity-70"
-                  style={{ color: 'var(--muted)', border: '1px solid var(--border)' }}
-                  aria-label="List options"
+                  onClick={() => setEditMode((v) => !v)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{
+                    background: editMode ? 'var(--accent)' : 'var(--surface)',
+                    color: editMode ? '#0a0a0f' : 'var(--muted)',
+                    border: `1px solid ${editMode ? 'transparent' : 'var(--border)'}`,
+                  }}
                 >
-                  ⋯
+                  {editMode ? 'Done editing' : '✎ Edit'}
                 </button>
-                {menuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-                    <div
-                      className="absolute right-0 top-10 z-50 rounded-xl py-1 min-w-[160px]"
-                      style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
-                    >
-                      <button
-                        onClick={() => setMenuOpen(false)}
-                        className="w-full text-left px-4 py-2.5 text-sm transition-opacity hover:opacity-70"
-                        style={{ color: 'var(--foreground)' }}
-                        title="Click the title or description to edit"
-                      >
-                        ✎ Edit details
-                      </button>
-                      <button
-                        onClick={() => { setMenuOpen(false); deleteList() }}
-                        disabled={deleting}
-                        className="w-full text-left px-4 py-2.5 text-sm transition-opacity hover:opacity-70 disabled:opacity-40"
-                        style={{ color: '#f87171' }}
-                      >
-                        {deleting ? 'Deleting…' : '🗑 Delete list'}
-                      </button>
-                    </div>
-                  </>
-                )}
+                <div className="relative">
+                  <button
+                    onClick={() => setMenuOpen((o) => !o)}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-sm transition-opacity hover:opacity-70"
+                    style={{ color: 'var(--muted)', border: '1px solid var(--border)' }}
+                    aria-label="More options"
+                  >⋯</button>
+                  {menuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                      <div className="absolute right-0 top-10 z-50 rounded-xl py-1 min-w-[140px]" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+                        <button
+                          onClick={() => { setMenuOpen(false); deleteList() }}
+                          disabled={deleting}
+                          className="w-full text-left px-4 py-2.5 text-sm transition-opacity hover:opacity-70 disabled:opacity-40"
+                          style={{ color: '#f87171' }}
+                        >
+                          {deleting ? 'Deleting…' : '🗑 Delete list'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             )}
           </div>
         </div>
       </header>
+
+      {/* Edit mode banner */}
+      {editMode && (
+        <div className="px-4 py-2.5 flex items-center gap-3 text-sm font-medium" style={{ background: 'rgba(232,197,71,0.12)', borderBottom: '1px solid rgba(232,197,71,0.25)', color: 'var(--accent)' }}>
+          <span>✎ Editing</span>
+          <span className="text-xs font-normal" style={{ color: 'var(--muted)' }}>Tap title or description to rename · Use ✕ to remove entries · + Add Entry to add</span>
+        </div>
+      )}
 
       {/* Hero */}
       <div
@@ -468,7 +477,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               value={list.title}
               onSave={(v) => saveListField('title', v)}
               className="text-3xl sm:text-4xl font-bold tracking-tight"
-              editable={isAdmin || isOwner}
+              editable={(isAdmin || isOwner) && editMode}
             />
           </h1>
           <p className="text-base max-w-xl" style={{ color: 'var(--muted)' }}>
@@ -479,7 +488,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               placeholder="Add a description…"
               className="text-base"
               style={{ color: 'var(--muted)' }}
-              editable={isAdmin || isOwner}
+              editable={(isAdmin || isOwner) && editMode}
             />
           </p>
         </div>
@@ -490,13 +499,13 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         <section>
           {list.list_format === 'tiered' ? (
             <>
-              <TieredEntries entries={entries} tiers={tiers} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={deleteEntry} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
-              {(isOwner || isAdmin) && <TieredAddForm tiers={tiers} title={newTieredTitle} setTitle={setNewTieredTitle} tierId={newTieredTierId} setTierId={setNewTieredTierId} notes={newTieredNotes} setNotes={setNewTieredNotes} open={addingTieredEntry} setOpen={setAddingTieredEntry} saving={savingTieredEntry} onSubmit={addTieredEntry} />}
+              <TieredEntries entries={entries} tiers={tiers} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
+              {(isOwner || isAdmin) && editMode && <TieredAddForm tiers={tiers} title={newTieredTitle} setTitle={setNewTieredTitle} tierId={newTieredTierId} setTierId={setNewTieredTierId} notes={newTieredNotes} setNotes={setNewTieredNotes} open={addingTieredEntry} setOpen={setAddingTieredEntry} saving={savingTieredEntry} onSubmit={addTieredEntry} />}
             </>
           ) : list.list_format === 'tier-ranked' ? (
             <>
-              <TierRankedEntries entries={entries} tiers={tiers} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={deleteEntry} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
-              {(isOwner || isAdmin) && <TieredAddForm tiers={tiers} title={newTieredTitle} setTitle={setNewTieredTitle} tierId={newTieredTierId} setTierId={setNewTieredTierId} notes={newTieredNotes} setNotes={setNewTieredNotes} open={addingTieredEntry} setOpen={setAddingTieredEntry} saving={savingTieredEntry} onSubmit={addTieredEntry} />}
+              <TierRankedEntries entries={entries} tiers={tiers} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
+              {(isOwner || isAdmin) && editMode && <TieredAddForm tiers={tiers} title={newTieredTitle} setTitle={setNewTieredTitle} tierId={newTieredTierId} setTierId={setNewTieredTierId} notes={newTieredNotes} setNotes={setNewTieredNotes} open={addingTieredEntry} setOpen={setAddingTieredEntry} saving={savingTieredEntry} onSubmit={addTieredEntry} />}
             </>
           ) : (
           <>
@@ -619,10 +628,10 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                         </div>
                       )
                     })()}
-                    {(isAdmin || isOwner) && (
+                    {(isAdmin || isOwner) && editMode && (
                       <button
                         onClick={() => deleteEntry(entry.id)}
-                        className="shrink-0 text-xs px-2 py-1 rounded opacity-40 hover:opacity-100 transition-opacity"
+                        className="shrink-0 text-xs px-2 py-1 rounded opacity-60 hover:opacity-100 transition-opacity"
                         style={{ border: '1px solid #f87171', color: '#f87171' }}
                         title="Delete entry"
                       >
@@ -636,7 +645,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
           </ol>
 
           {/* Add Entry */}
-          {(isAdmin || isOwner) && (
+          {(isAdmin || isOwner) && editMode && (
             <div className="mt-4">
               {addingEntry ? (
                 <form
