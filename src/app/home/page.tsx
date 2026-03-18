@@ -399,15 +399,7 @@ export default function HomePage() {
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
       <AppHeader />
 
-      <div className="max-w-5xl mx-auto px-4 pt-10 pb-24">
-
-        {/* ── Page header ── */}
-        <div className="mb-14">
-          <h1 className="text-3xl font-bold tracking-tight">Ranked</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>
-            The best in film &amp; TV, ranked by people who care too much.
-          </p>
-        </div>
+      <div className="max-w-5xl mx-auto px-4 pt-8 pb-24">
 
         {loading && (
           <div className="flex justify-center py-20">

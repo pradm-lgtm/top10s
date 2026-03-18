@@ -59,6 +59,13 @@ export function AppHeader() {
           <NavAuth />
         </div>
       </div>
+      {isHome && (
+        <div className="max-w-5xl mx-auto px-4 py-1.5" style={{ borderTop: '1px solid var(--border)' }}>
+          <p style={{ fontSize: 13, color: 'var(--muted)' }}>
+            The best in film &amp; TV, ranked by people who care too much.
+          </p>
+        </div>
+      )}
     </header>
   )
 }
