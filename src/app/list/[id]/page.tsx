@@ -35,6 +35,12 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [newEntryRank, setNewEntryRank] = useState('')
   const [newEntryNotes, setNewEntryNotes] = useState('')
   const [savingEntry, setSavingEntry] = useState(false)
+  // Tiered add form
+  const [addingTieredEntry, setAddingTieredEntry] = useState(false)
+  const [newTieredTitle, setNewTieredTitle] = useState('')
+  const [newTieredTierId, setNewTieredTierId] = useState<string | null>(null)
+  const [newTieredNotes, setNewTieredNotes] = useState('')
+  const [savingTieredEntry, setSavingTieredEntry] = useState(false)
   const [commentNameInput, setCommentNameInput] = useState('')
   const [pendingListReaction, setPendingListReaction] = useState<string | null>(null)
   const [listReactionNameInput, setListReactionNameInput] = useState('')
@@ -200,6 +206,26 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       setAddingEntry(false)
     }
     setSavingEntry(false)
+  }
+
+  async function addTieredEntry(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newTieredTitle.trim() || !newTieredTierId) return
+    setSavingTieredEntry(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch(`/api/lists/${id}/entries`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+      body: JSON.stringify({ title: newTieredTitle.trim(), tier_id: newTieredTierId, notes: newTieredNotes.trim() || null }),
+    })
+    if (res.ok) {
+      const entry = await res.json()
+      setEntries((prev) => [...prev, entry])
+      setNewTieredTitle('')
+      setNewTieredNotes('')
+      // keep tier selected for rapid adding
+    }
+    setSavingTieredEntry(false)
   }
 
   function handleEntryClick(entry: ListEntry) {
@@ -458,9 +484,15 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         {/* Entries */}
         <section>
           {list.list_format === 'tiered' ? (
-            <TieredEntries entries={entries} tiers={tiers} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
+            <>
+              <TieredEntries entries={entries} tiers={tiers} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={deleteEntry} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
+              {(isOwner || isAdmin) && <TieredAddForm tiers={tiers} title={newTieredTitle} setTitle={setNewTieredTitle} tierId={newTieredTierId} setTierId={setNewTieredTierId} notes={newTieredNotes} setNotes={setNewTieredNotes} open={addingTieredEntry} setOpen={setAddingTieredEntry} saving={savingTieredEntry} onSubmit={addTieredEntry} />}
+            </>
           ) : list.list_format === 'tier-ranked' ? (
-            <TierRankedEntries entries={entries} tiers={tiers} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
+            <>
+              <TierRankedEntries entries={entries} tiers={tiers} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={deleteEntry} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
+              {(isOwner || isAdmin) && <TieredAddForm tiers={tiers} title={newTieredTitle} setTitle={setNewTieredTitle} tierId={newTieredTierId} setTierId={setNewTieredTierId} notes={newTieredNotes} setNotes={setNewTieredNotes} open={addingTieredEntry} setOpen={setAddingTieredEntry} saving={savingTieredEntry} onSubmit={addTieredEntry} />}
+            </>
           ) : (
           <>
           <ol className="space-y-3">
@@ -985,6 +1017,89 @@ const TIER_COLORS = [
   '#6b7280', // grey
 ]
 
+// ─── TieredAddForm ────────────────────────────────────────────────────────────
+
+function TieredAddForm({
+  tiers, title, setTitle, tierId, setTierId, notes, setNotes,
+  open, setOpen, saving, onSubmit,
+}: {
+  tiers: Tier[]
+  title: string; setTitle: (v: string) => void
+  tierId: string | null; setTierId: (v: string | null) => void
+  notes: string; setNotes: (v: string) => void
+  open: boolean; setOpen: (v: boolean) => void
+  saving: boolean
+  onSubmit: (e: React.FormEvent) => void
+}) {
+  const inputStyle = { background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }
+  return (
+    <div className="mt-4">
+      {open ? (
+        <form onSubmit={onSubmit} className="rounded-xl p-4 space-y-4" style={{ background: 'var(--surface)', border: '1px solid var(--accent)33' }}>
+          <p className="text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--accent)' }}>Add Entry</p>
+          <input
+            autoFocus
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Title"
+            className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
+            style={inputStyle}
+          />
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Tier</p>
+            <div className="flex flex-wrap gap-2">
+              {tiers.map((tier) => (
+                <button
+                  key={tier.id}
+                  type="button"
+                  onClick={() => setTierId(tierId === tier.id ? null : tier.id)}
+                  className="px-4 py-2 rounded-lg text-sm font-bold transition-all"
+                  style={{
+                    background: tierId === tier.id ? `${tier.color ?? '#6b7280'}33` : 'var(--surface-2)',
+                    border: `2px solid ${tierId === tier.id ? (tier.color ?? '#6b7280') : 'var(--border)'}`,
+                    color: tierId === tier.id ? (tier.color ?? '#6b7280') : 'var(--muted)',
+                  }}
+                >
+                  {tier.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Notes (optional)"
+            rows={2}
+            className="w-full px-3 py-2 rounded-lg text-sm resize-none outline-none"
+            style={inputStyle}
+          />
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={saving || !title.trim() || !tierId}
+              className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+              style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+            >
+              {saving ? 'Adding…' : 'Add Entry'}
+            </button>
+            <button type="button" onClick={() => setOpen(false)} className="px-4 py-2 rounded-lg text-sm" style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : (
+        <button
+          onClick={() => setOpen(true)}
+          className="w-full py-3 rounded-xl text-sm font-medium transition-all mt-2"
+          style={{ border: '1px dashed var(--border)', color: 'var(--muted)' }}
+        >
+          + Add Entry
+        </button>
+      )}
+    </div>
+  )
+}
+
 function TieredEntries({
   entries,
   tiers: tierData,
@@ -992,6 +1107,8 @@ function TieredEntries({
   posters,
   isTheme = false,
   isAdmin = false,
+  isOwner = false,
+  onDelete,
   saveEntryField,
   onEntryClick,
   commentCounts = {},
@@ -1004,6 +1121,8 @@ function TieredEntries({
   posters: Record<string, PosterInfo>
   isTheme?: boolean
   isAdmin?: boolean
+  isOwner?: boolean
+  onDelete?: (id: string) => void
   saveEntryField?: (id: string, field: string, value: string | number) => Promise<void>
   onEntryClick?: (entry: ListEntry) => void
   commentCounts?: Record<string, number>
@@ -1110,13 +1229,20 @@ function TieredEntries({
                     <div
                       key={entry.id}
                       className={`flex flex-col items-center gap-1${!isAdmin ? ' cursor-pointer' : ''}`}
-                      style={{ width: '56px', outline: selectedEntryId === entry.id ? `2px solid ${color}` : 'none', outlineOffset: '2px', borderRadius: '4px' }}
+                      style={{ width: '56px', position: 'relative', outline: selectedEntryId === entry.id ? `2px solid ${color}` : 'none', outlineOffset: '2px', borderRadius: '4px' }}
                       onClick={(e) => {
                         if (isAdmin) return
                         if ((e.target as HTMLElement).closest('a')) return
                         onEntryClick?.(entry)
                       }}
                     >
+                      {(isOwner || isAdmin) && onDelete && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }}
+                          className="absolute -top-1.5 -right-1.5 z-10 w-4 h-4 rounded-full flex items-center justify-center text-[9px]"
+                          style={{ background: '#ef4444', color: '#fff', border: '1px solid rgba(0,0,0,0.3)' }}
+                        >✕</button>
+                      )}
                       {imdbUrl ? <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="w-full">{imgEl}</a> : imgEl}
                       <span
                         className="text-center leading-tight"
@@ -1377,6 +1503,8 @@ function TierRankedEntries({
   posters,
   isTheme = false,
   isAdmin = false,
+  isOwner = false,
+  onDelete,
   saveEntryField,
   onEntryClick,
   commentCounts = {},
@@ -1388,6 +1516,8 @@ function TierRankedEntries({
   posters: Record<string, PosterInfo>
   isTheme?: boolean
   isAdmin?: boolean
+  isOwner?: boolean
+  onDelete?: (id: string) => void
   saveEntryField?: (id: string, field: string, value: string | number) => Promise<void>
   onEntryClick?: (entry: ListEntry) => void
   commentCounts?: Record<string, number>
@@ -1482,6 +1612,13 @@ function TierRankedEntries({
                             ))}
                         </div>
                       </div>
+                      {(isOwner || isAdmin) && onDelete && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }}
+                          className="shrink-0 self-center w-6 h-6 flex items-center justify-center rounded-full text-xs opacity-40 hover:opacity-100 transition-opacity"
+                          style={{ border: '1px solid #f87171', color: '#f87171' }}
+                        >✕</button>
+                      )}
                     </div>
                   )
                 })}
