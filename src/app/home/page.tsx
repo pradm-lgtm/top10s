@@ -10,7 +10,7 @@ import { useAuth } from '@/context/auth'
 import type { List, ListEntry } from '@/types'
 
 type OwnerInfo = { username: string; display_name: string | null; avatar_url: string | null }
-type RichList = List & { entries: ListEntry[]; profiles: OwnerInfo | null; reactionCount: number }
+type RichList = List & { entries: ListEntry[]; profiles: OwnerInfo | null; reactionCount: number; commentCount: number }
 
 // ── Owner chip ─────────────────────────────────────────────────────────────
 
@@ -135,13 +135,7 @@ function AllTimeCard({ list, posters }: { list: RichList; posters: Record<string
         </ol>
       </div>
 
-      <div className="flex-1" />
-
-      {list.reactionCount > 0 && (
-        <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
-          {list.reactionCount} reaction{list.reactionCount !== 1 ? 's' : ''}
-        </p>
-      )}
+      <StatsRow reactionCount={list.reactionCount} commentCount={list.commentCount} />
     </div>
   )
 }
@@ -211,13 +205,7 @@ function YearCard({ list, posters }: { list: RichList; posters: Record<string, s
         </ol>
       </div>
 
-      <div className="flex-1" />
-
-      {list.reactionCount > 0 && (
-        <p className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>
-          {list.reactionCount} reaction{list.reactionCount !== 1 ? 's' : ''}
-        </p>
-      )}
+      <StatsRow reactionCount={list.reactionCount} commentCount={list.commentCount} />
     </div>
   )
 }
@@ -232,6 +220,26 @@ function CategoryLabel({ category }: { category: 'movies' | 'tv' }) {
       <span className="text-xs font-semibold tracking-[0.15em] uppercase" style={{ color: isMovie ? 'var(--accent)' : '#a78bfa' }}>
         {isMovie ? 'Movies' : 'TV Shows'}
       </span>
+    </div>
+  )
+}
+
+// ── Stats row ──────────────────────────────────────────────────────────────
+
+function StatsRow({ reactionCount, commentCount }: { reactionCount: number; commentCount: number }) {
+  if (reactionCount === 0 && commentCount === 0) return null
+  return (
+    <div className="flex items-center gap-3 mt-auto pt-2">
+      {reactionCount > 0 && (
+        <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}>
+          <span style={{ fontSize: 13 }}>🔥</span>{reactionCount}
+        </span>
+      )}
+      {commentCount > 0 && (
+        <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}>
+          <span style={{ fontSize: 13 }}>💬</span>{commentCount}
+        </span>
+      )}
     </div>
   )
 }
@@ -288,20 +296,46 @@ export default function HomePage() {
 
     const listIds = raw.map((l) => l.id)
 
-    const [{ data: entries }, { data: reactions }] = await Promise.all([
+    // Fetch top-3 entries for card display + all entry IDs for engagement counts
+    const [{ data: topEntries }, { data: allEntries }, { data: listReactions }, { data: listComments }] = await Promise.all([
       supabase.from('list_entries').select('*').in('list_id', listIds).lte('rank', 3).order('rank', { ascending: true }),
+      supabase.from('list_entries').select('id, list_id').in('list_id', listIds),
       supabase.from('reactions').select('list_id').in('list_id', listIds),
+      supabase.from('comments').select('list_id').in('list_id', listIds),
+    ])
+
+    // Build entry-id → list-id map for aggregating entry-level counts
+    const entryToList: Record<string, string> = {}
+    for (const e of allEntries ?? []) entryToList[e.id] = e.list_id
+    const allEntryIds = Object.keys(entryToList)
+
+    const [{ data: entryReactions }, { data: entryComments }] = await Promise.all([
+      allEntryIds.length > 0
+        ? supabase.from('entry_reactions').select('list_entry_id').in('list_entry_id', allEntryIds)
+        : Promise.resolve({ data: [] }),
+      allEntryIds.length > 0
+        ? supabase.from('entry_comments').select('list_entry_id').in('list_entry_id', allEntryIds)
+        : Promise.resolve({ data: [] }),
     ])
 
     const entryMap: Record<string, ListEntry[]> = {}
-    for (const e of entries ?? []) {
+    for (const e of topEntries ?? []) {
       if (!entryMap[e.list_id]) entryMap[e.list_id] = []
       if (entryMap[e.list_id].length < 3) entryMap[e.list_id].push(e)
     }
 
     const reactionMap: Record<string, number> = {}
-    for (const r of reactions ?? []) {
-      reactionMap[r.list_id] = (reactionMap[r.list_id] ?? 0) + 1
+    for (const r of listReactions ?? []) reactionMap[r.list_id] = (reactionMap[r.list_id] ?? 0) + 1
+    for (const r of entryReactions ?? []) {
+      const lid = entryToList[r.list_entry_id]
+      if (lid) reactionMap[lid] = (reactionMap[lid] ?? 0) + 1
+    }
+
+    const commentMap: Record<string, number> = {}
+    for (const c of listComments ?? []) commentMap[c.list_id] = (commentMap[c.list_id] ?? 0) + 1
+    for (const c of entryComments ?? []) {
+      const lid = entryToList[c.list_entry_id]
+      if (lid) commentMap[lid] = (commentMap[lid] ?? 0) + 1
     }
 
     const richLists: RichList[] = raw.map((list) => ({
@@ -309,6 +343,7 @@ export default function HomePage() {
       entries: entryMap[list.id] ?? [],
       profiles: list.profiles ?? null,
       reactionCount: reactionMap[list.id] ?? 0,
+      commentCount: commentMap[list.id] ?? 0,
     }))
 
     // Auto-expand most recent year
