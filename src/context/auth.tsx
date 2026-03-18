@@ -33,14 +33,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    async function init() {
+      // Handle OAuth tokens in the URL — works regardless of which page
+      // Supabase redirects to (handles both PKCE ?code= and implicit #access_token=)
+      const hash = new URLSearchParams(window.location.hash.slice(1))
+      const code = new URLSearchParams(window.location.search).get('code')
+      const accessToken = hash.get('access_token')
+      const refreshToken = hash.get('refresh_token')
+
+      if (code) {
+        await supabase.auth.exchangeCodeForSession(code)
+      } else if (accessToken && refreshToken) {
+        await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+      }
+
+      const { data: { session } } = await supabase.auth.getSession()
       setUser(session?.user ?? null)
       if (session?.user) {
         fetchProfile(session.user.id)
       } else {
         setLoading(false)
       }
-    })
+    }
+
+    init()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
@@ -65,7 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const base = process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${base}/auth/callback` },
+      options: { redirectTo: `${base}/home` },
     })
   }
 
