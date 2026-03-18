@@ -9,12 +9,18 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { listTitle, category, year, context, genre, refineText, count = 20 } = await req.json()
+    const { listTitle, category, yearFrom, yearTo, context, genre, refineText, count = 20 } = await req.json()
 
     const catLabel = category === 'movies' ? 'movies' : 'TV shows'
+    let yearLine = 'Scope: all time.'
+    if (yearFrom !== null && yearTo !== null) {
+      yearLine = yearFrom === yearTo
+        ? `Year: ${yearFrom} only.`
+        : `Time period: ${yearFrom}–${yearTo}. Only include titles released within this range.`
+    }
     const lines = [
       `Generate exactly ${count} specific ${catLabel} for a top-10 list called "${listTitle}".`,
-      year ? `Year: ${year} only.` : 'Scope: all time.',
+      yearLine,
       context ? `List vibe: "${context}"` : '',
       genre ? `Genre focus: ${genre}` : '',
       refineText ? `Refine request: "${refineText}"` : '',

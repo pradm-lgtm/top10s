@@ -40,13 +40,23 @@ const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
 
 // ─── Auto-detect year & category from title ──────────────────────────────────
 
+const DECADES: { label: string; from: number; to: number }[] = [
+  { label: '70s', from: 1970, to: 1979 },
+  { label: '80s', from: 1980, to: 1989 },
+  { label: '90s', from: 1990, to: 1999 },
+  { label: '00s', from: 2000, to: 2009 },
+  { label: '10s', from: 2010, to: 2019 },
+  { label: '20s', from: 2020, to: 2029 },
+]
+
 function detectFromTitle(t: string) {
   const yearMatch = t.match(/\b(19[5-9]\d|20[0-2]\d)\b/)
   const year = yearMatch ? parseInt(yearMatch[0]) : null
+  const decadeMatch = t.match(/\b(70|80|90|00|10|20)s\b/i) ?? t.match(/\b(197|198|199|200|201|202)0s?\b/i)
   const movieKw = /\b(movie|movies|film|films|cinema)\b/i
   const tvKw    = /\b(tv|show|shows|series|television)\b/i
   const category: 'movies' | 'tv' | null = movieKw.test(t) ? 'movies' : tvKw.test(t) ? 'tv' : null
-  return { year, category }
+  return { year, decadeMatch: !!decadeMatch, category }
 }
 
 // ─── Step indicator ───────────────────────────────────────────────────────────
@@ -96,14 +106,16 @@ function onBlurBorder(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement
 
 function Step1({
   title, setTitle, category, setCategory,
-  year, setYear, allTime, setAllTime,
+  timeScope, setTimeScope, year, setYear, yearFrom, setYearFrom, yearTo, setYearTo,
   description, setDescription,
   onNext,
 }: {
   title: string; setTitle: (v: string) => void
   category: 'movies' | 'tv'; setCategory: (v: 'movies' | 'tv') => void
+  timeScope: 'all-time' | 'year' | 'range'; setTimeScope: (v: 'all-time' | 'year' | 'range') => void
   year: number | null; setYear: (v: number | null) => void
-  allTime: boolean; setAllTime: (v: boolean) => void
+  yearFrom: number | null; setYearFrom: (v: number | null) => void
+  yearTo: number | null; setYearTo: (v: number | null) => void
   description: string; setDescription: (v: string) => void
   onNext: () => void
 }) {
@@ -111,7 +123,7 @@ function Step1({
     setTitle(v)
     const detected = detectFromTitle(v)
     if (detected.category) setCategory(detected.category)
-    if (detected.year) { setYear(detected.year); setAllTime(false) }
+    if (detected.year) { setYear(detected.year); setTimeScope('year') }
   }
 
   return (
@@ -151,37 +163,95 @@ function Step1({
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         <label className="text-xs font-semibold tracking-[0.15em] uppercase" style={{ color: 'var(--muted)' }}>Time Scope</label>
-        <div className="flex gap-2 mb-2">
-          {[false, true].map((isAllTime) => (
+        <div className="flex gap-2">
+          {([
+            { value: 'all-time', label: 'All Time' },
+            { value: 'year',     label: 'Specific Year' },
+            { value: 'range',    label: 'Time Range' },
+          ] as const).map((opt) => (
             <button
-              key={String(isAllTime)}
-              onClick={() => { setAllTime(isAllTime); if (isAllTime) setYear(null) }}
-              className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+              key={opt.value}
+              onClick={() => setTimeScope(opt.value)}
+              className="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
               style={{
-                background: allTime === isAllTime ? 'var(--accent)' : 'var(--surface)',
-                color: allTime === isAllTime ? '#0a0a0f' : 'var(--muted)',
-                border: `1px solid ${allTime === isAllTime ? 'transparent' : 'var(--border)'}`,
+                background: timeScope === opt.value ? 'var(--accent)' : 'var(--surface)',
+                color: timeScope === opt.value ? '#0a0a0f' : 'var(--muted)',
+                border: `1px solid ${timeScope === opt.value ? 'transparent' : 'var(--border)'}`,
               }}
             >
-              {isAllTime ? 'All Time' : 'Specific Year'}
+              {opt.label}
             </button>
           ))}
         </div>
-        {!allTime && (
+
+        {timeScope === 'year' && (
           <input
             type="number"
             value={year ?? ''}
             onChange={(e) => setYear(e.target.value ? parseInt(e.target.value) : null)}
             placeholder="e.g. 2024"
-            min={1950}
+            min={1920}
             max={new Date().getFullYear() + 1}
             className="w-32 px-4 py-2.5 rounded-xl text-sm outline-none"
             style={inputStyle}
             onFocus={onFocusAccent}
             onBlur={onBlurBorder}
           />
+        )}
+
+        {timeScope === 'range' && (
+          <div className="space-y-3">
+            {/* Decade quick-picks */}
+            <div className="flex gap-1.5 flex-wrap">
+              {DECADES.map((d) => {
+                const active = yearFrom === d.from && yearTo === d.to
+                return (
+                  <button
+                    key={d.label}
+                    onClick={() => { setYearFrom(d.from); setYearTo(d.to) }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                    style={{
+                      background: active ? 'var(--accent)' : 'var(--surface)',
+                      color: active ? '#0a0a0f' : 'var(--muted)',
+                      border: `1px solid ${active ? 'transparent' : 'var(--border)'}`,
+                    }}
+                  >
+                    {d.label}
+                  </button>
+                )
+              })}
+            </div>
+            {/* Custom from/to */}
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={yearFrom ?? ''}
+                onChange={(e) => setYearFrom(e.target.value ? parseInt(e.target.value) : null)}
+                placeholder="From"
+                min={1920}
+                max={new Date().getFullYear() + 1}
+                className="w-28 px-3 py-2 rounded-xl text-sm outline-none"
+                style={inputStyle}
+                onFocus={onFocusAccent}
+                onBlur={onBlurBorder}
+              />
+              <span className="text-sm" style={{ color: 'var(--muted)' }}>–</span>
+              <input
+                type="number"
+                value={yearTo ?? ''}
+                onChange={(e) => setYearTo(e.target.value ? parseInt(e.target.value) : null)}
+                placeholder="To"
+                min={1920}
+                max={new Date().getFullYear() + 1}
+                className="w-28 px-3 py-2 rounded-xl text-sm outline-none"
+                style={inputStyle}
+                onFocus={onFocusAccent}
+                onBlur={onBlurBorder}
+              />
+            </div>
+          </div>
         )}
       </div>
 
@@ -326,12 +396,13 @@ function SortableEntry({
 // ─── Step 3 — Entries ─────────────────────────────────────────────────────────
 
 function Step3({
-  listTitle, category, year, description, entries, setEntries,
+  listTitle, category, yearFrom, yearTo, description, entries, setEntries,
   onPublish, onBack, publishing, publishError,
 }: {
   listTitle: string
   category: 'movies' | 'tv'
-  year: number | null
+  yearFrom: number | null
+  yearTo: number | null
   description: string
   entries: Entry[]
   setEntries: React.Dispatch<React.SetStateAction<Entry[]>>
@@ -451,7 +522,8 @@ function Step3({
       <ThoughtCloud
         listTitle={listTitle}
         category={category}
-        year={year}
+        yearFrom={yearFrom}
+        yearTo={yearTo}
         description={description}
         addedIds={addedIds}
         onToggle={toggleEntry}
@@ -469,8 +541,10 @@ export default function CreatePage() {
   const [step, setStep] = useState(1)
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState<'movies' | 'tv'>('movies')
+  const [timeScope, setTimeScope] = useState<'all-time' | 'year' | 'range'>('all-time')
   const [year, setYear] = useState<number | null>(null)
-  const [allTime, setAllTime] = useState(false)
+  const [yearFrom, setYearFrom] = useState<number | null>(null)
+  const [yearTo, setYearTo] = useState<number | null>(null)
   const [description, setDescription] = useState('')
   const [entries, setEntries] = useState<Entry[]>([])
   const [publishing, setPublishing] = useState(false)
@@ -485,14 +559,20 @@ export default function CreatePage() {
     setPublishing(true)
     setPublishError(null)
 
+    const resolvedYear = timeScope === 'year' ? year : null
+    const resolvedYearFrom = timeScope === 'range' ? yearFrom : null
+    const resolvedYearTo   = timeScope === 'range' ? yearTo   : null
+
     const { data: list, error } = await supabase
       .from('lists')
       .insert({
         title: title.trim(),
         category,
-        list_type: (!allTime && year) ? 'annual' : 'theme',
+        list_type: timeScope === 'year' ? 'annual' : 'theme',
         list_format: 'ranked',
-        year: (!allTime && year) ? year : null,
+        year: resolvedYear,
+        year_from: resolvedYearFrom,
+        year_to: resolvedYearTo,
         description: description.trim() || null,
         owner_id: profile.id,
       })
@@ -542,8 +622,10 @@ export default function CreatePage() {
           <Step1
             title={title} setTitle={setTitle}
             category={category} setCategory={setCategory}
+            timeScope={timeScope} setTimeScope={setTimeScope}
             year={year} setYear={setYear}
-            allTime={allTime} setAllTime={setAllTime}
+            yearFrom={yearFrom} setYearFrom={setYearFrom}
+            yearTo={yearTo} setYearTo={setYearTo}
             description={description} setDescription={setDescription}
             onNext={() => setStep(2)}
           />
@@ -555,7 +637,8 @@ export default function CreatePage() {
           <Step3
             listTitle={title}
             category={category}
-            year={allTime ? null : year}
+            yearFrom={timeScope === 'year' ? (year ?? null) : timeScope === 'range' ? yearFrom : null}
+            yearTo={timeScope === 'year' ? (year ?? null) : timeScope === 'range' ? yearTo : null}
             description={description}
             entries={entries}
             setEntries={setEntries}
