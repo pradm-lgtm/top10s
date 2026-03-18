@@ -65,7 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const base = process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${base}/auth/callback` },
+      options: { redirectTo: `${base}/home` },
     })
   }
 

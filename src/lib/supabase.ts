@@ -9,7 +9,9 @@ function getClient(): SupabaseClient {
     if (!url || !key) {
       throw new Error('Missing Supabase environment variables. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local')
     }
-    _client = createClient(url, key)
+    _client = createClient(url, key, {
+      auth: { flowType: 'implicit' },
+    })
   }
   return _client
 }
