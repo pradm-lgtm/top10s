@@ -1184,7 +1184,7 @@ function SortableRankedEntry({
   return (
     <li ref={setNodeRef} style={style}>
       <div
-        className={`rounded-xl p-4 sm:p-5 flex gap-4 items-start transition-colors${!isAdmin && !editMode ? ' cursor-pointer' : ''}`}
+        className={`rounded-xl p-4 sm:p-5 transition-colors${!isAdmin && !editMode ? ' cursor-pointer' : ''}`}
         style={{
           background: selectedEntryId === entry.id ? `${accentColor}08` : 'var(--surface)',
           border: `1px solid ${selectedEntryId === entry.id ? `${accentColor}40` : 'var(--border)'}`,
@@ -1196,30 +1196,46 @@ function SortableRankedEntry({
           onEntryClick(entry)
         }}
       >
-        {/* Drag handle */}
-        {editMode && (
-          <button
-            {...listeners}
-            {...attributes}
-            className="shrink-0 self-center text-lg cursor-grab active:cursor-grabbing select-none"
-            style={{ color: 'var(--muted)', touchAction: 'none' }}
-            aria-label="Drag to reorder"
+        {/* Top row: drag · rank · poster · title · delete */}
+        <div className="flex items-start gap-3">
+          {editMode && (
+            <button
+              {...listeners}
+              {...attributes}
+              className="shrink-0 self-center text-lg cursor-grab active:cursor-grabbing select-none"
+              style={{ color: 'var(--muted)', touchAction: 'none' }}
+              aria-label="Drag to reorder"
+            >
+              ⠿
+            </button>
+          )}
+          <div
+            className="text-2xl font-bold w-9 shrink-0 tabular-nums leading-none mt-1"
+            style={{ color: index === 0 ? accentColor : index < 3 ? 'var(--foreground)' : 'var(--muted)' }}
           >
-            ⠿
-          </button>
-        )}
-
-        {/* Rank */}
-        <div
-          className="text-2xl font-bold w-9 shrink-0 tabular-nums leading-none mt-0.5"
-          style={{ color: index === 0 ? accentColor : index < 3 ? 'var(--foreground)' : 'var(--muted)' }}
-        >
-          {entry.rank ?? index + 1}
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0 flex items-center gap-3">
-          <div className="flex-1 min-w-0">
+            {entry.rank ?? index + 1}
+          </div>
+          {/* Poster — left side */}
+          {src ? (
+            imdbUrl ? (
+              <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={src} alt={entry.title} className="w-10 h-[3.75rem] object-cover rounded" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
+              </a>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={src} alt={entry.title} className="w-10 h-[3.75rem] object-cover rounded shrink-0" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
+            )
+          ) : (
+            <div
+              className="w-10 h-[3.75rem] rounded shrink-0 flex items-end justify-center pb-1 overflow-hidden"
+              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', opacity: pending ? 0.4 : 1 }}
+            >
+              {!pending && <span className="text-[9px] text-center leading-tight px-1" style={{ color: 'var(--muted)' }}>{entry.title}</span>}
+            </div>
+          )}
+          {/* Title + reactions */}
+          <div className="flex-1 min-w-0 pt-0.5">
             <h3 className="font-semibold text-base leading-snug">
               <EditableText
                 value={entry.title}
@@ -1233,17 +1249,6 @@ function SortableRankedEntry({
                 }
               />
             </h3>
-            <div className="text-sm mt-1 leading-relaxed" style={{ color: 'var(--muted)' }}>
-              <EditableText
-                value={entry.notes ?? ''}
-                onSave={(v) => saveEntryField(entry.id, 'notes', v)}
-                multiline
-                placeholder="Add notes…"
-                className="text-sm"
-                style={{ color: 'var(--muted)' }}
-                editable={isAdmin && !editMode}
-              />
-            </div>
             <div className="mt-1.5 flex items-center gap-2.5 flex-wrap">
               {commentCounts[entry.id] > 0 && (
                 <span className="text-xs" style={{ color: 'var(--muted)' }}>💬 {commentCounts[entry.id]}</span>
@@ -1251,33 +1256,10 @@ function SortableRankedEntry({
               {['🔥', '❤️', '😮', '😂', '👏']
                 .filter(e => (entryReactions[entry.id]?.[e] ?? 0) > 0)
                 .map(e => (
-                  <span key={e} className="text-xs" style={{ color: 'var(--muted)' }}>
-                    {e} {entryReactions[entry.id][e]}
-                  </span>
+                  <span key={e} className="text-xs" style={{ color: 'var(--muted)' }}>{e} {entryReactions[entry.id][e]}</span>
                 ))}
             </div>
           </div>
-
-          {/* Thumbnail */}
-          {src ? (
-            imdbUrl ? (
-              <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={src} alt={entry.title} className="w-12 h-[4.5rem] object-cover rounded shrink-0" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
-              </a>
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={src} alt={entry.title} className="w-12 h-[4.5rem] object-cover rounded shrink-0" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
-            )
-          ) : (
-            <div
-              className="w-12 h-[4.5rem] rounded shrink-0 flex items-end justify-center pb-1 overflow-hidden"
-              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', opacity: pending ? 0.4 : 1 }}
-            >
-              {!pending && <span className="text-[9px] text-center leading-tight px-1" style={{ color: 'var(--muted)' }}>{entry.title}</span>}
-            </div>
-          )}
-
           {(isAdmin || isOwner) && editMode && (
             <button
               onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }}
@@ -1287,6 +1269,17 @@ function SortableRankedEntry({
             >✕</button>
           )}
         </div>
+        {/* Bottom row: notes full width */}
+        {(entry.notes || (isAdmin && !editMode)) && (
+          <div className="mt-3">
+            <ExpandableNotes
+              value={entry.notes ?? ''}
+              onSave={(v) => saveEntryField(entry.id, 'notes', v)}
+              editable={isAdmin && !editMode}
+              placeholder="Add notes…"
+            />
+          </div>
+        )}
       </div>
     </li>
   )
@@ -1650,6 +1643,46 @@ function TieredAddForm({
   )
 }
 
+function ExpandableNotes({ value, onSave, editable = false, placeholder }: {
+  value: string
+  onSave?: (v: string) => Promise<void>
+  editable?: boolean
+  placeholder?: string
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const needsClamp = value.length > 240
+  if (!value && !editable) return null
+  return (
+    <div className="w-full">
+      <div
+        style={{
+          fontSize: 14,
+          lineHeight: 1.6,
+          color: 'var(--muted)',
+          overflow: expanded || !needsClamp ? 'visible' : 'hidden',
+          display: expanded || !needsClamp ? 'block' : '-webkit-box',
+          WebkitLineClamp: expanded || !needsClamp ? undefined : 4,
+          WebkitBoxOrient: 'vertical' as const,
+          whiteSpace: 'pre-wrap',
+        }}
+      >
+        {editable && onSave ? (
+          <EditableText value={value} onSave={onSave} multiline placeholder={placeholder} className="text-sm" style={{ color: 'var(--muted)' }} editable={editable} />
+        ) : value}
+      </div>
+      {needsClamp && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setExpanded(v => !v) }}
+          className="text-xs mt-1"
+          style={{ color: 'var(--muted)', opacity: 0.6 }}
+        >
+          {expanded ? 'show less' : 'read more'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 function TieredEntries({
   entries,
   tiers: tierData,
@@ -1759,6 +1792,51 @@ function TieredEntries({
                   ) : (
                     <div className="rounded w-full flex items-center justify-center" style={{ height: '78px', background: `${color}12`, border: `1px solid ${color}22` }} />
                   )
+                  const hasNotes = !editMode && (!!entry.notes || isAdmin)
+                  if (hasNotes) {
+                    return (
+                      <div
+                        key={entry.id}
+                        className={`w-full flex flex-col gap-2 rounded-lg p-2${!isAdmin && !editMode ? ' cursor-pointer' : ''}`}
+                        style={{ position: 'relative', outline: selectedEntryId === entry.id ? `2px solid ${color}` : 'none', outlineOffset: '2px', background: `${color}08`, border: `1px solid ${color}18` }}
+                        onClick={(e) => {
+                          if (isAdmin || editMode) return
+                          if ((e.target as HTMLElement).closest('a')) return
+                          onEntryClick?.(entry)
+                        }}
+                      >
+                        {(isOwner || isAdmin) && onDelete && (
+                          <button onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }} className="absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: '#ef4444', color: '#fff', border: '1px solid rgba(0,0,0,0.3)' }}>✕</button>
+                        )}
+                        {/* Top row: poster + title */}
+                        <div className="flex items-start gap-2">
+                          <div className="shrink-0" style={{ width: 52 }}>
+                            {imdbUrl ? <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="block w-full">{imgEl}</a> : imgEl}
+                          </div>
+                          <div className="flex-1 min-w-0 pt-0.5">
+                            <span className="font-medium leading-snug" style={{ fontSize: '0.8rem', color: i <= 2 ? 'var(--foreground)' : 'var(--muted)' }}>
+                              {imdbUrl ? <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>{entry.title}</a> : entry.title}
+                            </span>
+                            {!editMode && ((commentCounts[entry.id] ?? 0) > 0 || ['🔥','❤️','😮','😂','👏'].some(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0)) && (
+                              <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                {(commentCounts[entry.id] ?? 0) > 0 && <span style={{ fontSize: '0.65rem', color: 'var(--muted)' }}>💬 {commentCounts[entry.id]}</span>}
+                                {['🔥','❤️','😮','😂','👏'].filter(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0).map(e => (
+                                  <span key={e} style={{ fontSize: '0.65rem', color: 'var(--muted)' }}>{e}{entryReactions![entry.id][e]}</span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {/* Bottom row: notes full width */}
+                        <ExpandableNotes
+                          value={entry.notes ?? ''}
+                          onSave={(v) => saveEntryField ? saveEntryField(entry.id, 'notes', v) : Promise.resolve()}
+                          editable={isAdmin && !editMode}
+                          placeholder="Notes…"
+                        />
+                      </div>
+                    )
+                  }
                   return (
                     <div
                       key={entry.id}
@@ -1771,11 +1849,7 @@ function TieredEntries({
                       }}
                     >
                       {(isOwner || isAdmin) && onDelete && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }}
-                          className="absolute -top-1.5 -right-1.5 z-10 w-4 h-4 rounded-full flex items-center justify-center text-[9px]"
-                          style={{ background: '#ef4444', color: '#fff', border: '1px solid rgba(0,0,0,0.3)' }}
-                        >✕</button>
+                        <button onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }} className="absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: '#ef4444', color: '#fff', border: '1px solid rgba(0,0,0,0.3)' }}>✕</button>
                       )}
                       {imdbUrl ? <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="w-full">{imgEl}</a> : imgEl}
                       <span
@@ -1794,11 +1868,6 @@ function TieredEntries({
                         >
                           {tierData.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                         </select>
-                      )}
-                      {!editMode && (entry.notes || isAdmin) && (
-                        <div className="w-full text-center" style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>
-                          <EditableText value={entry.notes ?? ''} onSave={(v) => saveEntryField ? saveEntryField(entry.id, 'notes', v) : Promise.resolve()} multiline placeholder="Notes…" className="text-[0.6rem]" style={{ color: 'var(--muted)' }} />
-                        </div>
                       )}
                       {!editMode && (commentCounts[entry.id] ?? 0) > 0 && (
                         <span style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>💬 {commentCounts[entry.id]}</span>
@@ -1964,17 +2033,54 @@ function TieredEntries({
                     }}
                   />
                 )
+                const hasNotes = !editMode && (!!entry.notes || isAdmin)
+                if (hasNotes) {
+                  return (
+                    <div
+                      key={entry.id}
+                      className={`w-full flex flex-col gap-2 rounded-lg p-2${!isAdmin && !editMode ? ' cursor-pointer' : ''}`}
+                      style={{ position: 'relative', outline: selectedEntryId === entry.id ? `2px solid ${color}` : 'none', outlineOffset: '2px', background: `${color}08`, border: `1px solid ${color}18` }}
+                      onClick={(e) => {
+                        if (isAdmin || editMode) return
+                        if ((e.target as HTMLElement).closest('a')) return
+                        onEntryClick?.(entry)
+                      }}
+                    >
+                      {(isOwner || isAdmin) && onDelete && (
+                        <button onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }} className="absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: '#ef4444', color: '#fff', border: '1px solid rgba(0,0,0,0.3)' }}>✕</button>
+                      )}
+                      <div className="flex items-start gap-2">
+                        <div className="shrink-0" style={{ width: 52 }}>
+                          {imdbUrl ? <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="block w-full">{imgEl}</a> : imgEl}
+                        </div>
+                        <div className="flex-1 min-w-0 pt-0.5">
+                          <span className="font-medium leading-snug" style={{ fontSize: '0.8rem', color: i <= 2 ? 'var(--foreground)' : 'var(--muted)' }}>
+                            {imdbUrl ? <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>{entry.title}</a> : entry.title}
+                          </span>
+                          {((commentCounts[entry.id] ?? 0) > 0 || ['🔥','❤️','😮','😂','👏'].some(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0)) && (
+                            <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                              {(commentCounts[entry.id] ?? 0) > 0 && <span style={{ fontSize: '0.65rem', color: 'var(--muted)' }}>💬 {commentCounts[entry.id]}</span>}
+                              {['🔥','❤️','😮','😂','👏'].filter(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0).map(e => (
+                                <span key={e} style={{ fontSize: '0.65rem', color: 'var(--muted)' }}>{e}{entryReactions![entry.id][e]}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <ExpandableNotes
+                        value={entry.notes ?? ''}
+                        onSave={(v) => saveEntryField ? saveEntryField(entry.id, 'notes', v) : Promise.resolve()}
+                        editable={isAdmin && !editMode}
+                        placeholder="Notes…"
+                      />
+                    </div>
+                  )
+                }
                 return (
                   <div
                     key={entry.id}
                     className={`flex flex-col items-center gap-1${!isAdmin && !editMode ? ' cursor-pointer' : ''}`}
-                    style={{
-                      width: '56px',
-                      position: 'relative',
-                      outline: selectedEntryId === entry.id ? `2px solid ${color}` : 'none',
-                      outlineOffset: '2px',
-                      borderRadius: '4px',
-                    }}
+                    style={{ width: '56px', position: 'relative', outline: selectedEntryId === entry.id ? `2px solid ${color}` : 'none', outlineOffset: '2px', borderRadius: '4px' }}
                     onClick={(e) => {
                       if (isAdmin || editMode) return
                       if ((e.target as HTMLElement).closest('a')) return
@@ -1985,52 +2091,21 @@ function TieredEntries({
                       <button onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }} className="absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: '#ef4444', color: '#fff', border: '1px solid rgba(0,0,0,0.3)' }}>✕</button>
                     )}
                     {imdbUrl ? (
-                      <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="w-full">
-                        {imgEl}
-                      </a>
+                      <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="w-full">{imgEl}</a>
                     ) : imgEl}
                     <span
                       className="text-center leading-tight"
-                      style={{
-                        color: i <= 2 ? 'var(--foreground)' : 'var(--muted)',
-                        fontSize: '0.65rem',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical' as const,
-                        overflow: 'hidden',
-                        width: '100%',
-                        textAlign: 'center',
-                      }}
+                      style={{ color: i <= 2 ? 'var(--foreground)' : 'var(--muted)', fontSize: '0.65rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden', width: '100%', textAlign: 'center' }}
                     >
-                      {imdbUrl ? (
-                        <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>
-                          {entry.title}
-                        </a>
-                      ) : entry.title}
+                      {imdbUrl ? <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>{entry.title}</a> : entry.title}
                     </span>
-                    {!editMode && (entry.notes || isAdmin) && (
-                      <div className="w-full text-center" style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>
-                        <EditableText
-                          value={entry.notes ?? ''}
-                          onSave={(v) => saveEntryField ? saveEntryField(entry.id, 'notes', v) : Promise.resolve()}
-                          multiline
-                          placeholder="Notes…"
-                          className="text-[0.6rem]"
-                          style={{ color: 'var(--muted)' }}
-                        />
-                      </div>
-                    )}
                     {(commentCounts[entry.id] ?? 0) > 0 && (
-                      <span style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>
-                        💬 {commentCounts[entry.id]}
-                      </span>
+                      <span style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>💬 {commentCounts[entry.id]}</span>
                     )}
                     {['🔥', '❤️', '😮', '😂', '👏']
                       .filter(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0)
                       .map(e => (
-                        <span key={e} style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>
-                          {e}{entryReactions![entry.id][e]}
-                        </span>
+                        <span key={e} style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>{e}{entryReactions![entry.id][e]}</span>
                       ))}
                   </div>
                 )
@@ -2099,6 +2174,11 @@ function SortableTierRankedEntry({
             <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'var(--foreground)' }}>{entry.title}</a>
           ) : entry.title}
         </span>
+        {!editMode && entry.notes && (
+          <div className="mt-1.5">
+            <ExpandableNotes value={entry.notes} />
+          </div>
+        )}
         {editMode && onMoveTier && (
           <select
             value={entry.tier_id ?? ''}
