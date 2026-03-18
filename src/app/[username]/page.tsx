@@ -276,8 +276,9 @@ function ProfileListCard({ list }: { list: ListWithPreview }) {
   if (isTiered) {
     const map = new Map<number, string[]>()
     for (const e of list.entries) {
-      if (!map.has(e.rank)) map.set(e.rank, [])
-      map.get(e.rank)!.push(e.title)
+      const key = e.rank ?? 0
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(e.title)
     }
     Array.from(map.entries()).sort(([a], [b]) => a - b).forEach(([rank, titles]) => tierGroups.push({ rank, titles }))
   }

@@ -10,7 +10,7 @@ import { useAuth } from '@/context/auth'
 import { EditableText } from '@/components/EditableText'
 import { EntryDrawer } from '@/components/EntryDrawer'
 import type { PosterInfo } from '@/lib/tmdb'
-import type { List, ListEntry, Comment, ReactionCount, HonorableMention, AlsoWatched } from '@/types'
+import type { List, ListEntry, Tier, Comment, ReactionCount, HonorableMention, AlsoWatched } from '@/types'
 
 const EMOJIS = ['🔥', '❤️', '😮', '😂', '👏']
 
@@ -39,6 +39,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [pendingListReaction, setPendingListReaction] = useState<string | null>(null)
   const [listReactionNameInput, setListReactionNameInput] = useState('')
   const [selectedEntry, setSelectedEntry] = useState<ListEntry | null>(null)
+  const [tiers, setTiers] = useState<Tier[]>([])
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({})
   const [entryReactions, setEntryReactions] = useState<Record<string, Record<string, number>>>({})
   const { isAdmin } = useAdmin()
@@ -57,7 +58,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   }, [id])
 
   async function fetchAll(vid: string) {
-    const [listRes, entriesRes, commentsRes, reactionsRes, hmRes, awRes] = await Promise.all([
+    const [listRes, entriesRes, commentsRes, reactionsRes, hmRes, awRes, tiersRes] = await Promise.all([
       supabase.from('lists').select('*').eq('id', id).single(),
       supabase.from('list_entries').select('*').eq('list_id', id).order('rank'),
       supabase
@@ -68,6 +69,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       supabase.from('reactions').select('emoji, visitor_id').eq('list_id', id),
       supabase.from('honorable_mentions').select('*').eq('list_id', id).order('created_at'),
       supabase.from('also_watched').select('*').eq('list_id', id).order('created_at'),
+      supabase.from('tiers').select('*').eq('list_id', id).order('position'),
     ])
 
     if (listRes.data) {
@@ -123,6 +125,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
 
     if (hmRes.data) setHonorableMentions(hmRes.data)
     if (awRes.data) setAlsoWatched(awRes.data)
+    if (tiersRes.data) setTiers(tiersRes.data)
 
     setLoading(false)
   }
@@ -189,7 +192,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     if (res.ok) {
       const entry = await res.json()
       setEntries((prev) =>
-        [...prev, entry].sort((a, b) => a.rank - b.rank)
+        [...prev, entry].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
       )
       setNewEntryTitle('')
       setNewEntryRank('')
@@ -455,9 +458,9 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         {/* Entries */}
         <section>
           {list.list_format === 'tiered' ? (
-            <TieredEntries entries={entries} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
+            <TieredEntries entries={entries} tiers={tiers} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
           ) : list.list_format === 'tier-ranked' ? (
-            <TierRankedEntries entries={entries} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
+            <TierRankedEntries entries={entries} tiers={tiers} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
           ) : (
           <>
           <ol className="space-y-3">
@@ -484,7 +487,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                     }}
                   >
                     <EditableText
-                      value={String(entry.rank)}
+                      value={String(entry.rank ?? i + 1)}
                       onSave={(v) => saveEntryField(entry.id, 'rank', Number(v))}
                       className="text-2xl font-bold tabular-nums"
                       style={{ color: i === 0 ? accentColor : i < 3 ? 'var(--foreground)' : 'var(--muted)' }}
@@ -984,6 +987,7 @@ const TIER_COLORS = [
 
 function TieredEntries({
   entries,
+  tiers: tierData,
   accentColor,
   posters,
   isTheme = false,
@@ -995,6 +999,7 @@ function TieredEntries({
   selectedEntryId,
 }: {
   entries: ListEntry[]
+  tiers: Tier[]
   accentColor: string
   posters: Record<string, PosterInfo>
   isTheme?: boolean
@@ -1005,19 +1010,161 @@ function TieredEntries({
   entryReactions?: Record<string, Record<string, number>>
   selectedEntryId?: string | null
 }) {
-  const tierMap = new Map<number, { label: string; entries: ListEntry[] }>()
-  for (const entry of entries) {
-    if (!tierMap.has(entry.rank)) {
-      tierMap.set(entry.rank, { label: entry.tier ?? `Tier ${entry.rank}`, entries: [] })
+  // New format: group by tier_id using tiers data
+  if (tierData.length > 0) {
+    const entriesByTier = new Map<string, ListEntry[]>()
+    for (const entry of entries) {
+      const key = entry.tier_id ?? 'none'
+      if (!entriesByTier.has(key)) entriesByTier.set(key, [])
+      entriesByTier.get(key)!.push(entry)
     }
-    tierMap.get(entry.rank)!.entries.push(entry)
+
+    return (
+      <div className="space-y-2">
+        {tierData.map((tier, i) => {
+          const tierEntries = entriesByTier.get(tier.id) ?? []
+          if (tierEntries.length === 0) return null
+          const color = tier.color ?? TIER_COLORS[i] ?? accentColor
+          const label = tier.label
+          const isTop = i === 0
+
+          if (isTop) {
+            const hero = tierEntries[0]
+            const heroPoster = hero.image_url ?? posters[hero.id]?.poster
+            const heroImdb = posters[hero.id]?.imdbUrl
+            return (
+              <div
+                key={tier.id}
+                className={`rounded-xl overflow-hidden flex items-stretch${!isAdmin ? ' cursor-pointer' : ''}`}
+                style={{
+                  border: `1px solid ${selectedEntryId === hero.id ? color : `${color}55`}`,
+                  background: `linear-gradient(135deg, ${color}18 0%, ${color}06 60%, transparent 100%)`,
+                  boxShadow: selectedEntryId === hero.id ? `0 0 32px ${color}40` : `0 0 32px ${color}20`,
+                  minHeight: '110px',
+                }}
+                onClick={(e) => {
+                  if (isAdmin) return
+                  if ((e.target as HTMLElement).closest('a')) return
+                  onEntryClick?.(hero)
+                }}
+              >
+                <div
+                  className="flex flex-col items-center justify-center px-4 shrink-0 text-center w-24"
+                  style={{ borderRight: `2px solid ${color}40` }}
+                >
+                  <span className="text-2xl font-black" style={{ color }}>★</span>
+                  <span className="text-[9px] leading-tight mt-1 font-semibold uppercase tracking-widest" style={{ color }}>
+                    {label}
+                  </span>
+                </div>
+                <div className="flex-1 flex items-center gap-5 px-5 py-4">
+                  <div className="min-w-0">
+                    <p className="text-[10px] uppercase tracking-[0.2em] font-semibold mb-1" style={{ color: `${color}99` }}>
+                      #1 Pick
+                    </p>
+                    <h3 className="text-xl font-bold leading-snug flex items-center gap-1.5" style={{ color }}>
+                      {heroImdb ? (
+                        <a href={heroImdb} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>
+                          {hero.title}
+                        </a>
+                      ) : hero.title}
+                    </h3>
+                  </div>
+                  {heroPoster && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={heroPoster}
+                      alt={hero.title}
+                      className="shrink-0 rounded-lg object-cover ml-auto"
+                      style={{ width: '56px', height: '84px', boxShadow: `0 4px 20px ${color}50`, border: `2px solid ${color}60` }}
+                    />
+                  )}
+                </div>
+              </div>
+            )
+          }
+
+          return (
+            <div
+              key={tier.id}
+              className="rounded-xl overflow-hidden flex items-stretch"
+              style={{ border: `1px solid ${color}22` }}
+            >
+              <div
+                className="flex flex-col items-center justify-center py-3 shrink-0 text-center w-24"
+                style={{ background: `${color}12`, borderRight: `2px solid ${color}28` }}
+              >
+                <span className="text-sm font-bold" style={{ color }}>{label}</span>
+              </div>
+              <div className="flex flex-wrap gap-2 p-3 items-start" style={{ background: `${color}05` }}>
+                {tierEntries.map((entry) => {
+                  const poster = entry.image_url ?? posters[entry.id]?.poster
+                  const imdbUrl = posters[entry.id]?.imdbUrl
+                  const imgEl = poster ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={poster} alt={entry.title} className="rounded object-cover w-full" style={{ height: '78px', border: `1px solid ${color}30`, boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }} />
+                  ) : (
+                    <div className="rounded w-full flex items-center justify-center" style={{ height: '78px', background: `${color}12`, border: `1px solid ${color}22` }} />
+                  )
+                  return (
+                    <div
+                      key={entry.id}
+                      className={`flex flex-col items-center gap-1${!isAdmin ? ' cursor-pointer' : ''}`}
+                      style={{ width: '56px', outline: selectedEntryId === entry.id ? `2px solid ${color}` : 'none', outlineOffset: '2px', borderRadius: '4px' }}
+                      onClick={(e) => {
+                        if (isAdmin) return
+                        if ((e.target as HTMLElement).closest('a')) return
+                        onEntryClick?.(entry)
+                      }}
+                    >
+                      {imdbUrl ? <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="w-full">{imgEl}</a> : imgEl}
+                      <span
+                        className="text-center leading-tight"
+                        style={{ color: i <= 2 ? 'var(--foreground)' : 'var(--muted)', fontSize: '0.65rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden', width: '100%', textAlign: 'center' }}
+                      >
+                        {imdbUrl ? <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>{entry.title}</a> : entry.title}
+                      </span>
+                      {(entry.notes || isAdmin) && (
+                        <div className="w-full text-center" style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>
+                          <EditableText value={entry.notes ?? ''} onSave={(v) => saveEntryField ? saveEntryField(entry.id, 'notes', v) : Promise.resolve()} multiline placeholder="Notes…" className="text-[0.6rem]" style={{ color: 'var(--muted)' }} />
+                        </div>
+                      )}
+                      {(commentCounts[entry.id] ?? 0) > 0 && (
+                        <span style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>💬 {commentCounts[entry.id]}</span>
+                      )}
+                      {['🔥', '❤️', '😮', '😂', '👏']
+                        .filter(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0)
+                        .map(e => (
+                          <span key={e} style={{ fontSize: '0.6rem', color: 'var(--muted)' }}>{e}{entryReactions![entry.id][e]}</span>
+                        ))}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
+        <p className="text-xs text-right" style={{ color: 'var(--muted)' }}>
+          {entries.length} films
+        </p>
+      </div>
+    )
   }
 
-  const tiers = Array.from(tierMap.entries()).sort(([a], [b]) => a - b)
+  // Legacy fallback: old rank-based grouping
+  const tierMap = new Map<number, { label: string; entries: ListEntry[] }>()
+  for (const entry of entries) {
+    if (!tierMap.has(entry.rank ?? 0)) {
+      tierMap.set(entry.rank ?? 0, { label: entry.tier ?? `Tier ${entry.rank ?? 0}`, entries: [] })
+    }
+    tierMap.get(entry.rank ?? 0)!.entries.push(entry)
+  }
+
+  const legacyTiers = Array.from(tierMap.entries()).sort(([a], [b]) => a - b)
 
   return (
     <div className="space-y-2">
-      {tiers.map(([rank, { label, entries: tierEntries }], i) => {
+      {legacyTiers.map(([rank, { label, entries: tierEntries }], i) => {
         const color = TIER_COLORS[i] ?? accentColor
         const isTop = i === 0
 
@@ -1226,6 +1373,7 @@ function TieredEntries({
 
 function TierRankedEntries({
   entries,
+  tiers: tierData,
   posters,
   isTheme = false,
   isAdmin = false,
@@ -1236,6 +1384,7 @@ function TierRankedEntries({
   selectedEntryId,
 }: {
   entries: ListEntry[]
+  tiers: Tier[]
   posters: Record<string, PosterInfo>
   isTheme?: boolean
   isAdmin?: boolean
@@ -1245,11 +1394,110 @@ function TierRankedEntries({
   entryReactions?: Record<string, Record<string, number>>
   selectedEntryId?: string | null
 }) {
-  // Group by tier, preserving insertion order
+  // New format: group by tier_id using tiers data
+  if (tierData.length > 0) {
+    const entriesByTier = new Map<string, ListEntry[]>()
+    for (const entry of [...entries].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))) {
+      const key = entry.tier_id ?? 'none'
+      if (!entriesByTier.has(key)) entriesByTier.set(key, [])
+      entriesByTier.get(key)!.push(entry)
+    }
+
+    return (
+      <div className="space-y-10">
+        {tierData.map((tier, tierIndex) => {
+          const tierEntries = entriesByTier.get(tier.id) ?? []
+          if (tierEntries.length === 0) return null
+          const color = tier.color ?? TIER_RANKED_COLORS[tierIndex] ?? '#e8c547'
+
+          return (
+            <div key={tier.id}>
+              <div
+                className="relative rounded-xl overflow-hidden mb-4 px-6 py-5"
+                style={{ background: `linear-gradient(135deg, ${color}22 0%, ${color}08 100%)`, border: `1px solid ${color}35` }}
+              >
+                <span
+                  className="absolute right-5 top-1/2 -translate-y-1/2 font-black select-none pointer-events-none leading-none"
+                  style={{ fontSize: '5rem', color: `${color}12` }}
+                >
+                  {tierIndex + 1}
+                </span>
+                <p className="text-[10px] tracking-[0.3em] uppercase font-semibold mb-1" style={{ color: `${color}70` }}>
+                  Tier {tierIndex + 1}
+                </p>
+                <h3 className="text-lg font-bold" style={{ color }}>{tier.label}</h3>
+              </div>
+
+              <div className="space-y-1.5">
+                {tierEntries.map((entry) => {
+                  const info = posters[entry.id]
+                  const src = entry.image_url ?? info?.poster
+                  const imdbUrl = info?.imdbUrl
+                  return (
+                    <div
+                      key={entry.id}
+                      className={`flex items-start gap-3 rounded-lg px-3 py-2 transition-colors${!isAdmin ? ' cursor-pointer' : ''}`}
+                      style={{ background: selectedEntryId === entry.id ? `${color}10` : 'var(--surface)', border: `1px solid ${selectedEntryId === entry.id ? `${color}40` : 'var(--border)'}` }}
+                      onClick={(e) => {
+                        if (isAdmin) return
+                        if ((e.target as HTMLElement).closest('a')) return
+                        onEntryClick?.(entry)
+                      }}
+                    >
+                      <span className="text-xs font-bold w-6 shrink-0 text-right tabular-nums mt-2.5" style={{ color: `${color}70` }}>
+                        {entry.rank}
+                      </span>
+                      {src ? (
+                        imdbUrl ? (
+                          <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 mt-1">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
+                          </a>
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded shrink-0 mt-1" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
+                        )
+                      ) : (
+                        <div className="w-8 h-12 rounded shrink-0 mt-1" style={{ background: `${color}15`, border: `1px solid ${color}20` }} />
+                      )}
+                      <div className="flex-1 min-w-0 py-1.5">
+                        <span className="font-medium text-sm">
+                          {imdbUrl && !isAdmin ? (
+                            <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'var(--foreground)' }}>{entry.title}</a>
+                          ) : entry.title}
+                        </span>
+                        {(entry.notes || isAdmin) && (
+                          <div className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--muted)' }}>
+                            <EditableText value={entry.notes ?? ''} onSave={(v) => saveEntryField ? saveEntryField(entry.id, 'notes', v) : Promise.resolve()} multiline placeholder="Add notes…" className="text-xs" style={{ color: 'var(--muted)' }} />
+                          </div>
+                        )}
+                        <div className="mt-1 flex items-center gap-2 flex-wrap">
+                          {commentCounts[entry.id] > 0 && (
+                            <span className="text-xs" style={{ color: 'var(--muted)' }}>💬 {commentCounts[entry.id]}</span>
+                          )}
+                          {['🔥', '❤️', '😮', '😂', '👏']
+                            .filter(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0)
+                            .map(e => (
+                              <span key={e} className="text-xs" style={{ color: 'var(--muted)' }}>{e} {entryReactions![entry.id][e]}</span>
+                            ))}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // Legacy fallback: group by tier string, preserving insertion order
   const tierGroups: { tier: string; entries: ListEntry[] }[] = []
   const seen = new Map<string, ListEntry[]>()
 
-  for (const entry of [...entries].sort((a, b) => a.rank - b.rank)) {
+  for (const entry of [...entries].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))) {
     const key = entry.tier ?? 'Uncategorized'
     if (!seen.has(key)) {
       const arr: ListEntry[] = []

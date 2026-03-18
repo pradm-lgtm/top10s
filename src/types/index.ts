@@ -26,11 +26,21 @@ export type List = {
   profiles?: { username: string; display_name: string | null; avatar_url: string | null } | null
 }
 
+export type Tier = {
+  id: string
+  list_id: string
+  label: string
+  color: string | null
+  position: number
+  created_at: string
+}
+
 export type ListEntry = {
   id: string
   list_id: string
-  rank: number
-  tier: string | null
+  rank: number | null      // null for tiered-only lists
+  tier_id: string | null   // FK to tiers table
+  tier: string | null      // legacy
   title: string
   notes: string | null
   image_url: string | null
