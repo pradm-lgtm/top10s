@@ -1731,7 +1731,7 @@ function TieredEntries({
       <div className="space-y-2">
         {unassigned.length > 0 && (
           <div className="rounded-xl overflow-hidden flex items-stretch" style={{ border: '1px solid var(--border)' }}>
-            <div className="flex flex-col items-center justify-center py-3 shrink-0 text-center w-24" style={{ background: 'var(--surface-2)', borderRight: '2px solid var(--border)' }}>
+            <div className="flex flex-col items-center justify-center py-3 shrink-0 text-center overflow-hidden" style={{ width: 88, minWidth: 88, background: 'var(--surface-2)', borderRight: '2px solid var(--border)' }}>
               <span className="text-xs font-bold" style={{ color: 'var(--muted)' }}>Unassigned</span>
             </div>
             <div className="flex flex-wrap gap-2 p-3 items-end">
@@ -1774,14 +1774,30 @@ function TieredEntries({
               style={{ border: `1px solid ${color}22` }}
             >
               <div
-                className="flex flex-col items-center justify-center py-3 shrink-0 text-center w-24"
-                style={{ background: `${color}12`, borderRight: `2px solid ${color}28` }}
+                className="flex flex-col items-center justify-center py-3 shrink-0 text-center overflow-hidden"
+                style={{ width: 88, minWidth: 88, background: `${color}12`, borderRight: `2px solid ${color}28` }}
               >
-                <span className="text-sm font-bold" style={{ color }}>{label}</span>
+                <span
+                  title={label.length > 15 ? label : undefined}
+                  style={{
+                    color,
+                    fontWeight: 'bold',
+                    fontSize: label.length > 12 ? '0.7rem' : '0.875rem',
+                    lineHeight: 1.25,
+                    display: '-webkit-box',
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: 'vertical' as const,
+                    overflow: 'hidden',
+                    wordBreak: 'break-word',
+                    padding: '0 6px',
+                  }}
+                >
+                  {label}
+                </span>
               </div>
               <div className="flex flex-wrap gap-2 p-3 items-end" style={{ background: `${color}05` }}>
                 {tierEntries.length === 0 && (
-                  <span className="text-xs italic self-center" style={{ color: 'var(--muted)' }}>Empty</span>
+                  <span className="text-xs italic self-center py-1 px-2 rounded" style={{ color: 'var(--muted)', opacity: 0.5 }}>Empty</span>
                 )}
                 {tierEntries.map((entry) => {
                   const poster = entry.image_url ?? posters[entry.id]?.poster
@@ -1988,16 +2004,27 @@ function TieredEntries({
           >
             {/* Fixed-width label — same for all tiers */}
             <div
-              className="flex flex-col items-center justify-center py-3 shrink-0 text-center w-24"
-              style={{
-                background: `${color}12`,
-                borderRight: `2px solid ${color}28`,
-              }}
+              className="flex flex-col items-center justify-center py-3 shrink-0 text-center overflow-hidden"
+              style={{ width: 88, minWidth: 88, background: `${color}12`, borderRight: `2px solid ${color}28` }}
             >
               <span className="text-sm font-bold" style={{ color }}>T{rank}</span>
               <span
-                className="text-[9px] leading-tight mt-0.5 font-medium uppercase tracking-wide px-1"
-                style={{ color: `${color}bb` }}
+                title={label.length > 15 ? label : undefined}
+                style={{
+                  color: `${color}bb`,
+                  fontSize: label.length > 12 ? '0.6rem' : '0.7rem',
+                  lineHeight: 1.2,
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical' as const,
+                  overflow: 'hidden',
+                  wordBreak: 'break-word',
+                  padding: '0 6px',
+                  marginTop: 2,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  fontWeight: 500,
+                }}
               >
                 {label}
               </span>
