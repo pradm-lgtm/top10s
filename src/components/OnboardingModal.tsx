@@ -15,11 +15,15 @@ export function OnboardingModal() {
   useEffect(() => {
     if (!user || !profile) return
     const key = `ranked_onboarded_${user.id}`
-    if (!localStorage.getItem(key)) {
-      setDisplayName(profile.display_name ?? '')
-      setUsername(profile.username ?? '')
-      setShow(true)
+    if (localStorage.getItem(key)) return
+    // Returning user who already has a profile — skip modal, just mark as done
+    if (profile.display_name && profile.username) {
+      localStorage.setItem(key, '1')
+      return
     }
+    setDisplayName(profile.display_name ?? '')
+    setUsername(profile.username ?? '')
+    setShow(true)
   }, [user, profile])
 
   async function handleSubmit(e: React.FormEvent) {
