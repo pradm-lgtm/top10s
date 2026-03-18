@@ -1734,7 +1734,7 @@ function TieredEntries({
             <div className="flex flex-col items-center justify-center py-3 shrink-0 text-center w-24" style={{ background: 'var(--surface-2)', borderRight: '2px solid var(--border)' }}>
               <span className="text-xs font-bold" style={{ color: 'var(--muted)' }}>Unassigned</span>
             </div>
-            <div className="flex flex-wrap gap-2 p-3 items-start">
+            <div className="flex flex-wrap gap-2 p-3 items-end">
               {unassigned.map((entry) => {
                 const poster = entry.image_url ?? posters[entry.id]?.poster
                 const imgEl = poster ? (
@@ -1749,7 +1749,7 @@ function TieredEntries({
                       <button onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }} className="absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: '#ef4444', color: '#fff', border: '1px solid rgba(0,0,0,0.3)' }}>✕</button>
                     )}
                     {imgEl}
-                    <span className="text-center leading-tight" style={{ color: 'var(--muted)', fontSize: '0.65rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden', width: '100%' }}>{entry.title}</span>
+                    <span className="text-center leading-tight" style={{ color: 'var(--muted)', fontSize: '0.65rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden', width: '100%', minHeight: '1.625rem' }}>{entry.title}</span>
                     {editMode && onMoveTier && (
                       <select value={entry.tier_id ?? ''} onChange={e => { e.stopPropagation(); onMoveTier(entry.id, e.target.value) }} onClick={e => e.stopPropagation()} className="w-full rounded outline-none cursor-pointer" style={{ fontSize: '0.6rem', background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)', padding: '1px 2px' }}>
                         <option value="">Move to tier…</option>
@@ -1779,7 +1779,7 @@ function TieredEntries({
               >
                 <span className="text-sm font-bold" style={{ color }}>{label}</span>
               </div>
-              <div className="flex flex-wrap gap-2 p-3 items-start" style={{ background: `${color}05` }}>
+              <div className="flex flex-wrap gap-2 p-3 items-end" style={{ background: `${color}05` }}>
                 {tierEntries.length === 0 && (
                   <span className="text-xs italic self-center" style={{ color: 'var(--muted)' }}>Empty</span>
                 )}
@@ -1854,7 +1854,7 @@ function TieredEntries({
                       {imdbUrl ? <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="w-full">{imgEl}</a> : imgEl}
                       <span
                         className="text-center leading-tight"
-                        style={{ color: i <= 2 ? 'var(--foreground)' : 'var(--muted)', fontSize: '0.65rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden', width: '100%', textAlign: 'center' }}
+                        style={{ color: i <= 2 ? 'var(--foreground)' : 'var(--muted)', fontSize: '0.65rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden', width: '100%', textAlign: 'center', minHeight: '1.625rem' }}
                       >
                         {imdbUrl ? <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>{entry.title}</a> : entry.title}
                       </span>
@@ -2005,7 +2005,7 @@ function TieredEntries({
 
             {/* Movie cards */}
             <div
-              className="flex flex-wrap gap-2 p-3 items-start"
+              className="flex flex-wrap gap-2 p-3 items-end"
               style={{ background: `${color}05` }}
             >
               {tierEntries.map((entry) => {
@@ -2095,7 +2095,7 @@ function TieredEntries({
                     ) : imgEl}
                     <span
                       className="text-center leading-tight"
-                      style={{ color: i <= 2 ? 'var(--foreground)' : 'var(--muted)', fontSize: '0.65rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden', width: '100%', textAlign: 'center' }}
+                      style={{ color: i <= 2 ? 'var(--foreground)' : 'var(--muted)', fontSize: '0.65rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden', width: '100%', textAlign: 'center', minHeight: '1.625rem' }}
                     >
                       {imdbUrl ? <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>{entry.title}</a> : entry.title}
                     </span>
