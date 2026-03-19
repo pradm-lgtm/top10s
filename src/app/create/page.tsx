@@ -590,6 +590,115 @@ const GENRE_MAP: Record<number, string> = {
   10765: 'Sci-Fi & Fantasy', 10766: 'Soap', 10768: 'War & Politics',
 }
 
+// ─── Import helpers ───────────────────────────────────────────────────────────
+
+type ParsedEntry = {
+  title: string
+  description?: string
+  tier?: string
+  rank?: number
+}
+
+type ParsedList = {
+  format: 'ranked' | 'tiered' | 'tiered-ranked' | 'plain'
+  tiers: string[]
+  entries: ParsedEntry[]
+}
+
+type ImportResult = {
+  entries: Entry[]
+  missed: number
+  newFormat?: 'ranked' | 'tiered' | 'tiered-ranked'
+  newTiers?: TierDef[]
+}
+
+const FORMAT_LABELS: Record<string, string> = {
+  ranked: 'Ranked',
+  tiered: 'Tiered',
+  'tiered-ranked': 'Tiered + Ranked',
+  plain: 'Plain',
+}
+
+function textToTiptap(text: string): TiptapDoc {
+  return { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: text.trim() }] }] }
+}
+
+function escapeRegex(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+
+// Extract descriptions from the original pasted text so Claude doesn't need to include them
+// (keeping Claude output small means no truncation on long lists).
+function extractRawDescriptions(rawText: string, entries: ParsedEntry[], format: string): string[] {
+  const descs: string[] = entries.map(() => '')
+  if (format === 'ranked') {
+    // Split at each "N. " / "N) " boundary
+    const sections = rawText.trim().split(/(?=^\s*\d+[\.\)]\s)/m)
+    for (const section of sections) {
+      const nl = section.indexOf('\n')
+      if (nl === -1) continue
+      const firstLine = section.slice(0, nl).trim()
+      const rest = section.slice(nl + 1).trim()
+      const rankMatch = firstLine.match(/^(\d+)[\.\)]\s+(.+)$/)
+      if (!rankMatch) continue
+      const lineTitle = rankMatch[2].trim()
+      const idx = entries.findIndex((e) =>
+        e.title.toLowerCase() === lineTitle.toLowerCase() ||
+        lineTitle.toLowerCase().includes(e.title.toLowerCase()),
+      )
+      if (idx !== -1) descs[idx] = rest
+    }
+  } else {
+    // For tiered / plain: find each title as its own line and extract until the next
+    const lines = rawText.split('\n')
+    for (let i = 0; i < entries.length; i++) {
+      const titleLower = entries[i].title.toLowerCase()
+      const lineIdx = lines.findIndex((l) => l.trim().toLowerCase() === titleLower)
+      if (lineIdx === -1) continue
+      // Collect lines after the title until the next entry title or tier header
+      const descLines: string[] = []
+      for (let j = lineIdx + 1; j < lines.length; j++) {
+        const l = lines[j].trim().toLowerCase()
+        const isNextTitle = entries.some((e, ei) => ei !== i && l === e.title.toLowerCase())
+        const isTierHeader = /^[a-z][\w\s]{0,20}tier\s*$|^s$|^a$|^b$|^c$|^d$/i.test(lines[j].trim())
+        if (isNextTitle || isTierHeader) break
+        descLines.push(lines[j])
+      }
+      descs[i] = descLines.join('\n').trim()
+    }
+  }
+  return descs
+}
+
+async function tmdbSearchForImport(
+  title: string, category: 'movies' | 'tv', yearFrom: number | null, yearTo: number | null, apiKey: string,
+): Promise<{ id: number; title?: string; name?: string; poster_path: string | null } | null> {
+  const type = category === 'movies' ? 'movie' : 'tv'
+  const yearHint = yearFrom !== null && yearTo !== null && yearFrom === yearTo ? yearFrom : null
+  const yearParam = yearHint
+    ? category === 'movies' ? `&year=${yearHint}` : `&first_air_date_year=${yearHint}`
+    : ''
+  try {
+    const res = await fetch(
+      `https://api.themoviedb.org/3/search/${type}?api_key=${apiKey}&query=${encodeURIComponent(title)}&page=1${yearParam}`,
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    const results = (data.results ?? []).filter((r: { poster_path: string | null }) => r.poster_path)
+    if (results.length === 0) return null
+    // TMDB relevance can surface obscure exact-name matches over famous films.
+    // 1) Prefer results whose title is an exact match for the query.
+    // 2) Break ties by vote_count so the most well-known film wins.
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
+    const qNorm = normalize(title)
+    results.sort((a: { title?: string; name?: string; vote_count?: number }, b: { title?: string; name?: string; vote_count?: number }) => {
+      const aExact = normalize(a.title ?? a.name ?? '') === qNorm ? 1 : 0
+      const bExact = normalize(b.title ?? b.name ?? '') === qNorm ? 1 : 0
+      if (aExact !== bExact) return bExact - aExact
+      return (b.vote_count ?? 0) - (a.vote_count ?? 0)
+    })
+    return results[0]
+  } catch { return null }
+}
+
 // ─── TierEntryCard (draggable poster in tier row) ────────────────────────────
 
 function TierEntryCard({
@@ -874,11 +983,266 @@ function AddEntrySheet({
   )
 }
 
+// ─── Import Modal ─────────────────────────────────────────────────────────────
+
+type ImportPhase = 'idle' | 'parsing' | 'conflict' | 'resolving'
+
+function ImportModal({
+  open, onClose, listFormat, tiers, category, yearFrom, yearTo, onImport,
+}: {
+  open: boolean
+  onClose: () => void
+  listFormat: 'ranked' | 'tiered' | 'tiered-ranked'
+  tiers: TierDef[]
+  category: 'movies' | 'tv'
+  yearFrom: number | null
+  yearTo: number | null
+  onImport: (result: ImportResult) => void
+}) {
+  const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? ''
+  const [text, setText] = useState('')
+  const [phase, setPhase] = useState<ImportPhase>('idle')
+  const [parsed, setParsed] = useState<ParsedList | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (open) { setText(''); setParsed(null); setError(null); setPhase('idle') }
+  }, [open])
+
+  useEffect(() => {
+    if (open) document.body.style.overflow = 'hidden'
+    else document.body.style.overflow = ''
+    return () => { document.body.style.overflow = '' }
+  }, [open])
+
+  async function resolveAndImport(p: ParsedList, targetFormat: 'ranked' | 'tiered' | 'tiered-ranked', targetTiers: TierDef[], rawText: string) {
+    setPhase('resolving')
+
+    // Extract descriptions from the raw text client-side (Claude no longer includes them)
+    const rawDescs = extractRawDescriptions(rawText, p.entries, p.format)
+
+    // Resolve all titles via TMDB in batches of 8
+    const allResolved: ({ id: number; title?: string; name?: string; poster_path: string | null } | null)[] = []
+    for (let i = 0; i < p.entries.length; i += 8) {
+      const batch = p.entries.slice(i, i + 8)
+      const results = await Promise.all(
+        batch.map((e) => tmdbSearchForImport(e.title, category, yearFrom, yearTo, apiKey)),
+      )
+      allResolved.push(...results)
+    }
+
+    const importedEntries: Entry[] = []
+    let missed = 0
+    for (let i = 0; i < p.entries.length; i++) {
+      const parsedEntry = p.entries[i]
+      const tmdb = allResolved[i]
+      if (!tmdb) { missed++; continue }
+
+      let tierId: string | null = null
+      if (parsedEntry.tier && (targetFormat === 'tiered' || targetFormat === 'tiered-ranked')) {
+        const matched = targetTiers.find((t) => t.label.toLowerCase() === parsedEntry.tier!.toLowerCase())
+        tierId = matched?.tempId ?? null
+      }
+
+      const desc = rawDescs[i]
+      importedEntries.push({
+        uid: crypto.randomUUID(),
+        tmdbId: tmdb.id,
+        title: tmdb.title ?? tmdb.name ?? parsedEntry.title,
+        notes: desc ? textToTiptap(desc) : null,
+        posterUrl: tmdb.poster_path ? `${TMDB_IMG}${tmdb.poster_path}` : null,
+        notesOpen: false,
+        tierId,
+      })
+    }
+
+    onImport({
+      entries: importedEntries,
+      missed,
+      newFormat: targetFormat !== listFormat ? targetFormat : undefined,
+      newTiers: targetFormat !== listFormat ? targetTiers : undefined,
+    })
+    onClose()
+  }
+
+  async function handleImport() {
+    if (!text.trim()) return
+    setError(null)
+    setPhase('parsing')
+    try {
+      const res = await fetch('/api/claude/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, category }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setError(err.error === 'parse_failed'
+          ? "Couldn't read that list — try one title per line"
+          : 'Something went wrong. Please try again.')
+        setPhase('idle')
+        return
+      }
+      const p: ParsedList = await res.json()
+      setParsed(p)
+
+      // 'plain' is always compatible with any format
+      const hasConflict = p.format !== 'plain' && p.format !== listFormat
+      if (hasConflict) {
+        setPhase('conflict')
+      } else {
+        await resolveAndImport(p, listFormat, tiers, text)
+      }
+    } catch {
+      setError('Something went wrong. Please try again.')
+      setPhase('idle')
+    }
+  }
+
+  async function handleSwitchFormat() {
+    if (!parsed) return
+    const newTiers = (parsed.tiers.length > 0 ? parsed.tiers : ['S', 'A', 'B', 'C']).map((label, i) => ({
+      tempId: crypto.randomUUID(),
+      label,
+      color: TIER_COLOR_PRESETS[i % TIER_COLOR_PRESETS.length],
+    }))
+    const targetFormat = (parsed.format === 'plain' ? listFormat : parsed.format) as 'ranked' | 'tiered' | 'tiered-ranked'
+    await resolveAndImport(parsed, targetFormat, newTiers, text)
+  }
+
+  async function handleImportAnyway() {
+    if (!parsed) return
+    await resolveAndImport(parsed, listFormat, tiers, text)
+  }
+
+  const busy = phase === 'parsing' || phase === 'resolving'
+  const detectedLabel = parsed ? FORMAT_LABELS[parsed.format] : ''
+  const chosenLabel = FORMAT_LABELS[listFormat]
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40 transition-opacity duration-300"
+        style={{
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(3px)',
+          opacity: open ? 1 : 0,
+          pointerEvents: open ? 'auto' : 'none',
+        }}
+        onClick={!busy ? onClose : undefined}
+      />
+
+      {/* Sheet */}
+      <div
+        className="fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl"
+        style={{
+          background: 'var(--surface)',
+          maxHeight: '92vh',
+          overflowY: 'auto',
+          transform: open ? 'translateY(0)' : 'translateY(100%)',
+          transition: 'transform 0.32s cubic-bezier(0.32, 0.72, 0, 1)',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
+        {/* Handle */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full" style={{ background: 'var(--border)' }} />
+        </div>
+
+        <div className="px-5 pb-10 pt-3 space-y-5">
+
+          {phase === 'resolving' ? (
+            <div className="flex flex-col items-center gap-4 py-10">
+              <div className="w-7 h-7 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
+              <p className="text-sm" style={{ color: 'var(--muted)' }}>Matching titles…</p>
+            </div>
+          ) : phase === 'conflict' && parsed ? (
+            <>
+              <div>
+                <h2 className="text-xl font-bold">Format mismatch</h2>
+                <p className="text-sm mt-1.5" style={{ color: 'var(--muted)' }}>
+                  This looks like a <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{detectedLabel}</span> list,
+                  but you&apos;re creating a <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{chosenLabel}</span> list.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  onClick={handleSwitchFormat}
+                  className="w-full py-4 rounded-2xl text-base font-bold transition-all active:scale-[0.97]"
+                  style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+                >
+                  Switch to {detectedLabel}
+                </button>
+                <button
+                  onClick={handleImportAnyway}
+                  className="w-full py-3 rounded-2xl text-sm font-semibold transition-all active:scale-[0.97]"
+                  style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)' }}
+                >
+                  Import as {chosenLabel} anyway
+                </button>
+                <button
+                  onClick={onClose}
+                  className="w-full py-2.5 text-sm"
+                  style={{ color: 'var(--muted)' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <h2 className="text-xl font-bold">Paste your list</h2>
+                <p className="text-sm mt-1.5" style={{ color: 'var(--muted)' }}>
+                  Paste a list in any format — numbered, bulleted, tiered, or one title per line. Descriptions are supported too.
+                </p>
+              </div>
+
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder={`1. The Godfather\nBest movie ever made\n\n2. Goodfellas\nScorsese at his peak\n\nor tiered:\nS Tier\nThe Godfather\nGoodfellas\n\nA Tier\nCasino`}
+                rows={12}
+                className="w-full px-4 py-3 rounded-xl text-sm resize-none outline-none font-mono"
+                style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)', lineHeight: 1.6 }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+              />
+
+              {error && (
+                <p className="text-sm px-3 py-2 rounded-lg" style={{ background: 'rgba(248,113,113,0.12)', color: '#f87171', border: '1px solid rgba(248,113,113,0.25)' }}>
+                  {error}
+                </p>
+              )}
+
+              <button
+                onClick={handleImport}
+                disabled={!text.trim() || busy}
+                className="w-full py-4 rounded-2xl text-base font-bold disabled:opacity-40 transition-all active:scale-[0.97]"
+                style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+              >
+                {phase === 'parsing' ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="w-4 h-4 rounded-full border-2 animate-spin inline-block" style={{ borderColor: '#0a0a0f', borderTopColor: 'transparent' }} />
+                    Reading…
+                  </span>
+                ) : 'Import'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
 // ─── Step 3 — Entries ─────────────────────────────────────────────────────────
 
 function Step3({
   listTitle, category, yearFrom, yearTo, description,
-  listFormat, tiers, setTiers,
+  listFormat, setListFormat, tiers, setTiers,
   entries, setEntries,
   onPublish, onBack, publishing, publishError,
 }: {
@@ -888,6 +1252,7 @@ function Step3({
   yearTo: number | null
   description: string
   listFormat: 'ranked' | 'tiered' | 'tiered-ranked'
+  setListFormat: (v: 'ranked' | 'tiered' | 'tiered-ranked') => void
   tiers: TierDef[]
   setTiers: (v: TierDef[]) => void
   entries: Entry[]
@@ -904,6 +1269,24 @@ function Step3({
 
   const [sheet, setSheet] = useState<SheetState | null>(null)
   const [editingTiers, setEditingTiers] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [importResult, setImportResult] = useState<{ imported: number; missed: number } | null>(null)
+
+  useEffect(() => {
+    if (!importResult) return
+    const t = setTimeout(() => setImportResult(null), 5000)
+    return () => clearTimeout(t)
+  }, [importResult])
+
+  function handleImport({ entries: newEntries, missed, newFormat, newTiers }: ImportResult) {
+    if (newFormat) setListFormat(newFormat)
+    if (newTiers) setTiers(newTiers)
+    setEntries((prev) => {
+      const existingIds = new Set(prev.map((e) => e.tmdbId).filter(Boolean))
+      return [...prev, ...newEntries.filter((e) => !existingIds.has(e.tmdbId))]
+    })
+    setImportResult({ imported: newEntries.length, missed })
+  }
 
   const isTiered = listFormat === 'tiered' || listFormat === 'tiered-ranked'
   const addedTmdbIds = new Set(entries.map((e) => e.tmdbId).filter(Boolean) as number[])
@@ -1028,6 +1411,34 @@ function Step3({
         onClose={() => setSheet(null)}
       />
 
+      {/* ── Import modal ── */}
+      <ImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        listFormat={listFormat}
+        tiers={tiers}
+        category={category}
+        yearFrom={yearFrom}
+        yearTo={yearTo}
+        onImport={handleImport}
+      />
+
+      {/* ── Import success toast ── */}
+      {importResult && (
+        <div
+          className="px-4 py-3 rounded-xl text-sm flex items-center justify-between gap-3"
+          style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }}
+        >
+          <span>
+            {importResult.imported} title{importResult.imported !== 1 ? 's' : ''} imported
+            {importResult.missed > 0 && (
+              <span style={{ color: 'var(--muted)' }}> · {importResult.missed} couldn&apos;t be matched on TMDB</span>
+            )}
+          </span>
+          <button onClick={() => setImportResult(null)} style={{ color: 'var(--muted)', fontSize: 12 }}>✕</button>
+        </div>
+      )}
+
       {/* ── Tier list ── */}
       {isTiered ? (
         <div className="space-y-3">
@@ -1144,6 +1555,13 @@ function Step3({
         <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
         <span className="text-xs font-semibold tracking-[0.15em] uppercase" style={{ color: 'var(--muted)' }}>Add {catLabel}</span>
         <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+        <button
+          onClick={() => setImportOpen(true)}
+          className="text-xs px-2.5 py-1 rounded-lg shrink-0 transition-opacity hover:opacity-70"
+          style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}
+        >
+          Import list
+        </button>
       </div>
 
       <ThoughtCloud
@@ -1336,6 +1754,7 @@ export default function CreatePage() {
             yearTo={timeScope === 'year' ? (year ?? null) : timeScope === 'range' ? yearTo : null}
             description={description}
             listFormat={listFormat}
+            setListFormat={setListFormat}
             tiers={tiers}
             setTiers={setTiers}
             entries={entries}
