@@ -1152,6 +1152,24 @@ const TIER_RANKED_COLORS = [
 ]
 
 // Tier colors — index 0 = tier 1 (best), descending
+function tierLabelStyle(label: string): React.CSSProperties {
+  const len = (label || '').length
+  const fontSize = len <= 6 ? '16px' : len <= 12 ? '13px' : '11px'
+  const fontWeight = len <= 6 ? 800 : 700
+  return {
+    fontSize,
+    fontWeight,
+    lineHeight: 1.2,
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical' as const,
+    overflow: 'hidden',
+    wordBreak: 'break-word',
+    padding: '0 6px',
+    textAlign: 'center',
+  }
+}
+
 const TIER_COLORS = [
   '#e8c547', // gold
   '#34d399', // green
@@ -1877,21 +1895,13 @@ function TieredEntries({
             >
               <div
                 className="flex flex-col items-center justify-center py-3 shrink-0 text-center overflow-hidden"
-                style={{ width: 88, minWidth: 88, background: `${color}12`, borderRight: `2px solid ${color}28` }}
+                style={{ width: 80, minWidth: 80, maxWidth: 80, background: `${color}12`, borderRight: `2px solid ${color}28` }}
               >
                 <span
-                  title={label.length > 15 ? label : undefined}
+                  title={label}
                   style={{
                     color,
-                    fontWeight: 'bold',
-                    fontSize: label.length > 12 ? '0.7rem' : '0.875rem',
-                    lineHeight: 1.25,
-                    display: '-webkit-box',
-                    WebkitLineClamp: 3,
-                    WebkitBoxOrient: 'vertical' as const,
-                    overflow: 'hidden',
-                    wordBreak: 'break-word',
-                    padding: '0 6px',
+                    ...tierLabelStyle(label),
                   }}
                 >
                   {label}

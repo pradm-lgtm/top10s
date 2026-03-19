@@ -626,6 +626,25 @@ const FORMAT_LABELS: Record<string, string> = {
   plain: 'Plain',
 }
 
+// Dynamic font size for tier label columns — scales down gracefully before truncating
+function tierLabelStyle(label: string): React.CSSProperties {
+  const len = (label || '').length
+  const fontSize = len <= 6 ? '16px' : len <= 12 ? '13px' : '11px'
+  const fontWeight = len <= 6 ? 800 : 700
+  return {
+    fontSize,
+    fontWeight,
+    lineHeight: 1.2,
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical' as const,
+    overflow: 'hidden',
+    wordBreak: 'break-word',
+    padding: '0 6px',
+    textAlign: 'center',
+  }
+}
+
 function textToTiptap(text: string): TiptapDoc {
   return { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: text.trim() }] }] }
 }
@@ -778,9 +797,13 @@ function DroppableTier({
         background: isOver ? `${tier.color}1a` : `${tier.color}08`,
         boxShadow: isOver ? `0 0 16px ${tier.color}30` : 'none',
       }}>
-      <div className="flex items-center justify-center shrink-0 w-14"
-        style={{ borderRight: `2px solid ${tier.color}40`, background: `${tier.color}15` }}>
-        <span className="text-lg font-black" style={{ color: tier.color }}>{tier.label || '?'}</span>
+      <div
+        className="flex items-center justify-center shrink-0 overflow-hidden"
+        style={{ width: 80, minWidth: 80, maxWidth: 80, borderRight: `2px solid ${tier.color}40`, background: `${tier.color}15` }}
+      >
+        <span style={{ color: tier.color, ...tierLabelStyle(tier.label || '?') }}>
+          {tier.label || '?'}
+        </span>
       </div>
       <div className="flex flex-wrap gap-2 p-2.5 items-center flex-1 min-h-[80px]">
         {entries.length === 0 ? (
