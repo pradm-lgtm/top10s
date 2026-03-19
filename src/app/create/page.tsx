@@ -508,6 +508,13 @@ function Step2({
         <button onClick={onBack} className="px-6 py-3 rounded-xl text-sm font-medium" style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}>← Back</button>
         <button onClick={onNext} className="flex-1 py-3 rounded-xl text-sm font-semibold transition-opacity hover:opacity-90" style={{ background: 'var(--accent)', color: '#0a0a0f' }}>Next →</button>
       </div>
+
+      <p className="text-xs text-center" style={{ color: 'var(--muted)' }}>
+        Have an existing list to paste?{' '}
+        <button onClick={onNext} className="underline transition-opacity hover:opacity-70" style={{ color: 'var(--muted)' }}>
+          Skip — import it on the next step
+        </button>
+      </p>
     </div>
   )
 }
@@ -1018,6 +1025,19 @@ function ImportModal({
   async function resolveAndImport(p: ParsedList, targetFormat: 'ranked' | 'tiered' | 'tiered-ranked', targetTiers: TierDef[], rawText: string) {
     setPhase('resolving')
 
+    // For tiered imports: always derive TierDefs from the parsed tier labels so the
+    // user never needs to pre-create matching tiers in Step 2.
+    let effectiveTiers = targetTiers
+    let autoTiers: TierDef[] | undefined
+    if ((targetFormat === 'tiered' || targetFormat === 'tiered-ranked') && p.tiers.length > 0) {
+      autoTiers = p.tiers.map((label, i) => ({
+        tempId: crypto.randomUUID(),
+        label,
+        color: TIER_COLOR_PRESETS[i % TIER_COLOR_PRESETS.length],
+      }))
+      effectiveTiers = autoTiers
+    }
+
     // Extract descriptions from the raw text client-side (Claude no longer includes them)
     const rawDescs = extractRawDescriptions(rawText, p.entries, p.format)
 
@@ -1040,7 +1060,7 @@ function ImportModal({
 
       let tierId: string | null = null
       if (parsedEntry.tier && (targetFormat === 'tiered' || targetFormat === 'tiered-ranked')) {
-        const matched = targetTiers.find((t) => t.label.toLowerCase() === parsedEntry.tier!.toLowerCase())
+        const matched = effectiveTiers.find((t) => t.label.toLowerCase() === parsedEntry.tier!.toLowerCase())
         tierId = matched?.tempId ?? null
       }
 
@@ -1060,7 +1080,7 @@ function ImportModal({
       entries: importedEntries,
       missed,
       newFormat: targetFormat !== listFormat ? targetFormat : undefined,
-      newTiers: targetFormat !== listFormat ? targetTiers : undefined,
+      newTiers: autoTiers ?? (targetFormat !== listFormat ? targetTiers : undefined),
     })
     onClose()
   }
