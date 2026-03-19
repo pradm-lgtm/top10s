@@ -18,16 +18,23 @@ export function AppHeader() {
       className="sticky top-0 z-50 border-b backdrop-blur-md"
       style={{ background: 'rgba(10,10,15,0.85)', borderColor: 'var(--border)' }}
     >
-      <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-6">
-        <Link href="/home" className="text-base font-bold tracking-tight shrink-0" style={{ color: 'var(--foreground)' }}>
+      <div className="max-w-5xl mx-auto px-3 sm:px-4 py-3 sm:py-4 flex items-center justify-between gap-2 sm:gap-6">
+        {/* Brand */}
+        <Link
+          href="/home"
+          className="shrink-0 font-bold tracking-tight"
+          style={{ color: 'var(--foreground)', fontSize: 18 }}
+        >
           Ranked
         </Link>
 
-        <nav className="flex items-center gap-1">
+        {/* Nav links */}
+        <nav className="flex items-center gap-0.5 sm:gap-1">
           <Link
             href="/home"
-            className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+            className="px-2 sm:px-3 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap"
             style={{
+              fontSize: 12,
               color: isHome ? 'var(--foreground)' : 'var(--muted)',
               background: isHome ? 'var(--surface)' : 'transparent',
             }}
@@ -37,8 +44,9 @@ export function AppHeader() {
           {profile && (
             <Link
               href={`/${profile.username}`}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+              className="px-2 sm:px-3 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap"
               style={{
+                fontSize: 12,
                 color: isProfile ? 'var(--foreground)' : 'var(--muted)',
                 background: isProfile ? 'var(--surface)' : 'transparent',
               }}
@@ -48,11 +56,17 @@ export function AppHeader() {
           )}
         </nav>
 
-        <div className="flex items-center gap-3">
+        {/* Actions */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <button
             onClick={() => user ? router.push('/create') : router.push('/')}
-            className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-80"
-            style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+            className="rounded-lg font-semibold transition-opacity hover:opacity-80 whitespace-nowrap"
+            style={{
+              background: 'var(--accent)',
+              color: '#0a0a0f',
+              fontSize: 12,
+              padding: '6px 10px',
+            }}
           >
             + Create
           </button>
