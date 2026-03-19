@@ -1153,6 +1153,7 @@ function Step3({
         yearTo={yearTo}
         description={description}
         addedIds={addedTmdbIds}
+        addedEntries={entries.map((e) => e.title)}
         onToggle={handleCloudToggle}
       />
     </div>

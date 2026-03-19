@@ -228,15 +228,17 @@ export interface ThoughtCloudProps {
   yearTo: number | null
   description: string
   addedIds: Set<number>
+  addedEntries: string[]
   onToggle: (result: CloudResult) => void
 }
 
-export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, description, addedIds, onToggle }: ThoughtCloudProps) {
+export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, description, addedIds, addedEntries, onToggle }: ThoughtCloudProps) {
   const apiKey   = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? ''
   const genreMap = category === 'movies' ? MOVIE_GENRE_IDS : TV_GENRE_IDS
   const catLabel = category === 'movies' ? 'movies' : 'shows'
 
-  const [suggestions, setSuggestions]     = useState<CloudResult[]>([])
+  const [tmdbSuggestions, setTmdbSuggestions] = useState<CloudResult[]>([])
+  const [claudeSuggestions, setClaudeSuggestions] = useState<CloudResult[]>([])
   const [loading, setLoading]             = useState(true)
   const [claudeLoading, setClaudeLoading] = useState(false)
 
@@ -244,21 +246,43 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
   const [searchResults, setSearchResults] = useState<CloudResult[]>([])
   const [searching, setSearching]         = useState(false)
 
+  // Refs mirroring state for stale-closure-safe access in async callbacks
+  const tmdbSuggestionsRef   = useRef<CloudResult[]>([])
+  const claudeSuggestionsRef = useRef<CloudResult[]>([])
+  const addedEntriesRef      = useRef<string[]>(addedEntries)
+
+  // Adaptive update refs
+  const adaptiveTimerRef       = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingAdaptiveRef     = useRef<CloudResult[] | null>(null)
+  const adaptiveCountRef       = useRef(0)
+  const addsSinceSwapRef       = useRef(0)
+  const prevAddedLengthRef     = useRef(addedEntries.length)
+  const effectiveGenreRef      = useRef('')
+  const genreInferenceFiredRef = useRef(false)
+
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sentinelRef    = useRef<HTMLDivElement>(null)
   const gridRef        = useRef<HTMLDivElement>(null)
+
+  // Keep addedEntriesRef in sync
+  useEffect(() => { addedEntriesRef.current = addedEntries }, [addedEntries])
 
   const loadSuggestions = useCallback(async () => {
     if (!apiKey) { setLoading(false); return }
 
     setLoading(true)
-    setSuggestions([])
+    setTmdbSuggestions([])
+    setClaudeSuggestions([])
+    tmdbSuggestionsRef.current = []
+    claudeSuggestionsRef.current = []
 
     const effectiveGenre = detectGenreFromText(listTitle + ' ' + description)
+    effectiveGenreRef.current = effectiveGenre
     const genreId = effectiveGenre ? genreMap[effectiveGenre] : undefined
 
     const tmdbResults = await tmdbDiscover(category, yearFrom, yearTo, apiKey, genreId)
-    setSuggestions(tmdbResults)
+    setTmdbSuggestions(tmdbResults)
+    tmdbSuggestionsRef.current = tmdbResults
     setLoading(false)
 
     setClaudeLoading(true)
@@ -266,13 +290,120 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
     setClaudeLoading(false)
 
     if (claudeResults.length > 0) {
-      setSuggestions((prev) => dedupeById([...claudeResults, ...prev]))
+      setClaudeSuggestions(claudeResults)
+      claudeSuggestionsRef.current = claudeResults
     }
   }, [listTitle, category, yearFrom, yearTo, description, apiKey, genreMap])
 
   useEffect(() => {
     loadSuggestions()
   }, [loadSuggestions])
+
+  // ── Adaptive suggestions ────────────────────────────────────────────────────
+
+  const fireAdaptiveUpdate = useCallback(async () => {
+    if (adaptiveCountRef.current >= 3) return
+    if (!apiKey) return
+
+    const currentAdded = addedEntriesRef.current
+    if (currentAdded.length === 0) return
+
+    adaptiveCountRef.current += 1
+
+    // Infer genre via Claude if regex returned nothing and we have ≥2 entries
+    let genre = effectiveGenreRef.current
+    if (!genre && !genreInferenceFiredRef.current && currentAdded.length >= 2) {
+      genreInferenceFiredRef.current = true
+      try {
+        const res = await fetch('/api/claude/suggest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'inferGenre', category, addedEntries: currentAdded }),
+        })
+        if (res.ok) {
+          const { genre: inferred } = await res.json()
+          if (inferred) { genre = inferred; effectiveGenreRef.current = inferred }
+        }
+      } catch { /* ignore */ }
+    }
+
+    // Current Claude suggestions as titles for pruning
+    const currentSuggestions = claudeSuggestionsRef.current.slice(0, 12).map(cloudTitle)
+
+    try {
+      const res = await fetch('/api/claude/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'adaptive',
+          listTitle,
+          category,
+          yearFrom,
+          yearTo,
+          context: description,
+          genre: genre || undefined,
+          addedEntries: currentAdded,
+          currentSuggestions,
+          count: 20,
+        }),
+      })
+      if (!res.ok) return
+      const { titles } = await res.json()
+      if (!Array.isArray(titles) || titles.length === 0) return
+
+      // TMDB-resolve titles in batches
+      const results: CloudResult[] = []
+      for (let i = 0; i < titles.length; i += 8) {
+        const batch = titles.slice(i, i + 8)
+        const resolved = await Promise.all(
+          batch.map((t: string) => tmdbSearchOne(t, category, yearFrom, yearTo, apiKey)),
+        )
+        results.push(...resolved.filter((r): r is CloudResult => r !== null))
+      }
+
+      const deduped = dedupeById(results)
+      if (deduped.length > 0) {
+        pendingAdaptiveRef.current = deduped
+      }
+    } catch { /* ignore */ }
+  }, [listTitle, category, yearFrom, yearTo, description, apiKey])
+
+  // Use a ref so the setTimeout callback always calls the latest version
+  const fireAdaptiveUpdateRef = useRef(fireAdaptiveUpdate)
+  useEffect(() => { fireAdaptiveUpdateRef.current = fireAdaptiveUpdate }, [fireAdaptiveUpdate])
+
+  // Detect adds, debounce adaptive call, swap buffer every 3rd add
+  useEffect(() => {
+    const prevLen = prevAddedLengthRef.current
+    const newLen = addedEntries.length
+    prevAddedLengthRef.current = newLen
+
+    if (newLen <= prevLen) return
+
+    // New add detected
+    addsSinceSwapRef.current += 1
+
+    // Apply buffered adaptive result every 3rd add
+    if (addsSinceSwapRef.current >= 3 && pendingAdaptiveRef.current !== null) {
+      const pending = pendingAdaptiveRef.current
+      setClaudeSuggestions(pending)
+      claudeSuggestionsRef.current = pending
+      pendingAdaptiveRef.current = null
+      addsSinceSwapRef.current = 0
+    }
+
+    // Debounce adaptive API call (fire after 3s idle)
+    if (adaptiveCountRef.current >= 3) return
+
+    if (adaptiveTimerRef.current) clearTimeout(adaptiveTimerRef.current)
+    adaptiveTimerRef.current = setTimeout(() => {
+      fireAdaptiveUpdateRef.current()
+    }, 3000)
+
+    return () => {
+      if (adaptiveTimerRef.current) clearTimeout(adaptiveTimerRef.current)
+    }
+  }, [addedEntries.length])
 
   // Search debounce
   useEffect(() => {
@@ -291,7 +422,11 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
   const loadMore = useCallback(async () => {
     if (loading || claudeLoading || searchQuery) return
     const more = await tmdbDiscover(category, yearFrom, yearTo, apiKey)
-    setSuggestions((prev) => dedupeById([...prev, ...more]))
+    setTmdbSuggestions((prev) => {
+      const updated = dedupeById([...prev, ...more])
+      tmdbSuggestionsRef.current = updated
+      return updated
+    })
   }, [loading, claudeLoading, searchQuery, category, yearFrom, yearTo, apiKey])
 
   useEffect(() => {
@@ -308,6 +443,7 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
+  const suggestions = dedupeById([...claudeSuggestions, ...tmdbSuggestions])
   const displayItems = searchQuery.trim() ? searchResults : suggestions
 
   return (
