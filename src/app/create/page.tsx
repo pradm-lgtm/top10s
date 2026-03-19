@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   DndContext,
@@ -680,21 +680,30 @@ function DroppableTier({
 type SheetState = {
   result: import('@/components/ThoughtCloud').CloudResult
   alreadyAdded: boolean
+  existingNotes: TiptapDoc | null
 }
 
 function AddEntrySheet({
-  sheet, tiers, listFormat, onAddRanked, onAddToTier, onRemove, onClose,
+  sheet, tiers, listFormat, onAddRanked, onAddToTier, onRemove, onUpdateNotes, onClose,
 }: {
   sheet: SheetState | null
   tiers: TierDef[]
   listFormat: 'ranked' | 'tiered' | 'tiered-ranked'
-  onAddRanked: (result: import('@/components/ThoughtCloud').CloudResult) => void
-  onAddToTier: (result: import('@/components/ThoughtCloud').CloudResult, tierId: string) => void
+  onAddRanked: (result: import('@/components/ThoughtCloud').CloudResult, notes: TiptapDoc | null) => void
+  onAddToTier: (result: import('@/components/ThoughtCloud').CloudResult, tierId: string, notes: TiptapDoc | null) => void
   onRemove: (result: import('@/components/ThoughtCloud').CloudResult) => void
+  onUpdateNotes: (result: import('@/components/ThoughtCloud').CloudResult, notes: TiptapDoc | null) => void
   onClose: () => void
 }) {
   const isOpen = sheet !== null
   const isTiered = listFormat === 'tiered' || listFormat === 'tiered-ranked'
+  const [notes, setNotes] = useState<TiptapDoc | null>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // Sync notes when sheet changes (new selection or pre-fill for existing)
+  useEffect(() => {
+    setNotes(sheet?.existingNotes ?? null)
+  }, [sheet?.result.id, sheet?.existingNotes])
 
   // Body scroll lock
   useEffect(() => {
@@ -703,10 +712,36 @@ function AddEntrySheet({
     return () => { document.body.style.overflow = '' }
   }, [isOpen])
 
+  // Keyboard-aware positioning on mobile (visualViewport API)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    function onViewportChange() {
+      if (!panelRef.current || !vv) return
+      const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+      panelRef.current.style.bottom = `${offset}px`
+    }
+    vv.addEventListener('resize', onViewportChange)
+    vv.addEventListener('scroll', onViewportChange)
+    return () => {
+      vv.removeEventListener('resize', onViewportChange)
+      vv.removeEventListener('scroll', onViewportChange)
+    }
+  }, [])
+
   const title = sheet ? (sheet.result.title ?? sheet.result.name ?? '') : ''
   const posterUrl = sheet?.result.poster_path ? `${TMDB_IMG}${sheet.result.poster_path}` : null
   const year = (sheet?.result.release_date ?? sheet?.result.first_air_date ?? '').slice(0, 4)
   const genres = (sheet?.result.genre_ids ?? []).slice(0, 3).map((id) => GENRE_MAP[id]).filter(Boolean)
+
+  function notesHaveContent(n: TiptapDoc | null): boolean {
+    if (!n) return false
+    function hasText(node: { type: string; text?: string; content?: typeof node[] }): boolean {
+      if (node.type === 'text' && node.text) return true
+      return (node.content ?? []).some(hasText)
+    }
+    return hasText(n as Parameters<typeof hasText>[0])
+  }
 
   return (
     <>
@@ -724,6 +759,7 @@ function AddEntrySheet({
 
       {/* Sheet panel */}
       <div
+        ref={panelRef}
         className="fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl"
         style={{
           background: 'var(--surface)',
@@ -768,15 +804,37 @@ function AddEntrySheet({
               </div>
             </div>
 
+            {/* Note field */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--muted)' }}>
+                Add a note (optional)
+              </label>
+              <RichTextEditor
+                value={notes}
+                onChange={(doc) => setNotes(doc)}
+                placeholder="What makes this one special?"
+                minHeight={72}
+              />
+            </div>
+
             {/* Action area */}
             {sheet.alreadyAdded ? (
-              <button
-                onClick={() => { onRemove(sheet.result); onClose() }}
-                className="w-full py-4 rounded-2xl text-base font-bold transition-all active:scale-[0.97]"
-                style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
-              >
-                Remove from list
-              </button>
+              <div className="space-y-3">
+                <button
+                  onClick={() => { onUpdateNotes(sheet.result, notesHaveContent(notes) ? notes : null); onClose() }}
+                  className="w-full py-4 rounded-2xl text-base font-bold transition-all active:scale-[0.97]"
+                  style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+                >
+                  Save note
+                </button>
+                <button
+                  onClick={() => { onRemove(sheet.result); onClose() }}
+                  className="w-full py-3 rounded-2xl text-sm font-semibold transition-all active:scale-[0.97]"
+                  style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
+                >
+                  Remove from list
+                </button>
+              </div>
             ) : isTiered ? (
               <div className="space-y-3">
                 <p className="text-xs font-semibold tracking-widest uppercase text-center" style={{ color: 'var(--muted)' }}>
@@ -786,7 +844,7 @@ function AddEntrySheet({
                   {tiers.map((tier) => (
                     <button
                       key={tier.tempId}
-                      onClick={() => { onAddToTier(sheet.result, tier.tempId); onClose() }}
+                      onClick={() => { onAddToTier(sheet.result, tier.tempId, notesHaveContent(notes) ? notes : null); onClose() }}
                       className="py-5 rounded-2xl text-2xl font-black transition-all active:scale-95"
                       style={{
                         background: `${tier.color}20`,
@@ -802,7 +860,7 @@ function AddEntrySheet({
               </div>
             ) : (
               <button
-                onClick={() => { onAddRanked(sheet.result); onClose() }}
+                onClick={() => { onAddRanked(sheet.result, notesHaveContent(notes) ? notes : null); onClose() }}
                 className="w-full py-5 rounded-2xl text-lg font-bold transition-all active:scale-[0.97]"
                 style={{ background: 'var(--accent)', color: '#0a0a0f' }}
               >
@@ -853,31 +911,36 @@ function Step3({
 
   // Open bottom sheet instead of directly toggling
   function handleCloudToggle(result: CloudResult) {
-    setSheet({ result, alreadyAdded: addedTmdbIds.has(result.id) })
+    const existing = entries.find((e) => e.tmdbId === result.id)
+    setSheet({ result, alreadyAdded: addedTmdbIds.has(result.id), existingNotes: existing?.notes ?? null })
   }
 
-  function addRanked(result: CloudResult) {
+  function addRanked(result: CloudResult, notes: TiptapDoc | null) {
     setEntries((prev) => [...prev, {
       uid: crypto.randomUUID(),
       tmdbId: result.id,
       title: result.title ?? result.name ?? '',
-      notes: null,
+      notes,
       posterUrl: result.poster_path ? `${TMDB_IMG}${result.poster_path}` : null,
       notesOpen: false,
       tierId: null,
     }])
   }
 
-  function addToTier(result: CloudResult, tierId: string) {
+  function addToTier(result: CloudResult, tierId: string, notes: TiptapDoc | null) {
     setEntries((prev) => [...prev, {
       uid: crypto.randomUUID(),
       tmdbId: result.id,
       title: result.title ?? result.name ?? '',
-      notes: null,
+      notes,
       posterUrl: result.poster_path ? `${TMDB_IMG}${result.poster_path}` : null,
       notesOpen: false,
       tierId,
     }])
+  }
+
+  function updateNotesByResult(result: CloudResult, notes: TiptapDoc | null) {
+    setEntries((prev) => prev.map((e) => e.tmdbId === result.id ? { ...e, notes } : e))
   }
 
   function removeByResult(result: CloudResult) {
@@ -961,6 +1024,7 @@ function Step3({
         onAddRanked={addRanked}
         onAddToTier={addToTier}
         onRemove={removeByResult}
+        onUpdateNotes={updateNotesByResult}
         onClose={() => setSheet(null)}
       />
 

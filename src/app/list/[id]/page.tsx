@@ -206,11 +206,20 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   }
 
   async function saveEntryField(entryId: string, field: string, value: string | number) {
-    await fetch(`/api/admin/entries/${entryId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [field]: value }),
-    })
+    if (isAdmin) {
+      await fetch(`/api/admin/entries/${entryId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value }),
+      })
+    } else if (isOwner) {
+      const { data: { session } } = await supabase.auth.getSession()
+      await fetch(`/api/lists/${id}/entries/${entryId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ [field]: value }),
+      })
+    }
     setEntries((prev) =>
       prev.map((e) => e.id === entryId ? { ...e, [field]: value } : e)
     )
@@ -373,27 +382,31 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
 
   async function updateTier(tierId: string, fields: Partial<Pick<Tier, 'label' | 'color' | 'position'>>) {
     setSaving(true)
-    const session = await getSession()
-    await fetch(`/api/lists/${id}/tiers/${tierId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
-      body: JSON.stringify(fields),
-    })
-    setTiers(prev => prev.map(t => t.id === tierId ? { ...t, ...fields } : t))
+    if (isUUID(tierId)) {
+      const session = await getSession()
+      await fetch(`/api/lists/${id}/tiers/${tierId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        body: JSON.stringify(fields),
+      })
+      setTiers(prev => prev.map(t => t.id === tierId ? { ...t, ...fields } : t))
+    }
     setSaving(false)
   }
 
   async function deleteTier(tierId: string) {
-    const hasEntries = entries.some(e => e.tier_id === tierId)
+    const hasEntries = entries.some(e => e.tier_id === tierId || e.tier === tierId)
     if (hasEntries) { alert('Move all entries out of this tier before deleting it.'); return }
     if (!confirm('Delete this tier?')) return
     setSaving(true)
-    const session = await getSession()
-    const res = await fetch(`/api/lists/${id}/tiers/${tierId}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${session?.access_token}` },
-    })
-    if (res.ok) setTiers(prev => prev.filter(t => t.id !== tierId))
+    if (isUUID(tierId)) {
+      const session = await getSession()
+      const res = await fetch(`/api/lists/${id}/tiers/${tierId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session?.access_token}` },
+      })
+      if (res.ok) setTiers(prev => prev.filter(t => t.id !== tierId))
+    }
     setSaving(false)
   }
 
@@ -706,13 +719,13 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
             <>
               {(isOwner || isAdmin) && editMode && (
                 <TierEditPanel
-                  tiers={tiers}
+                  tiers={effectiveTiers}
                   sensors={sensors}
                   onDragEnd={handleTiersDragEnd}
                   onUpdate={updateTier}
                   onDelete={deleteTier}
                   onAdd={addTier}
-                  hasEntries={(tierId) => entries.some(e => e.tier_id === tierId)}
+                  hasEntries={(tierId) => entries.some(e => e.tier_id === tierId || e.tier === tierId)}
                 />
               )}
               <TieredEntries entries={entries} tiers={tiers} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} onMoveTier={editMode ? moveEntryToTier : undefined} editMode={editMode} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
@@ -722,13 +735,13 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
             <>
               {(isOwner || isAdmin) && editMode && (
                 <TierEditPanel
-                  tiers={tiers}
+                  tiers={effectiveTiers}
                   sensors={sensors}
                   onDragEnd={handleTiersDragEnd}
                   onUpdate={updateTier}
                   onDelete={deleteTier}
                   onAdd={addTier}
-                  hasEntries={(tierId) => entries.some(e => e.tier_id === tierId)}
+                  hasEntries={(tierId) => entries.some(e => e.tier_id === tierId || e.tier === tierId)}
                 />
               )}
               <TierRankedEntries entries={entries} tiers={tiers} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} onMoveTier={editMode ? moveEntryToTier : undefined} onTierItemDragEnd={editMode ? handleTierItemDragEnd : undefined} editMode={editMode} sensors={sensors} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
@@ -1271,13 +1284,13 @@ function SortableRankedEntry({
           )}
         </div>
         {/* Bottom row: notes full width */}
-        {(entry.notes || (isAdmin && !editMode)) && (
+        {(entry.notes || (isAdmin && !editMode) || (editMode && (isOwner || isAdmin))) && (
           <div className="mt-3">
             <ExpandableNotes
               value={entry.notes ?? ''}
               onSave={(v) => saveEntryField(entry.id, 'notes', v)}
-              editable={isAdmin && !editMode}
-              placeholder="Add notes…"
+              editable={(isAdmin && !editMode) || (editMode && (isOwner || isAdmin))}
+              placeholder="Add a note…"
             />
           </div>
         )}
@@ -1708,6 +1721,19 @@ function ExpandableNotes({ value, onSave, editable = false, placeholder }: {
 
   const CLAMP_HEIGHT = '5.6rem' // ≈ 4 lines at 14px/1.6
 
+  if (!value && editable) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setEditing(true) }}
+        className="flex items-center gap-1 text-xs"
+        style={{ color: 'var(--muted)', opacity: 0.5 }}
+      >
+        <span>✎</span> Add a note
+      </button>
+    )
+  }
+
   return (
     <div className="w-full">
       <div
@@ -1730,12 +1756,22 @@ function ExpandableNotes({ value, onSave, editable = false, placeholder }: {
           cursor: editable ? 'pointer' : 'default',
         }}
         onClick={editable ? (e) => { e.stopPropagation(); setEditing(true) } : undefined}
-        title={editable ? 'Click to edit' : undefined}
       >
         {isJson ? (
           <div dangerouslySetInnerHTML={{ __html: html! }} />
         ) : value}
       </div>
+      {editable && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setEditing(true) }}
+          className="flex items-center gap-1 text-xs mt-1"
+          style={{ color: 'var(--muted)', opacity: 0.4 }}
+          title="Edit note"
+        >
+          ✎ Edit note
+        </button>
+      )}
       {(isJson ? overflows || expanded : value.length > 240) && (
         <button
           onClick={(e) => { e.stopPropagation(); setExpanded(v => !v) }}
@@ -1861,7 +1897,7 @@ function TieredEntries({
                   {label}
                 </span>
               </div>
-              <div className="flex flex-wrap gap-2 p-3 items-end" style={{ background: `${color}05` }}>
+              <div className={editMode ? 'flex flex-col gap-2 p-3' : 'flex flex-wrap gap-2 p-3 items-end'} style={{ background: `${color}05`, flex: 1 }}>
                 {tierEntries.length === 0 && (
                   <span className="text-xs italic self-center py-1 px-2 rounded" style={{ color: 'var(--muted)', opacity: 0.5 }}>Empty</span>
                 )}
@@ -1874,7 +1910,7 @@ function TieredEntries({
                   ) : (
                     <div className="rounded w-full flex items-center justify-center" style={{ height: '78px', background: `${color}12`, border: `1px solid ${color}22` }} />
                   )
-                  const hasNotes = !editMode && (!!entry.notes || isAdmin)
+                  const hasNotes = !!entry.notes || (isAdmin && !editMode) || (editMode && (isOwner || isAdmin))
                   if (hasNotes) {
                     return (
                       <div
@@ -1909,13 +1945,25 @@ function TieredEntries({
                             )}
                           </div>
                         </div>
-                        {/* Bottom row: notes full width */}
+                        {/* Notes */}
                         <ExpandableNotes
                           value={entry.notes ?? ''}
                           onSave={(v) => saveEntryField ? saveEntryField(entry.id, 'notes', v) : Promise.resolve()}
-                          editable={isAdmin && !editMode}
-                          placeholder="Notes…"
+                          editable={(isAdmin && !editMode) || (editMode && (isOwner || isAdmin))}
+                          placeholder="Add a note…"
                         />
+                        {/* Move-tier dropdown (edit mode) */}
+                        {editMode && onMoveTier && (
+                          <select
+                            value={entry.tier_id ?? ''}
+                            onChange={e => { e.stopPropagation(); onMoveTier(entry.id, e.target.value) }}
+                            onClick={e => e.stopPropagation()}
+                            className="w-full rounded outline-none cursor-pointer"
+                            style={{ fontSize: '0.7rem', background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)', padding: '3px 4px' }}
+                          >
+                            {tierData.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                          </select>
+                        )}
                       </div>
                     )
                   }
