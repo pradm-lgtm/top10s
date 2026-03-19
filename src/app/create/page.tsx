@@ -634,7 +634,7 @@ function escapeRegex(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'
 
 // Extract descriptions from the original pasted text so Claude doesn't need to include them
 // (keeping Claude output small means no truncation on long lists).
-function extractRawDescriptions(rawText: string, entries: ParsedEntry[], format: string): string[] {
+function extractRawDescriptions(rawText: string, entries: ParsedEntry[], format: string, tierLabels: string[] = []): string[] {
   const descs: string[] = entries.map(() => '')
   if (format === 'ranked') {
     // Split at each "N. " / "N) " boundary
@@ -655,17 +655,22 @@ function extractRawDescriptions(rawText: string, entries: ParsedEntry[], format:
     }
   } else {
     // For tiered / plain: find each title as its own line and extract until the next
+    // Use the known tier labels from Claude as definitive stop markers
+    const tierLabelNorms = new Set(tierLabels.map((t) => t.toLowerCase().trim()))
     const lines = rawText.split('\n')
     for (let i = 0; i < entries.length; i++) {
       const titleLower = entries[i].title.toLowerCase()
       const lineIdx = lines.findIndex((l) => l.trim().toLowerCase() === titleLower)
       if (lineIdx === -1) continue
-      // Collect lines after the title until the next entry title or tier header
       const descLines: string[] = []
       for (let j = lineIdx + 1; j < lines.length; j++) {
-        const l = lines[j].trim().toLowerCase()
+        const raw = lines[j].trim()
+        const l = raw.toLowerCase()
         const isNextTitle = entries.some((e, ei) => ei !== i && l === e.title.toLowerCase())
-        const isTierHeader = /^[a-z][\w\s]{0,20}tier\s*$|^s$|^a$|^b$|^c$|^d$/i.test(lines[j].trim())
+        const isTierHeader =
+          tierLabelNorms.has(l) ||               // exact match against known tier labels
+          /^tier\s*\d+/i.test(raw) ||            // "Tier 1", "Tier 2 (anything)"
+          /^[sabcd](\s+tier)?\s*$/i.test(raw)    // "S", "A Tier", "B Tier", etc.
         if (isNextTitle || isTierHeader) break
         descLines.push(lines[j])
       }
@@ -1039,7 +1044,7 @@ function ImportModal({
     }
 
     // Extract descriptions from the raw text client-side (Claude no longer includes them)
-    const rawDescs = extractRawDescriptions(rawText, p.entries, p.format)
+    const rawDescs = extractRawDescriptions(rawText, p.entries, p.format, p.tiers)
 
     // Resolve all titles via TMDB in batches of 8
     const allResolved: ({ id: number; title?: string; name?: string; poster_path: string | null } | null)[] = []
