@@ -376,7 +376,7 @@ export default function HomePage() {
     setLists(richLists)
     setLoading(false)
 
-    // Fetch TMDB posters for entries that don't have one stored
+    // Fetch TMDB posters in a macrotask so the page renders before any requests fire
     const needPosters = richLists.flatMap((l) =>
       l.entries.filter((e) => !e.image_url).map((e) => ({
         id: e.id,
@@ -386,19 +386,17 @@ export default function HomePage() {
       }))
     )
     if (needPosters.length > 0) {
-      const BATCH = 8
-      const map: Record<string, string | null> = {}
-      for (let i = 0; i < needPosters.length; i += BATCH) {
-        const batch = needPosters.slice(i, i + BATCH)
+      setTimeout(async () => {
         const results = await Promise.all(
-          batch.map(async ({ id, title, category, year }) => ({
+          needPosters.map(async ({ id, title, category, year }) => ({
             id,
             url: (await fetchPoster(title, category, year)).poster,
           }))
         )
+        const map: Record<string, string | null> = {}
         for (const { id, url } of results) map[id] = url
-        setPosters({ ...map })
-      }
+        setPosters(map)
+      }, 0)
     }
   }
 
