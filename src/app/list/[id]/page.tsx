@@ -78,6 +78,8 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [deleting, setDeleting] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [descriptionDoc, setDescriptionDoc] = useState<TiptapDoc | null>(null)
+  const [savingDescription, setSavingDescription] = useState(false)
   const router = useRouter()
 
   const sensors = useSensors(
@@ -97,6 +99,16 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   useEffect(() => {
     if (list) setIsOwner(!!user && list.owner_id === user.id)
   }, [user, list])
+
+  // Initialize descriptionDoc once when list loads (skip if user has already started editing)
+  useEffect(() => {
+    if (descriptionDoc !== null || !list?.description) return
+    const doc = parseNotes(list.description)
+    setDescriptionDoc(doc ?? {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: list.description }] }],
+    })
+  }, [list?.description])
 
   // Auto-register auth users as visitors so they don't get name-prompted on fresh devices
   useEffect(() => {
@@ -733,17 +745,42 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               editable={(isAdmin || isOwner) && editMode}
             />
           </h1>
-          <p className="text-base max-w-xl" style={{ color: 'var(--muted)' }}>
-            <EditableText
-              value={list.description ?? ''}
-              onSave={(v) => saveListField('description', v)}
-              multiline
-              placeholder="Add a description…"
-              className="text-base"
-              style={{ color: 'var(--muted)' }}
-              editable={(isAdmin || isOwner) && editMode}
-            />
-          </p>
+          <div className="text-base max-w-xl mt-1">
+            {(isAdmin || isOwner) && editMode ? (
+              <div className="space-y-2">
+                <RichTextEditor
+                  value={list.description ?? null}
+                  onChange={setDescriptionDoc}
+                  placeholder="Add a description…"
+                  minHeight={56}
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!descriptionDoc) return
+                    setSavingDescription(true)
+                    await saveListField('description', JSON.stringify(descriptionDoc))
+                    setSavingDescription(false)
+                  }}
+                  disabled={savingDescription || !descriptionDoc}
+                  className="text-xs px-3 py-1 rounded font-semibold disabled:opacity-40"
+                  style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+                >
+                  {savingDescription ? '…' : 'Save description'}
+                </button>
+              </div>
+            ) : list.description ? (
+              parseNotes(list.description) ? (
+                <div
+                  className="[&_p]:mb-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:mb-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:mb-1"
+                  style={{ color: 'var(--muted)', lineHeight: 1.6 }}
+                  dangerouslySetInnerHTML={{ __html: tiptapToHtml(parseNotes(list.description)!) }}
+                />
+              ) : (
+                <p style={{ color: 'var(--muted)' }}>{list.description}</p>
+              )
+            ) : null}
+          </div>
         </div>
       </div>
 

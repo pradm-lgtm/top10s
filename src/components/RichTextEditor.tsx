@@ -78,14 +78,14 @@ export function RichTextEditor({
         style={{
           fontWeight: active ? 700 : 400,
           color: active ? 'var(--accent)' : 'var(--muted)',
-          background: 'none',
+          background: active ? 'rgba(232,197,71,0.15)' : 'transparent',
           border: 'none',
           cursor: 'pointer',
           padding: '2px 6px',
           fontSize: 13,
           lineHeight: 1,
           borderRadius: 4,
-          transition: 'color 0.12s',
+          transition: 'color 0.12s, background 0.12s',
         }}
       >
         {label}
