@@ -136,7 +136,7 @@ export default function ProfilePage() {
           >
             <div className="max-w-5xl mx-auto flex items-center gap-5">
               {profile?.avatar_url ? (
-                <img src={profile.avatar_url} alt="" className="w-16 h-16 rounded-full shrink-0" />
+                <img src={profile.avatar_url} alt="" className="w-16 h-16 rounded-full shrink-0" loading="lazy" />
               ) : (
                 <div
                   className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold shrink-0"

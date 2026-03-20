@@ -10,7 +10,7 @@ import { useAuth } from '@/context/auth'
 import type { List, ListEntry } from '@/types'
 
 type OwnerInfo = { username: string; display_name: string | null; avatar_url: string | null }
-type RichList = List & { entries: ListEntry[]; profiles: OwnerInfo | null; reactionCount: number; commentCount: number }
+type RichList = List & { entries: ListEntry[]; profiles: OwnerInfo | null; reactionCount: number; commentCount: number; reactionEmojis: string[] }
 
 // ── Owner chip ─────────────────────────────────────────────────────────────
 
@@ -19,7 +19,7 @@ function OwnerChip({ owner, onClick }: { owner: OwnerInfo; onClick?: (e: React.M
   return (
     <Link href={`/${owner.username}`} onClick={onClick} className="flex items-center gap-1.5 w-fit">
       {owner.avatar_url ? (
-        <img src={owner.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover shrink-0" />
+        <img src={owner.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover shrink-0" loading="lazy" />
       ) : (
         <div
           className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
@@ -64,6 +64,7 @@ function PosterStack({
             key={entry.id}
             src={url}
             alt={entry.title}
+            loading="lazy"
             style={{
               position: 'absolute',
               left: i * (w - overlap),
@@ -135,7 +136,7 @@ function AllTimeCard({ list, posters }: { list: RichList; posters: Record<string
         </ol>
       </div>
 
-      <StatsRow reactionCount={list.reactionCount} commentCount={list.commentCount} />
+      <StatsRow reactionCount={list.reactionCount} commentCount={list.commentCount} reactionEmojis={list.reactionEmojis} />
     </div>
   )
 }
@@ -205,7 +206,7 @@ function YearCard({ list, posters }: { list: RichList; posters: Record<string, s
         </ol>
       </div>
 
-      <StatsRow reactionCount={list.reactionCount} commentCount={list.commentCount} />
+      <StatsRow reactionCount={list.reactionCount} commentCount={list.commentCount} reactionEmojis={list.reactionEmojis} />
     </div>
   )
 }
@@ -226,13 +227,13 @@ function CategoryLabel({ category }: { category: 'movies' | 'tv' }) {
 
 // ── Stats row ──────────────────────────────────────────────────────────────
 
-function StatsRow({ reactionCount, commentCount }: { reactionCount: number; commentCount: number }) {
+function StatsRow({ reactionCount, commentCount, reactionEmojis = ['🔥'] }: { reactionCount: number; commentCount: number; reactionEmojis?: string[] }) {
   if (reactionCount === 0 && commentCount === 0) return null
   return (
     <div className="flex items-center gap-3 mt-auto pt-2">
       {reactionCount > 0 && (
         <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}>
-          <span style={{ fontSize: 13 }}>🔥</span>{reactionCount}
+          <span style={{ fontSize: 13 }}>{reactionEmojis.join('')}</span>{reactionCount}
         </span>
       )}
       {commentCount > 0 && (
@@ -298,9 +299,9 @@ export default function HomePage() {
 
     // Fetch top-3 entries for card display + all entry IDs for engagement counts
     const [{ data: topEntries }, { data: allEntries }, { data: listReactions }, { data: listComments }] = await Promise.all([
-      supabase.from('list_entries').select('*').in('list_id', listIds).lte('rank', 3).order('rank', { ascending: true }),
+      supabase.from('list_entries').select('id, list_id, title, rank, image_url').in('list_id', listIds).lte('rank', 3).order('rank', { ascending: true }),
       supabase.from('list_entries').select('id, list_id').in('list_id', listIds),
-      supabase.from('reactions').select('list_id').in('list_id', listIds),
+      supabase.from('reactions').select('list_id, emoji').in('list_id', listIds),
       supabase.from('comments').select('list_id').in('list_id', listIds),
     ])
 
@@ -311,7 +312,7 @@ export default function HomePage() {
 
     const [{ data: entryReactions }, { data: entryComments }] = await Promise.all([
       allEntryIds.length > 0
-        ? supabase.from('entry_reactions').select('list_entry_id').in('list_entry_id', allEntryIds)
+        ? supabase.from('entry_reactions').select('list_entry_id, emoji').in('list_entry_id', allEntryIds)
         : Promise.resolve({ data: [] }),
       allEntryIds.length > 0
         ? supabase.from('entry_comments').select('list_entry_id').in('list_entry_id', allEntryIds)
@@ -321,14 +322,32 @@ export default function HomePage() {
     const entryMap: Record<string, ListEntry[]> = {}
     for (const e of topEntries ?? []) {
       if (!entryMap[e.list_id]) entryMap[e.list_id] = []
-      if (entryMap[e.list_id].length < 3) entryMap[e.list_id].push(e)
+      if (entryMap[e.list_id].length < 3) entryMap[e.list_id].push(e as ListEntry)
     }
 
     const reactionMap: Record<string, number> = {}
-    for (const r of listReactions ?? []) reactionMap[r.list_id] = (reactionMap[r.list_id] ?? 0) + 1
+    const emojiTally: Record<string, Record<string, number>> = {}
+    for (const r of listReactions ?? []) {
+      reactionMap[r.list_id] = (reactionMap[r.list_id] ?? 0) + 1
+      if (!emojiTally[r.list_id]) emojiTally[r.list_id] = {}
+      emojiTally[r.list_id][r.emoji] = (emojiTally[r.list_id][r.emoji] ?? 0) + 1
+    }
     for (const r of entryReactions ?? []) {
       const lid = entryToList[r.list_entry_id]
-      if (lid) reactionMap[lid] = (reactionMap[lid] ?? 0) + 1
+      if (!lid) continue
+      reactionMap[lid] = (reactionMap[lid] ?? 0) + 1
+      if (r.emoji) {
+        if (!emojiTally[lid]) emojiTally[lid] = {}
+        emojiTally[lid][r.emoji] = (emojiTally[lid][r.emoji] ?? 0) + 1
+      }
+    }
+    // All distinct emojis with any reactions, sorted by count desc, up to 3
+    const reactionEmojisMap: Record<string, string[]> = {}
+    for (const [lid, counts] of Object.entries(emojiTally)) {
+      reactionEmojisMap[lid] = Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([emoji]) => emoji)
     }
 
     const commentMap: Record<string, number> = {}
@@ -344,6 +363,7 @@ export default function HomePage() {
       profiles: list.profiles ?? null,
       reactionCount: reactionMap[list.id] ?? 0,
       commentCount: commentMap[list.id] ?? 0,
+      reactionEmojis: reactionEmojisMap[list.id] ?? ['🔥'],
     }))
 
     // Auto-expand most recent year
@@ -366,15 +386,19 @@ export default function HomePage() {
       }))
     )
     if (needPosters.length > 0) {
-      const results = await Promise.all(
-        needPosters.map(async ({ id, title, category, year }) => ({
-          id,
-          url: (await fetchPoster(title, category, year)).poster,
-        }))
-      )
+      const BATCH = 8
       const map: Record<string, string | null> = {}
-      for (const { id, url } of results) map[id] = url
-      setPosters(map)
+      for (let i = 0; i < needPosters.length; i += BATCH) {
+        const batch = needPosters.slice(i, i + BATCH)
+        const results = await Promise.all(
+          batch.map(async ({ id, title, category, year }) => ({
+            id,
+            url: (await fetchPoster(title, category, year)).poster,
+          }))
+        )
+        for (const { id, url } of results) map[id] = url
+        setPosters({ ...map })
+      }
     }
   }
 

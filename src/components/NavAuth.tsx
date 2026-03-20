@@ -42,7 +42,7 @@ export function NavAuth() {
         aria-label="Account menu"
       >
         {profile?.avatar_url ? (
-          <img src={profile.avatar_url} alt="" className="w-8 h-8 rounded-full" />
+          <img src={profile.avatar_url} alt="" className="w-8 h-8 rounded-full" loading="lazy" />
         ) : (
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"

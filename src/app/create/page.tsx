@@ -552,7 +552,7 @@ function SortableEntry({
         <span className="text-xs font-bold w-5 shrink-0 text-right" style={{ color: 'var(--accent)' }}>{rank}</span>
 
         {entry.posterUrl && (
-          <img src={entry.posterUrl} alt="" className="w-7 h-10 rounded object-cover shrink-0" />
+          <img src={entry.posterUrl} alt="" className="w-7 h-10 rounded object-cover shrink-0" loading="lazy" />
         )}
 
         <span className="flex-1 text-sm font-medium truncate">{entry.title}</span>
@@ -752,7 +752,7 @@ function TierEntryCard({
       <div className="relative" style={{ width: 50, height: 74 }}>
         {entry.posterUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={entry.posterUrl} alt={entry.title} className="w-full h-full object-cover rounded" draggable={false}
+          <img src={entry.posterUrl} alt={entry.title} className="w-full h-full object-cover rounded" draggable={false} loading="lazy"
             style={{ border: `1px solid ${color}55`, boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
         ) : (
           <div className="w-full h-full rounded flex items-end justify-center pb-1"
@@ -925,7 +925,7 @@ function AddEntrySheet({
             <div className="flex gap-4 items-start">
               {posterUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={posterUrl} alt={title} className="rounded-xl object-cover shrink-0"
+                <img src={posterUrl} alt={title} className="rounded-xl object-cover shrink-0" loading="lazy"
                   style={{ width: 80, height: 120, boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }} />
               ) : (
                 <div className="rounded-xl shrink-0 flex items-center justify-center"

@@ -72,7 +72,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({})
   const [entryReactions, setEntryReactions] = useState<Record<string, Record<string, number>>>({})
   const { isAdmin } = useAdmin()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [isOwner, setIsOwner] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -98,6 +98,32 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     if (list) setIsOwner(!!user && list.owner_id === user.id)
   }, [user, list])
 
+  // Auto-register auth users as visitors so they don't get name-prompted on fresh devices
+  useEffect(() => {
+    if (!user || !profile) return
+    // Already has a visitor ID on this device
+    if (localStorage.getItem('visitor_id')) return
+    const userKey = `visitor_id_for_${user.id}`
+    const cached = localStorage.getItem(userKey)
+    if (cached) {
+      const displayName = profile.display_name ?? profile.username
+      localStorage.setItem('visitor_id', cached)
+      localStorage.setItem('visitor_name', displayName)
+      setVisitorId(cached)
+      setVisitorName(displayName)
+    } else {
+      const displayName = profile.display_name ?? profile.username
+      supabase.from('visitors').insert({ name: displayName }).select('id').single().then(({ data }) => {
+        const newId = data?.id ?? crypto.randomUUID()
+        localStorage.setItem('visitor_id', newId)
+        localStorage.setItem(`visitor_id_for_${user.id}`, newId)
+        localStorage.setItem('visitor_name', displayName)
+        setVisitorId(newId)
+        setVisitorName(displayName)
+      })
+    }
+  }, [user, profile])
+
   async function fetchAll(vid: string) {
     const [listRes, entriesRes, commentsRes, reactionsRes, hmRes, awRes, tiersRes] = await Promise.all([
       supabase.from('lists').select('*').eq('id', id).single(),
@@ -107,7 +133,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         .select('*, visitors(name)')
         .eq('list_id', id)
         .order('created_at', { ascending: false }),
-      supabase.from('reactions').select('emoji, visitor_id').eq('list_id', id),
+      supabase.from('reactions').select('emoji, visitor_id, visitors(name)').eq('list_id', id),
       supabase.from('honorable_mentions').select('*').eq('list_id', id).order('created_at'),
       supabase.from('also_watched').select('*').eq('list_id', id).order('created_at'),
       supabase.from('tiers').select('*').eq('list_id', id).order('position'),
@@ -124,41 +150,37 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       fetchPosters(entriesRes.data, category, year).then(setPosters)
       // Fetch entry-level comment counts and reaction counts
       const entryIds = entriesRes.data.map(e => e.id)
-      supabase
-        .from('entry_comments')
-        .select('list_entry_id')
-        .in('list_entry_id', entryIds)
-        .then(({ data }) => {
-          const counts: Record<string, number> = {}
-          for (const row of data ?? []) {
-            counts[row.list_entry_id] = (counts[row.list_entry_id] ?? 0) + 1
-          }
-          setCommentCounts(counts)
-        })
-      supabase
-        .from('entry_reactions')
-        .select('list_entry_id, emoji')
-        .in('list_entry_id', entryIds)
-        .then(({ data }) => {
-          const reacs: Record<string, Record<string, number>> = {}
-          for (const row of data ?? []) {
-            if (!reacs[row.list_entry_id]) reacs[row.list_entry_id] = {}
-            reacs[row.list_entry_id][row.emoji] = (reacs[row.list_entry_id][row.emoji] ?? 0) + 1
-          }
-          setEntryReactions(reacs)
-        })
+      if (entryIds.length > 0) {
+        const [{ data: commentData }, { data: reactionData }] = await Promise.all([
+          supabase.from('entry_comments').select('list_entry_id').in('list_entry_id', entryIds),
+          supabase.from('entry_reactions').select('list_entry_id, emoji').in('list_entry_id', entryIds),
+        ])
+        const counts: Record<string, number> = {}
+        for (const row of commentData ?? []) {
+          counts[row.list_entry_id] = (counts[row.list_entry_id] ?? 0) + 1
+        }
+        setCommentCounts(counts)
+        const reacs: Record<string, Record<string, number>> = {}
+        for (const row of reactionData ?? []) {
+          if (!reacs[row.list_entry_id]) reacs[row.list_entry_id] = {}
+          reacs[row.list_entry_id][row.emoji] = (reacs[row.list_entry_id][row.emoji] ?? 0) + 1
+        }
+        setEntryReactions(reacs)
+      }
     }
     if (commentsRes.data) setComments(commentsRes.data as Comment[])
 
     if (reactionsRes.data) {
-      const counts: Record<string, { count: number; reacted: boolean }> = {}
+      const counts: Record<string, { count: number; reacted: boolean; names: string[] }> = {}
       for (const emoji of EMOJIS) {
-        counts[emoji] = { count: 0, reacted: false }
+        counts[emoji] = { count: 0, reacted: false, names: [] }
       }
       for (const r of reactionsRes.data) {
         if (counts[r.emoji]) {
           counts[r.emoji].count++
           if (r.visitor_id === vid) counts[r.emoji].reacted = true
+          const name = (r as { visitors?: { name?: string } }).visitors?.name
+          if (name) counts[r.emoji].names.push(name)
         }
       }
       setReactions(EMOJIS.map((e) => ({ emoji: e, ...counts[e] })))
@@ -497,7 +519,14 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     setReactions((prev) =>
       prev.map((r) =>
         r.emoji === emoji
-          ? { ...r, count: r.count + (hasReacted ? -1 : 1), reacted: !r.reacted }
+          ? {
+              ...r,
+              count: r.count + (hasReacted ? -1 : 1),
+              reacted: !r.reacted,
+              names: hasReacted
+                ? r.names.filter((n) => n !== visitorName)
+                : visitorName ? [...r.names, visitorName] : r.names,
+            }
           : r
       )
     )
@@ -538,6 +567,12 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       setNewComment('')
     }
     setSubmittingComment(false)
+  }
+
+  function formatReactorNames(names: string[]): string {
+    if (names.length === 0) return ''
+    if (names.length <= 3) return names.join(', ')
+    return `${names.slice(0, 3).join(', ')} +${names.length - 3} more`
   }
 
   const isMovie = list?.category === 'movies'
@@ -796,7 +831,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                   <div className="flex items-center gap-3">
                     {newEntryPosterUrl && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={newEntryPosterUrl} alt="" className="w-8 h-12 object-cover rounded shrink-0" />
+                      <img src={newEntryPosterUrl} alt="" className="w-8 h-12 object-cover rounded shrink-0" loading="lazy" />
                     )}
                     <input
                       type="number"
@@ -898,27 +933,36 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
           </h2>
           <div className="flex flex-wrap gap-3">
             {reactions.map((r) => (
-              <button
-                key={r.emoji}
-                onClick={() => {
-                  if (!visitorId) {
-                    setPendingListReaction(r.emoji)
-                    return
-                  }
-                  toggleReaction(r.emoji)
-                }}
-                className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all"
-                style={{
-                  background: r.reacted ? `${accentColor}18` : 'var(--surface)',
-                  border: `1px solid ${r.reacted ? accentColor : 'var(--border)'}`,
-                  color: r.reacted ? accentColor : 'var(--foreground)',
-                }}
-              >
-                <span className="text-base">{r.emoji}</span>
-                {r.count > 0 && (
-                  <span className="tabular-nums">{r.count}</span>
+              <div key={r.emoji} className="relative group">
+                <button
+                  onClick={() => {
+                    if (!visitorId) {
+                      setPendingListReaction(r.emoji)
+                      return
+                    }
+                    toggleReaction(r.emoji)
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all"
+                  style={{
+                    background: r.reacted ? `${accentColor}18` : 'var(--surface)',
+                    border: `1px solid ${r.reacted ? accentColor : 'var(--border)'}`,
+                    color: r.reacted ? accentColor : 'var(--foreground)',
+                  }}
+                >
+                  <span className="text-base">{r.emoji}</span>
+                  {r.count > 0 && (
+                    <span className="tabular-nums">{r.count}</span>
+                  )}
+                </button>
+                {r.names.length > 0 && (
+                  <div
+                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                    style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}
+                  >
+                    {formatReactorNames(r.names)}
+                  </div>
                 )}
-              </button>
+              </div>
             ))}
           </div>
           {pendingListReaction && !visitorId && (
@@ -1252,11 +1296,11 @@ function SortableRankedEntry({
             imdbUrl ? (
               <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={src} alt={entry.title} className="w-10 h-[3.75rem] object-cover rounded" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
+                <img src={src} alt={entry.title} className="w-10 h-[3.75rem] object-cover rounded" loading="lazy" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
               </a>
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={src} alt={entry.title} className="w-10 h-[3.75rem] object-cover rounded shrink-0" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
+              <img src={src} alt={entry.title} className="w-10 h-[3.75rem] object-cover rounded shrink-0" loading="lazy" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
             )
           ) : (
             <div
@@ -1557,7 +1601,7 @@ function TmdbSearchInput({
               >
                 {r.posterUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={r.posterUrl} alt="" className="w-8 h-12 object-cover rounded shrink-0" />
+                  <img src={r.posterUrl} alt="" className="w-8 h-12 object-cover rounded shrink-0" loading="lazy" />
                 ) : (
                   <div className="w-8 h-12 rounded shrink-0" style={{ background: 'var(--surface-2)' }} />
                 )}
@@ -1607,7 +1651,7 @@ function TieredAddForm({
           <div className="flex items-center gap-3">
             {posterUrl && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={posterUrl} alt="" className="w-8 h-12 object-cover rounded shrink-0" />
+              <img src={posterUrl} alt="" className="w-8 h-12 object-cover rounded shrink-0" loading="lazy" />
             )}
             <TmdbSearchInput
               category={category}
@@ -1859,7 +1903,7 @@ function TieredEntries({
                 const poster = entry.image_url ?? posters[entry.id]?.poster
                 const imgEl = poster ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={poster} alt={entry.title} className="rounded object-cover w-full" style={{ height: '78px' }} />
+                  <img src={poster} alt={entry.title} className="rounded object-cover w-full" loading="lazy" style={{ height: '78px' }} />
                 ) : (
                   <div className="rounded w-full" style={{ height: '78px', background: 'var(--surface-2)' }} />
                 )
@@ -1916,7 +1960,7 @@ function TieredEntries({
                   const imdbUrl = posters[entry.id]?.imdbUrl
                   const imgEl = poster ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={poster} alt={entry.title} className="rounded object-cover w-full" style={{ height: '78px', border: `1px solid ${color}30`, boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }} />
+                    <img src={poster} alt={entry.title} className="rounded object-cover w-full" loading="lazy" style={{ height: '78px', border: `1px solid ${color}30`, boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }} />
                   ) : (
                     <div className="rounded w-full flex items-center justify-center" style={{ height: '78px', background: `${color}12`, border: `1px solid ${color}22` }} />
                   )
@@ -2310,11 +2354,11 @@ function SortableTierRankedEntry({
         imdbUrl ? (
           <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 mt-1">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
+            <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded" loading="lazy" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
           </a>
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded shrink-0 mt-1" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
+          <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded shrink-0 mt-1" loading="lazy" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
         )
       ) : (
         <div className="w-8 h-12 rounded shrink-0 mt-1" style={{ background: `${color}15`, border: `1px solid ${color}20` }} />

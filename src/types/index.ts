@@ -68,6 +68,7 @@ export type ReactionCount = {
   emoji: string
   count: number
   reacted: boolean
+  names: string[]
 }
 
 export type HonorableMention = {
