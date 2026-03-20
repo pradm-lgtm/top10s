@@ -78,8 +78,8 @@ export function RichTextEditor({
         style={{
           fontWeight: active ? 700 : 400,
           color: active ? 'var(--accent)' : 'var(--muted)',
-          background: active ? 'rgba(232,197,71,0.15)' : 'transparent',
-          border: 'none',
+          background: active ? 'rgba(232,197,71,0.22)' : 'transparent',
+          border: active ? '1px solid rgba(232,197,71,0.45)' : '1px solid transparent',
           cursor: 'pointer',
           padding: '2px 6px',
           fontSize: 13,
