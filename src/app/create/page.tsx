@@ -1649,13 +1649,30 @@ export default function CreatePage() {
     if (!loading && !user) router.replace('/')
   }, [loading, user, router])
 
-  // Warn before leaving with unsaved work
+  // Warn before leaving with unsaved work (browser nav + in-app link clicks)
   useEffect(() => {
     const isDirty = title.trim().length > 0 || entries.length > 0
     if (!isDirty) return
-    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
-    window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
+
+    const beforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', beforeUnload)
+
+    const handleLinkClick = (e: MouseEvent) => {
+      const anchor = (e.target as Element).closest('a[href]')
+      if (!anchor) return
+      const href = anchor.getAttribute('href')
+      if (!href || href.startsWith('#')) return
+      if (!confirm('Leave without finishing your list?')) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    }
+    window.addEventListener('click', handleLinkClick, true)
+
+    return () => {
+      window.removeEventListener('beforeunload', beforeUnload)
+      window.removeEventListener('click', handleLinkClick, true)
+    }
   }, [title, entries])
 
   async function publish() {

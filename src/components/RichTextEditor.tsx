@@ -21,14 +21,15 @@ export function RichTextEditor({
   minHeight = 72,
 }: RichTextEditorProps) {
   const [focused, setFocused] = useState(false)
+  const [activeMarks, setActiveMarks] = useState({ bold: false, italic: false, bulletList: false, orderedList: false })
   const initialized = useRef(false)
+  const onChangeRef = useRef(onChange)
+  useEffect(() => { onChangeRef.current = onChange }, [onChange])
 
   const initialContent: TiptapDoc =
     value && typeof value === 'object' && value.type === 'doc'
       ? value
       : { type: 'doc', content: [{ type: 'paragraph', content: typeof value === 'string' && value ? [{ type: 'text', text: value }] : [] }] }
-
-  const [, setSelectionVersion] = useState(0)
 
   const editor = useEditor({
     extensions: [StarterKit],
@@ -42,11 +43,16 @@ export function RichTextEditor({
       },
     },
     onUpdate({ editor }) {
-      onChange(editor.getJSON() as TiptapDoc)
-      setSelectionVersion(v => v + 1)
+      onChangeRef.current(editor.getJSON() as TiptapDoc)
+      setActiveMarks({ bold: editor.isActive('bold'), italic: editor.isActive('italic'), bulletList: editor.isActive('bulletList'), orderedList: editor.isActive('orderedList') })
     },
-    onSelectionUpdate() { setSelectionVersion(v => v + 1) },
-    onFocus() { setFocused(true) },
+    onSelectionUpdate({ editor }) {
+      setActiveMarks({ bold: editor.isActive('bold'), italic: editor.isActive('italic'), bulletList: editor.isActive('bulletList'), orderedList: editor.isActive('orderedList') })
+    },
+    onFocus({ editor }) {
+      setFocused(true)
+      setActiveMarks({ bold: editor.isActive('bold'), italic: editor.isActive('italic'), bulletList: editor.isActive('bulletList'), orderedList: editor.isActive('orderedList') })
+    },
     onBlur() { setFocused(false) },
   })
 
@@ -126,10 +132,10 @@ export function RichTextEditor({
       >
         {editor && (
           <>
-            {toolbarButton('B', () => editor.chain().focus().toggleBold().run(), editor.isActive('bold'), 'Bold')}
-            {toolbarButton('I', () => editor.chain().focus().toggleItalic().run(), editor.isActive('italic'), 'Italic')}
-            {toolbarButton('•—', () => editor.chain().focus().toggleBulletList().run(), editor.isActive('bulletList'), 'Bullet list')}
-            {toolbarButton('1.', () => editor.chain().focus().toggleOrderedList().run(), editor.isActive('orderedList'), 'Numbered list')}
+            {toolbarButton('B', () => editor.chain().focus().toggleBold().run(), activeMarks.bold, 'Bold')}
+            {toolbarButton('I', () => editor.chain().focus().toggleItalic().run(), activeMarks.italic, 'Italic')}
+            {toolbarButton('•—', () => editor.chain().focus().toggleBulletList().run(), activeMarks.bulletList, 'Bullet list')}
+            {toolbarButton('1.', () => editor.chain().focus().toggleOrderedList().run(), activeMarks.orderedList, 'Numbered list')}
           </>
         )}
       </div>

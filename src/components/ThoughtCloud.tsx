@@ -516,7 +516,7 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
                 key={result.id}
                 result={result}
                 added={addedIds.has(result.id)}
-                onToggle={onToggle}
+                onToggle={(r) => { if (searchQuery.trim()) setSearchQuery(''); onToggle(r) }}
               />
             ))}
 
