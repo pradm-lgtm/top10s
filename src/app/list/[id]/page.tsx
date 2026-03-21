@@ -392,7 +392,13 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   // ── Tier editing is staged: all changes are local-only until "Save" ──────────
 
   function moveEntryToTier(entryId: string, tierId: string) {
-    setEntries(prev => prev.map(e => e.id === entryId ? { ...e, tier_id: tierId || null } : e))
+    const isRealTier = tiers.some(t => t.id === tierId)
+    setEntries(prev => prev.map(e => {
+      if (e.id !== entryId) return e
+      return isRealTier
+        ? { ...e, tier_id: tierId || null, tier: null }
+        : { ...e, tier: tierId || null, tier_id: null }
+    }))
   }
 
   function addTier(label: string, color: string) {
@@ -456,10 +462,12 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       const orig = origEntryMap.get(entry.id)
       if (!orig) return Promise.resolve()
       const resolvedTierId = entry.tier_id ? (tempIdToReal.get(entry.tier_id) ?? entry.tier_id) : null
-      if (orig.tier_id !== resolvedTierId) {
+      const tierIdChanged = orig.tier_id !== resolvedTierId
+      const tierChanged = orig.tier !== entry.tier
+      if (tierIdChanged || tierChanged) {
         return fetch(`/api/lists/${id}/entries/${entry.id}`, {
           method: 'PATCH', headers,
-          body: JSON.stringify({ tier_id: resolvedTierId }),
+          body: JSON.stringify({ tier_id: resolvedTierId, tier: entry.tier ?? null }),
         })
       }
       return Promise.resolve()
@@ -629,11 +637,27 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const isMovie = list?.category === 'movies'
   const accentColor = isMovie ? 'var(--accent)' : '#a78bfa'
 
-  // For legacy lists (no DB tiers), derive virtual tiers from entry.tier strings
-  const effectiveTiers: Tier[] = tiers.length > 0
-    ? tiers
-    : [...new Map(entries.filter(e => e.tier).map(e => [e.tier!, e.tier!])).keys()]
+  // For legacy lists (no DB tiers), derive virtual tiers from entry.tier strings.
+  // When DB tiers exist, also include any legacy entry.tier strings not covered by DB tier labels
+  // (e.g. if tiers were added before some entries had tier_id set, or older entries predate the tiers table).
+  // Legacy tiers are placed before DB tiers to preserve original ordering.
+  const effectiveTiers: Tier[] = (() => {
+    if (tiers.length === 0) {
+      return [...new Map(entries.filter(e => e.tier).map(e => [e.tier!, e.tier!])).keys()]
         .map((t, i) => ({ id: t, list_id: id, label: t, color: null, position: i, created_at: '' }))
+    }
+    const tierByLabel = new Map(tiers.map(t => [t.label, t]))
+    const legacyLabels = [...new Set(
+      entries.filter(e => e.tier && !e.tier_id && !tierByLabel.has(e.tier)).map(e => e.tier!)
+    )]
+    if (legacyLabels.length === 0) return tiers
+    const minPos = Math.min(...tiers.map(t => t.position ?? 0))
+    const legacy: Tier[] = legacyLabels.map((lbl, i) => ({
+      id: lbl, list_id: id, label: lbl, color: null,
+      position: minPos - legacyLabels.length + i, created_at: '',
+    }))
+    return [...legacy, ...tiers]
+  })()
 
   if (loading) {
     return (
@@ -889,7 +913,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                   hasEntries={(tierId) => entries.some(e => e.tier_id === tierId || e.tier === tierId)}
                 />
               )}
-              <TieredEntries entries={entries} tiers={tiers} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} onMoveTier={editMode ? moveEntryToTier : undefined} editMode={editMode} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
+              <TieredEntries entries={entries} tiers={effectiveTiers} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} onMoveTier={editMode ? moveEntryToTier : undefined} editMode={editMode} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
               {(isOwner || isAdmin) && editMode && <TieredAddForm tiers={effectiveTiers} category={list.category} title={newTieredTitle} setTitle={setNewTieredTitle} posterUrl={newTieredPosterUrl} setPosterUrl={setNewTieredPosterUrl} tierId={newTieredTierId} setTierId={setNewTieredTierId} notes={newTieredNotes} setNotes={setNewTieredNotes} open={addingTieredEntry} setOpen={setAddingTieredEntry} saving={savingTieredEntry} onSubmit={addTieredEntry} />}
             </>
           ) : list.list_format === 'tier-ranked' ? (
@@ -905,7 +929,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                   hasEntries={(tierId) => entries.some(e => e.tier_id === tierId || e.tier === tierId)}
                 />
               )}
-              <TierRankedEntries entries={entries} tiers={tiers} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} onMoveTier={editMode ? moveEntryToTier : undefined} onTierItemDragEnd={editMode ? handleTierItemDragEnd : undefined} editMode={editMode} sensors={sensors} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
+              <TierRankedEntries entries={entries} tiers={effectiveTiers} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} onMoveTier={editMode ? moveEntryToTier : undefined} onTierItemDragEnd={editMode ? handleTierItemDragEnd : undefined} editMode={editMode} sensors={sensors} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
               {(isOwner || isAdmin) && editMode && <TieredAddForm tiers={effectiveTiers} category={list.category} title={newTieredTitle} setTitle={setNewTieredTitle} posterUrl={newTieredPosterUrl} setPosterUrl={setNewTieredPosterUrl} tierId={newTieredTierId} setTierId={setNewTieredTierId} notes={newTieredNotes} setNotes={setNewTieredNotes} open={addingTieredEntry} setOpen={setAddingTieredEntry} saving={savingTieredEntry} onSubmit={addTieredEntry} />}
             </>
           ) : (
