@@ -4,6 +4,7 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useEffect, useRef, useState } from 'react'
 import type { TiptapDoc } from '@/lib/notes'
+import { VoiceMicButton } from '@/components/VoiceMicButton'
 
 interface RichTextEditorProps {
   value?: TiptapDoc | string | null
@@ -112,9 +113,22 @@ export function RichTextEditor({
     )
   }
 
+  function handleTranscript(text: string) {
+    if (!editor) return
+    const paragraphs = text.split(/\n+/).filter(Boolean)
+    const nodes = paragraphs.map((p) => ({ type: 'paragraph' as const, content: [{ type: 'text' as const, text: p }] }))
+    if (!nodes.length) return
+    if (editor.isEmpty) {
+      editor.commands.setContent({ type: 'doc', content: nodes })
+    } else {
+      editor.chain().focus('end').insertContent(nodes).run()
+    }
+  }
+
   const toolbarVisible = focused
 
   return (
+    <div style={{ position: 'relative' }}>
     <div
       style={{
         border: '1px solid var(--border)',
@@ -169,6 +183,10 @@ export function RichTextEditor({
         )}
         <EditorContent editor={editor} />
       </div>
+    </div>
+    <div style={{ position: 'absolute', bottom: 4, right: 4, zIndex: 2 }}>
+      <VoiceMicButton onTranscript={handleTranscript} />
+    </div>
     </div>
   )
 }

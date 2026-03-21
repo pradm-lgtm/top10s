@@ -27,6 +27,7 @@ import { AppHeader } from '@/components/AppHeader'
 import { ThoughtCloud, startPrefetch } from '@/components/ThoughtCloud'
 import type { CloudResult } from '@/components/ThoughtCloud'
 import { RichTextEditor } from '@/components/RichTextEditor'
+import { VoiceMicButton } from '@/components/VoiceMicButton'
 import type { TiptapDoc } from '@/lib/notes'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -282,17 +283,22 @@ function Step1({
         <label className="text-xs font-semibold tracking-[0.15em] uppercase" style={{ color: 'var(--muted)' }}>
           Description <span className="normal-case font-normal">(optional)</span>
         </label>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="What's this list about?"
-          rows={2}
-          maxLength={300}
-          className="w-full px-4 py-3 rounded-xl text-sm resize-none outline-none"
-          style={inputStyle}
-          onFocus={onFocusAccent}
-          onBlur={onBlurBorder}
-        />
+        <div style={{ position: 'relative' }}>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="What's this list about?"
+            rows={2}
+            maxLength={300}
+            className="w-full px-4 py-3 rounded-xl text-sm resize-none outline-none"
+            style={inputStyle}
+            onFocus={onFocusAccent}
+            onBlur={onBlurBorder}
+          />
+          <div style={{ position: 'absolute', bottom: 4, right: 4, zIndex: 2 }}>
+            <VoiceMicButton onTranscript={(t) => setDescription(description ? description + '\n' + t : t)} />
+          </div>
+        </div>
       </div>
 
       <button

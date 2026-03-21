@@ -52,6 +52,16 @@ body {
 .ProseMirror strong { font-weight: 600; }
 .ProseMirror em { font-style: italic; }
 
+/* Voice mic animations */
+@keyframes mic-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(0.88); }
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
