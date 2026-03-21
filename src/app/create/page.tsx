@@ -143,6 +143,9 @@ function Step1({
   description: string; setDescription: (v: string) => void
   onNext: () => void
 }) {
+  const descRef = useRef(description)
+  useEffect(() => { descRef.current = description }, [description])
+
   function handleTitleChange(v: string) {
     setTitle(v)
     const detected = detectFromTitle(v)
@@ -296,7 +299,16 @@ function Step1({
             onBlur={onBlurBorder}
           />
           <div style={{ position: 'absolute', bottom: 4, right: 4, zIndex: 2 }}>
-            <VoiceMicButton onTranscript={(t) => setDescription(description ? description + '\n' + t : t)} />
+            <VoiceMicButton
+              onTranscript={(t) => setDescription(descRef.current ? descRef.current + '\n' + t : t)}
+              onTranscriptCleanup={(rawText, cleanedText) => {
+                const curr = descRef.current
+                if (curr.trimEnd().endsWith(rawText.trim())) {
+                  const prefix = curr.trimEnd().slice(0, -rawText.trim().length).trimEnd()
+                  setDescription(prefix ? prefix + '\n' + cleanedText : cleanedText)
+                }
+              }}
+            />
           </div>
         </div>
       </div>

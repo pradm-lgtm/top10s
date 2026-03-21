@@ -113,8 +113,13 @@ export function RichTextEditor({
     )
   }
 
+  // Snapshot of editor content taken just before raw transcript is inserted,
+  // used by handleTranscriptCleanup to safely replace raw with cleaned text.
+  const beforeRawRef = useRef<TiptapDoc | null>(null)
+
   function handleTranscript(text: string) {
     if (!editor) return
+    beforeRawRef.current = editor.isEmpty ? null : (editor.getJSON() as TiptapDoc)
     const paragraphs = text.split(/\n+/).filter(Boolean)
     const nodes = paragraphs.map((p) => ({ type: 'paragraph' as const, content: [{ type: 'text' as const, text: p }] }))
     if (!nodes.length) return
@@ -123,6 +128,20 @@ export function RichTextEditor({
     } else {
       editor.chain().focus('end').insertContent(nodes).run()
     }
+  }
+
+  function handleTranscriptCleanup(rawText: string, cleanedText: string) {
+    if (!editor || !cleanedText) return
+    // Only replace if the user hasn't edited since the raw transcript was inserted
+    if (!editor.getText().trimEnd().endsWith(rawText.trim())) return
+    const cleanedNodes = cleanedText.split(/\n+/).filter(Boolean)
+      .map((p) => ({ type: 'paragraph' as const, content: [{ type: 'text' as const, text: p }] }))
+    const before = beforeRawRef.current
+    editor.commands.setContent({
+      type: 'doc',
+      content: before ? [...(before.content ?? []), ...cleanedNodes] : cleanedNodes,
+    })
+    beforeRawRef.current = null
   }
 
   const toolbarVisible = focused
@@ -185,7 +204,7 @@ export function RichTextEditor({
       </div>
     </div>
     <div style={{ position: 'absolute', bottom: 4, right: 4, zIndex: 2 }}>
-      <VoiceMicButton onTranscript={handleTranscript} />
+      <VoiceMicButton onTranscript={handleTranscript} onTranscriptCleanup={handleTranscriptCleanup} />
     </div>
     </div>
   )
