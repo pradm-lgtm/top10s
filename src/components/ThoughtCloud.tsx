@@ -126,6 +126,31 @@ async function tmdbSearch(
   query: string, category: 'movies' | 'tv', apiKey: string,
 ): Promise<CloudResult[]> {
   const type = category === 'movies' ? 'movie' : 'tv'
+  // Try person search first — handles "Brad Pitt", "Nolan", etc.
+  try {
+    const personRes = await fetch(`${TMDB_BASE}/search/person?api_key=${apiKey}&query=${encodeURIComponent(query)}&page=1`)
+    if (personRes.ok) {
+      const personData = await personRes.json()
+      const person = (personData.results ?? []).find(
+        (p: { popularity: number; known_for_department: string }) =>
+          p.popularity > 3 && ['Acting', 'Directing'].includes(p.known_for_department)
+      )
+      if (person) {
+        const isDirector = person.known_for_department === 'Directing'
+        const creditsRes = await fetch(`${TMDB_BASE}/person/${person.id}/${type}_credits?api_key=${apiKey}`)
+        if (creditsRes.ok) {
+          const creditsData = await creditsRes.json()
+          const credits: CloudResult[] = isDirector
+            ? (creditsData.crew ?? []).filter((c: { job: string }) => c.job === 'Director')
+            : (creditsData.cast ?? [])
+          credits.sort((a, b) => ((b as { vote_count?: number }).vote_count ?? 0) - ((a as { vote_count?: number }).vote_count ?? 0))
+          const results = dedupeById(credits.filter((r) => r.poster_path).slice(0, 20))
+          if (results.length > 0) return results
+        }
+      }
+    }
+  } catch { /* fall through to title search */ }
+  // Fall back to regular title search
   try {
     const res = await fetch(`${TMDB_BASE}/search/${type}?api_key=${apiKey}&query=${encodeURIComponent(query)}&page=1`)
     if (!res.ok) return []
