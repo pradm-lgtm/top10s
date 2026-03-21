@@ -48,6 +48,7 @@ export default function ProfilePage() {
   }, [username])
 
   async function loadProfile(uname: string) {
+    try {
     const { data: prof } = await supabase
       .from('profiles')
       .select('*')
@@ -114,6 +115,10 @@ export default function ProfilePage() {
     setAnnualGrouped(grouped)
     setThemeLists(theme)
     setLoading(false)
+    } catch (err) {
+      console.error('loadProfile error:', err)
+      setLoading(false)
+    }
   }
 
   const initials = (profile?.display_name ?? profile?.username ?? '?')[0].toUpperCase()

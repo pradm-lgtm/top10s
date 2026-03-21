@@ -282,12 +282,14 @@ export default function HomePage() {
   const [lists, setLists] = useState<RichList[]>([])
   const [posters, setPosters] = useState<Record<string, string | null>>({})
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set())
   const didInitExpand = useRef(false)
 
   useEffect(() => { fetchLists() }, [])
 
   async function fetchLists() {
+    try {
     const { data: raw, error } = await supabase
       .from('lists')
       .select('*, profiles(username, display_name, avatar_url)')
@@ -398,6 +400,11 @@ export default function HomePage() {
         setPosters(map)
       }, 0)
     }
+    } catch (err) {
+      console.error('fetchLists error:', err)
+      setFetchError(err instanceof Error ? err.message : String(err))
+      setLoading(false)
+    }
   }
 
   function toggleYear(y: number) {
@@ -429,7 +436,13 @@ export default function HomePage() {
           </div>
         )}
 
-        {!loading && lists.length === 0 && (
+        {fetchError && (
+          <div className="text-center py-20">
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>Failed to load lists. Please refresh.</p>
+          </div>
+        )}
+
+        {!loading && !fetchError && lists.length === 0 && (
           <div className="text-center py-20">
             <p className="text-sm mb-4" style={{ color: 'var(--muted)' }}>No lists yet.</p>
             {user && (
@@ -440,7 +453,7 @@ export default function HomePage() {
           </div>
         )}
 
-        {!loading && lists.length > 0 && (
+        {!loading && !fetchError && lists.length > 0 && (
           <div className="space-y-16">
 
             {/* ── Section 1: All Time ── */}

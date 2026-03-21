@@ -138,7 +138,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
 
   async function fetchAll(vid: string) {
     const [listRes, entriesRes, commentsRes, reactionsRes, hmRes, awRes, tiersRes] = await Promise.all([
-      supabase.from('lists').select('*').eq('id', id).single(),
+      supabase.from('lists').select('*, profiles(username, display_name, avatar_url)').eq('id', id).single(),
       supabase.from('list_entries').select('*').eq('list_id', id).order('rank'),
       supabase
         .from('comments')
@@ -638,10 +638,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
             style={{ color: 'var(--muted)' }}
           >
             <span>←</span>
-            <span>
-              <span className="font-bold" style={{ color: 'var(--foreground)' }}>Ranked</span>
-              <span className="ml-1.5 text-xs tracking-[0.15em] uppercase">by Prad</span>
-            </span>
+            <span className="font-bold" style={{ color: 'var(--foreground)' }}>Ranked</span>
           </Link>
 
           <div className="flex items-center gap-2">
@@ -745,6 +742,33 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               editable={(isAdmin || isOwner) && editMode}
             />
           </h1>
+          {list.profiles && (
+            <Link
+              href={`/${list.profiles.username}`}
+              className="flex items-center gap-2 w-fit mb-4"
+            >
+              {list.profiles.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={list.profiles.avatar_url}
+                  alt=""
+                  className="w-6 h-6 rounded-full object-cover shrink-0"
+                  loading="lazy"
+                />
+              ) : (
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
+                  style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+                >
+                  {(list.profiles.display_name ?? list.profiles.username)[0].toUpperCase()}
+                </div>
+              )}
+              <span className="text-sm" style={{ color: 'var(--muted)' }}>
+                {list.profiles.display_name ?? list.profiles.username}
+              </span>
+            </Link>
+          )}
+
           <div className="text-base max-w-xl mt-1">
             {(isAdmin || isOwner) && editMode ? (
               <div className="space-y-2">
