@@ -28,6 +28,8 @@ export function RichTextEditor({
       ? value
       : { type: 'doc', content: [{ type: 'paragraph', content: typeof value === 'string' && value ? [{ type: 'text', text: value }] : [] }] }
 
+  const [, setSelectionVersion] = useState(0)
+
   const editor = useEditor({
     extensions: [StarterKit],
     content: initialContent,
@@ -41,7 +43,9 @@ export function RichTextEditor({
     },
     onUpdate({ editor }) {
       onChange(editor.getJSON() as TiptapDoc)
+      setSelectionVersion(v => v + 1)
     },
+    onSelectionUpdate() { setSelectionVersion(v => v + 1) },
     onFocus() { setFocused(true) },
     onBlur() { setFocused(false) },
   })

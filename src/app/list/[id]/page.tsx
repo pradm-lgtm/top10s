@@ -1671,19 +1671,23 @@ function TmdbSearchInput({
   onSelect: (title: string, posterUrl: string | null) => void
   placeholder?: string
 }) {
+  const [query, setQuery] = useState('')
   const [results, setResults] = useState<TmdbResult[]>([])
   const [open, setOpen] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? ''
   const type = category === 'movies' ? 'movie' : 'tv'
 
+  // Sync reset when parent clears the value (e.g. after form submission)
+  useEffect(() => { if (!value) setQuery('') }, [value])
+
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current)
-    if (!value.trim() || !apiKey) { setResults([]); setOpen(false); return }
+    if (!query.trim() || !apiKey) { setResults([]); setOpen(false); return }
     timerRef.current = setTimeout(async () => {
       try {
         const res = await fetch(
-          `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(value.trim())}&api_key=${apiKey}&page=1`
+          `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(query.trim())}&api_key=${apiKey}&page=1`
         )
         if (!res.ok) return
         const data = await res.json()
@@ -1698,13 +1702,13 @@ function TmdbSearchInput({
       } catch { /* ignore */ }
     }, 350)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-  }, [value, type, apiKey])
+  }, [query, type, apiKey])
 
   return (
     <div className="relative flex-1">
       <input
-        value={value}
-        onChange={e => { onChange(e.target.value); setOpen(false) }}
+        value={query}
+        onChange={e => { setQuery(e.target.value); onChange(e.target.value); setOpen(false) }}
         onFocus={() => { if (results.length > 0) setOpen(true) }}
         placeholder={placeholder ?? 'Search…'}
         autoComplete="off"
@@ -1719,7 +1723,7 @@ function TmdbSearchInput({
               <button
                 key={r.id}
                 type="button"
-                onClick={() => { onSelect(r.title, r.posterUrl); setOpen(false); setResults([]) }}
+                onClick={() => { onSelect(r.title, r.posterUrl); setQuery(''); setOpen(false); setResults([]) }}
                 className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors"
                 style={{ borderBottom: '1px solid var(--border)' }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}

@@ -1649,6 +1649,15 @@ export default function CreatePage() {
     if (!loading && !user) router.replace('/')
   }, [loading, user, router])
 
+  // Warn before leaving with unsaved work
+  useEffect(() => {
+    const isDirty = title.trim().length > 0 || entries.length > 0
+    if (!isDirty) return
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [title, entries])
+
   async function publish() {
     if (!profile) return
     setPublishing(true)
