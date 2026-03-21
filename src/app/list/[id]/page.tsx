@@ -79,6 +79,8 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [editMode, setEditMode] = useState(false)
   const [saving, setSaving] = useState(false)
   const [descriptionDoc, setDescriptionDoc] = useState<TiptapDoc | null>(null)
+  const entriesSnap = useRef<ListEntry[]>([])
+  const tiersSnap = useRef<Tier[]>([])
   const [savingDescription, setSavingDescription] = useState(false)
   const router = useRouter()
 
@@ -387,69 +389,116 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     setSaving(false)
   }
 
-  async function moveEntryToTier(entryId: string, tierId: string) {
-    setSaving(true)
-    const session = await getSession()
-    await fetch(`/api/lists/${id}/entries/${entryId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
-      body: JSON.stringify({ tier_id: tierId }),
-    })
-    setEntries(prev => prev.map(e => e.id === entryId ? { ...e, tier_id: tierId } : e))
-    setSaving(false)
+  // ── Tier editing is staged: all changes are local-only until "Save" ──────────
+
+  function moveEntryToTier(entryId: string, tierId: string) {
+    setEntries(prev => prev.map(e => e.id === entryId ? { ...e, tier_id: tierId || null } : e))
   }
 
-  async function addTier(label: string, color: string) {
-    setSaving(true)
-    const session = await getSession()
-    const res = await fetch(`/api/lists/${id}/tiers`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
-      body: JSON.stringify({ label, color, position: tiers.length }),
-    })
-    if (res.ok) {
-      const tier = await res.json()
-      setTiers(prev => [...prev, tier])
-    }
-    setSaving(false)
+  function addTier(label: string, color: string) {
+    const tempId = crypto.randomUUID()
+    setTiers(prev => [...prev, { id: tempId, list_id: id, label, color, position: prev.length, created_at: '' }])
   }
 
-  async function updateTier(tierId: string, fields: Partial<Pick<Tier, 'label' | 'color' | 'position'>>) {
-    setSaving(true)
-    if (isUUID(tierId)) {
-      const session = await getSession()
-      await fetch(`/api/lists/${id}/tiers/${tierId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
-        body: JSON.stringify(fields),
-      })
-      setTiers(prev => prev.map(t => t.id === tierId ? { ...t, ...fields } : t))
-    }
-    setSaving(false)
+  function updateTier(tierId: string, fields: Partial<Pick<Tier, 'label' | 'color' | 'position'>>) {
+    setTiers(prev => prev.map(t => t.id === tierId ? { ...t, ...fields } : t))
   }
 
-  async function deleteTier(tierId: string) {
+  function deleteTier(tierId: string) {
     const hasEntries = entries.some(e => e.tier_id === tierId || e.tier === tierId)
     if (hasEntries) { alert('Move all entries out of this tier before deleting it.'); return }
-    if (!confirm('Delete this tier?')) return
+    setTiers(prev => prev.filter(t => t.id !== tierId))
+  }
+
+  async function saveAndExitEdit() {
     setSaving(true)
-    if (isUUID(tierId)) {
-      const session = await getSession()
-      const res = await fetch(`/api/lists/${id}/tiers/${tierId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${session?.access_token}` },
-      })
-      if (res.ok) setTiers(prev => prev.filter(t => t.id !== tierId))
+    const session = await getSession()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` }
+    const origTierIds = new Set(tiersSnap.current.map(t => t.id))
+    const tempIdToReal = new Map<string, string>()
+
+    // 1. Create new tiers (IDs not in snapshot)
+    for (const tier of tiers) {
+      if (!origTierIds.has(tier.id)) {
+        const res = await fetch(`/api/lists/${id}/tiers`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ label: tier.label, color: tier.color, position: tier.position }),
+        })
+        if (res.ok) { const created = await res.json(); tempIdToReal.set(tier.id, created.id) }
+      }
     }
+
+    // 2. Update changed tiers
+    const origTierMap = new Map(tiersSnap.current.map(t => [t.id, t]))
+    for (const tier of tiers) {
+      if (origTierIds.has(tier.id)) {
+        const orig = origTierMap.get(tier.id)!
+        if (orig.label !== tier.label || orig.color !== tier.color || orig.position !== tier.position) {
+          await fetch(`/api/lists/${id}/tiers/${tier.id}`, {
+            method: 'PATCH', headers,
+            body: JSON.stringify({ label: tier.label, color: tier.color, position: tier.position }),
+          })
+        }
+      }
+    }
+
+    // 3. Delete removed tiers
+    const currTierIds = new Set(tiers.map(t => t.id))
+    for (const orig of tiersSnap.current) {
+      if (!currTierIds.has(orig.id)) {
+        await fetch(`/api/lists/${id}/tiers/${orig.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${session?.access_token}` } })
+      }
+    }
+
+    // 4. Persist changed entry tier assignments (resolve temp IDs → real IDs)
+    const origEntryMap = new Map(entriesSnap.current.map(e => [e.id, e]))
+    await Promise.all(entries.map(entry => {
+      const orig = origEntryMap.get(entry.id)
+      if (!orig) return Promise.resolve()
+      const resolvedTierId = entry.tier_id ? (tempIdToReal.get(entry.tier_id) ?? entry.tier_id) : null
+      if (orig.tier_id !== resolvedTierId) {
+        return fetch(`/api/lists/${id}/entries/${entry.id}`, {
+          method: 'PATCH', headers,
+          body: JSON.stringify({ tier_id: resolvedTierId }),
+        })
+      }
+      return Promise.resolve()
+    }))
+
+    // Also persist rank changes (from drag-reorder within tiers)
+    await Promise.all(entries.map(entry => {
+      const orig = origEntryMap.get(entry.id)
+      if (!orig) return Promise.resolve()
+      if (orig.rank !== entry.rank) {
+        return fetch(`/api/lists/${id}/entries/${entry.id}`, {
+          method: 'PATCH', headers,
+          body: JSON.stringify({ rank: entry.rank }),
+        })
+      }
+      return Promise.resolve()
+    }))
+
+    // Update local state with real IDs for newly created tiers
+    if (tempIdToReal.size > 0) {
+      setTiers(prev => prev.map(t => ({ ...t, id: tempIdToReal.get(t.id) ?? t.id })))
+      setEntries(prev => prev.map(e => ({ ...e, tier_id: e.tier_id ? (tempIdToReal.get(e.tier_id) ?? e.tier_id) : null })))
+    }
+
     setSaving(false)
+    setEditMode(false)
+  }
+
+  function cancelEdit() {
+    setEntries(entriesSnap.current)
+    setTiers(tiersSnap.current)
+    setEditMode(false)
   }
 
   function isUUID(s: string) {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
   }
 
-  async function handleTierItemDragEnd(tierId: string, draggedId: string, overId: string) {
-    // tierId may be a DB UUID (new format) or a legacy tier string
+  function handleTierItemDragEnd(tierId: string, draggedId: string, overId: string) {
     const tierEntries = isUUID(tierId)
       ? entries.filter(e => e.tier_id === tierId).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
       : entries.filter(e => (e.tier ?? '') === tierId).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
@@ -463,38 +512,15 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       const ids = new Set(updated.map(e => e.id))
       return [...prev.filter(e => !ids.has(e.id)), ...updated].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
     })
-    setSaving(true)
-    const session = await getSession()
-    await Promise.all(updated.map(e =>
-      fetch(`/api/lists/${id}/entries/${e.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ rank: e.rank }),
-      })
-    ))
-    setSaving(false)
   }
 
-  async function handleTiersDragEnd(event: DragEndEvent) {
+  function handleTiersDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
     const oldIdx = tiers.findIndex(t => t.id === active.id)
     const newIdx = tiers.findIndex(t => t.id === over.id)
     if (oldIdx === -1 || newIdx === -1) return
-    const reordered = arrayMove(tiers, oldIdx, newIdx).map((t, i) => ({ ...t, position: i }))
-    setTiers(reordered)
-    setSaving(true)
-    const session = await getSession()
-    await Promise.all(
-      reordered.map(t =>
-        fetch(`/api/lists/${id}/tiers/${t.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
-          body: JSON.stringify({ position: t.position }),
-        })
-      )
-    )
-    setSaving(false)
+    setTiers(arrayMove(tiers, oldIdx, newIdx).map((t, i) => ({ ...t, position: i })))
   }
 
   async function registerVisitor(name: string): Promise<string> {
@@ -655,17 +681,34 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
             {/* Owner controls */}
             {(isOwner || isAdmin) && (
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setEditMode((v) => !v)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-                  style={{
-                    background: editMode ? 'var(--accent)' : 'var(--surface)',
-                    color: editMode ? '#0a0a0f' : 'var(--muted)',
-                    border: `1px solid ${editMode ? 'transparent' : 'var(--border)'}`,
-                  }}
-                >
-                  {editMode ? 'Done editing' : '✎ Edit'}
-                </button>
+                {editMode ? (
+                  <>
+                    <button
+                      onClick={saveAndExitEdit}
+                      disabled={saving}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
+                      style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+                    >
+                      {saving ? 'Saving…' : 'Save'}
+                    </button>
+                    <button
+                      onClick={cancelEdit}
+                      disabled={saving}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
+                      style={{ background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => { entriesSnap.current = entries; tiersSnap.current = tiers; setEditMode(true) }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                    style={{ background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+                  >
+                    ✎ Edit
+                  </button>
+                )}
                 <div className="relative">
                   <button
                     onClick={() => setMenuOpen((o) => !o)}
@@ -699,7 +742,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       {editMode && (
         <div className="px-4 py-2.5 flex items-center gap-3 text-sm font-medium" style={{ background: 'rgba(232,197,71,0.12)', borderBottom: '1px solid rgba(232,197,71,0.25)', color: 'var(--accent)' }}>
           <span>✎ Editing</span>
-          <span className="text-xs font-normal" style={{ color: 'var(--muted)' }}>Drag ⠿ to reorder · ✕ to remove</span>
+          <span className="text-xs font-normal" style={{ color: 'var(--muted)' }}>Drag ⠿ to reorder · ✕ to remove · changes save when you click Save</span>
           <button
             onClick={() => {
               if (list?.list_format === 'ranked') {
@@ -1943,9 +1986,11 @@ function TieredEntries({
 }) {
   // New format: group by tier_id using tiers data
   if (tierData.length > 0) {
+    // Fall back to matching by tier label for entries that predate the DB tier system
+    const tierByLabel = new Map(tierData.map(t => [t.label, t.id]))
     const entriesByTier = new Map<string, ListEntry[]>()
     for (const entry of entries) {
-      const key = entry.tier_id ?? 'none'
+      const key = entry.tier_id ?? tierByLabel.get(entry.tier ?? '') ?? 'none'
       if (!entriesByTier.has(key)) entriesByTier.set(key, [])
       entriesByTier.get(key)!.push(entry)
     }
@@ -2509,9 +2554,10 @@ function TierRankedEntries({
 
   // New format: group by tier_id using tiers data
   if (tierData.length > 0) {
+    const tierByLabelTR = new Map(tierData.map(t => [t.label, t.id]))
     const entriesByTier = new Map<string, ListEntry[]>()
     for (const entry of [...entries].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))) {
-      const key = entry.tier_id ?? 'none'
+      const key = entry.tier_id ?? tierByLabelTR.get(entry.tier ?? '') ?? 'none'
       if (!entriesByTier.has(key)) entriesByTier.set(key, [])
       entriesByTier.get(key)!.push(entry)
     }
