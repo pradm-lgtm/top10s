@@ -27,8 +27,8 @@ import { AppHeader } from '@/components/AppHeader'
 import { ThoughtCloud, startPrefetch } from '@/components/ThoughtCloud'
 import type { CloudResult } from '@/components/ThoughtCloud'
 import { RichTextEditor } from '@/components/RichTextEditor'
-import { VoiceMicButton } from '@/components/VoiceMicButton'
 import type { TiptapDoc } from '@/lib/notes'
+import { notesToPlainText } from '@/lib/notes'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -131,7 +131,7 @@ function onBlurBorder(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement
 function Step1({
   title, setTitle, category, setCategory,
   timeScope, setTimeScope, year, setYear, yearFrom, setYearFrom, yearTo, setYearTo,
-  description, setDescription,
+  descriptionDoc, setDescriptionDoc,
   onNext,
 }: {
   title: string; setTitle: (v: string) => void
@@ -140,11 +140,9 @@ function Step1({
   year: number | null; setYear: (v: number | null) => void
   yearFrom: number | null; setYearFrom: (v: number | null) => void
   yearTo: number | null; setYearTo: (v: number | null) => void
-  description: string; setDescription: (v: string) => void
+  descriptionDoc: TiptapDoc | null; setDescriptionDoc: (v: TiptapDoc) => void
   onNext: () => void
 }) {
-  const descRef = useRef(description)
-  useEffect(() => { descRef.current = description }, [description])
 
   function handleTitleChange(v: string) {
     setTitle(v)
@@ -286,31 +284,12 @@ function Step1({
         <label className="text-xs font-semibold tracking-[0.15em] uppercase" style={{ color: 'var(--muted)' }}>
           Description <span className="normal-case font-normal">(optional)</span>
         </label>
-        <div style={{ position: 'relative' }}>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="What's this list about?"
-            rows={2}
-            maxLength={300}
-            className="w-full px-4 py-3 rounded-xl text-sm resize-none outline-none"
-            style={inputStyle}
-            onFocus={onFocusAccent}
-            onBlur={onBlurBorder}
-          />
-          <div style={{ position: 'absolute', bottom: 4, right: 4, zIndex: 2 }}>
-            <VoiceMicButton
-              onTranscript={(t) => setDescription(descRef.current ? descRef.current + '\n' + t : t)}
-              onTranscriptCleanup={(rawText, cleanedText) => {
-                const curr = descRef.current
-                if (curr.trimEnd().endsWith(rawText.trim())) {
-                  const prefix = curr.trimEnd().slice(0, -rawText.trim().length).trimEnd()
-                  setDescription(prefix ? prefix + '\n' + cleanedText : cleanedText)
-                }
-              }}
-            />
-          </div>
-        </div>
+        <RichTextEditor
+          value={descriptionDoc}
+          onChange={setDescriptionDoc}
+          placeholder="What's this list about?"
+          minHeight={56}
+        />
       </div>
 
       <button
@@ -1661,7 +1640,8 @@ export default function CreatePage() {
   const [year, setYear] = useState<number | null>(null)
   const [yearFrom, setYearFrom] = useState<number | null>(null)
   const [yearTo, setYearTo] = useState<number | null>(null)
-  const [description, setDescription] = useState('')
+  const [descriptionDoc, setDescriptionDoc] = useState<TiptapDoc | null>(null)
+  const description = notesToPlainText(descriptionDoc ? JSON.stringify(descriptionDoc) : null) ?? ''
   const [listFormat, setListFormat] = useState<'ranked' | 'tiered' | 'tiered-ranked'>('ranked')
   const [tiers, setTiers] = useState<TierDef[]>(DEFAULT_TIERS)
   const [entries, setEntries] = useState<Entry[]>([])
@@ -1737,7 +1717,7 @@ export default function CreatePage() {
         year: resolvedYear,
         year_from: resolvedYearFrom,
         year_to: resolvedYearTo,
-        description: description.trim() || null,
+        description: descriptionDoc ? JSON.stringify(descriptionDoc) : (description.trim() || null),
         owner_id: profile.id,
       })
       .select()
@@ -1849,7 +1829,7 @@ export default function CreatePage() {
             year={year} setYear={setYear}
             yearFrom={yearFrom} setYearFrom={setYearFrom}
             yearTo={yearTo} setYearTo={setYearTo}
-            description={description} setDescription={setDescription}
+            descriptionDoc={descriptionDoc} setDescriptionDoc={setDescriptionDoc}
             onNext={() => setStep(2)}
           />
         )}
