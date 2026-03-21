@@ -24,7 +24,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { AppHeader } from '@/components/AppHeader'
-import { ThoughtCloud } from '@/components/ThoughtCloud'
+import { ThoughtCloud, startPrefetch } from '@/components/ThoughtCloud'
 import type { CloudResult } from '@/components/ThoughtCloud'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import type { TiptapDoc } from '@/lib/notes'
@@ -1293,6 +1293,7 @@ function Step3({
   listFormat, setListFormat, tiers, setTiers,
   entries, setEntries,
   onPublish, onBack, publishing, publishError,
+  prefetchedTmdb, prefetchedClaude,
 }: {
   listTitle: string
   category: 'movies' | 'tv'
@@ -1309,6 +1310,8 @@ function Step3({
   onBack: () => void
   publishing: boolean
   publishError: string | null
+  prefetchedTmdb: CloudResult[]
+  prefetchedClaude: CloudResult[]
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -1621,6 +1624,8 @@ function Step3({
         addedIds={addedTmdbIds}
         addedEntries={entries.map((e) => e.title)}
         onToggle={handleCloudToggle}
+        prefetchedTmdb={prefetchedTmdb}
+        prefetchedClaude={prefetchedClaude}
       />
     </div>
   )
@@ -1644,10 +1649,30 @@ export default function CreatePage() {
   const [entries, setEntries] = useState<Entry[]>([])
   const [publishing, setPublishing] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
+  const [prefetchTmdb, setPrefetchTmdb] = useState<CloudResult[]>([])
+  const [prefetchClaude, setPrefetchClaude] = useState<CloudResult[]>([])
+  const prefetchSeqRef = useRef(0)
 
   useEffect(() => {
     if (!loading && !user) router.replace('/')
   }, [loading, user, router])
+
+  // Pre-fire AI + TMDB suggestions as soon as list name is entered
+  useEffect(() => {
+    if (!title.trim()) return
+    const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? ''
+    const yFrom = timeScope === 'year' ? year : timeScope === 'range' ? yearFrom : null
+    const yTo   = timeScope === 'year' ? year : timeScope === 'range' ? yearTo  : null
+    const seq = ++prefetchSeqRef.current
+    setPrefetchTmdb([])
+    setPrefetchClaude([])
+    const timer = setTimeout(() => {
+      const { tmdb, claude } = startPrefetch(title.trim(), category, yFrom, yTo, description, apiKey)
+      tmdb.then(r   => { if (seq === prefetchSeqRef.current) setPrefetchTmdb(r) })
+      claude.then(r => { if (seq === prefetchSeqRef.current) setPrefetchClaude(r) })
+    }, 600)
+    return () => clearTimeout(timer)
+  }, [title, category, timeScope, year, yearFrom, yearTo, description])
 
   // Warn before leaving with unsaved work (browser nav + in-app link clicks)
   useEffect(() => {
@@ -1837,6 +1862,8 @@ export default function CreatePage() {
             onBack={() => setStep(2)}
             publishing={publishing}
             publishError={publishError}
+            prefetchedTmdb={prefetchTmdb}
+            prefetchedClaude={prefetchClaude}
           />
         )}
       </div>

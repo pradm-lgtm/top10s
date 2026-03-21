@@ -219,6 +219,22 @@ function PosterNode({ result, added, onToggle }: {
   )
 }
 
+// ─── Pre-fetch helper (call from parent before ThoughtCloud mounts) ───────────
+
+export function startPrefetch(
+  listTitle: string, category: 'movies' | 'tv',
+  yearFrom: number | null, yearTo: number | null,
+  description: string, apiKey: string,
+): { tmdb: Promise<CloudResult[]>; claude: Promise<CloudResult[]> } {
+  const genre = detectGenreFromText(listTitle + ' ' + description)
+  const gMap = category === 'movies' ? MOVIE_GENRE_IDS : TV_GENRE_IDS
+  const genreId = genre ? gMap[genre] : undefined
+  return {
+    tmdb: tmdbDiscover(category, yearFrom, yearTo, apiKey, genreId),
+    claude: claudeSuggest(listTitle, category, yearFrom, yearTo, description, genre, apiKey),
+  }
+}
+
 // ─── ThoughtCloud ─────────────────────────────────────────────────────────────
 
 export interface ThoughtCloudProps {
@@ -230,9 +246,11 @@ export interface ThoughtCloudProps {
   addedIds: Set<number>
   addedEntries: string[]
   onToggle: (result: CloudResult) => void
+  prefetchedTmdb?: CloudResult[]
+  prefetchedClaude?: CloudResult[]
 }
 
-export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, description, addedIds, addedEntries, onToggle }: ThoughtCloudProps) {
+export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, description, addedIds, addedEntries, onToggle, prefetchedTmdb, prefetchedClaude }: ThoughtCloudProps) {
   const apiKey   = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? ''
   const genreMap = category === 'movies' ? MOVIE_GENRE_IDS : TV_GENRE_IDS
   const catLabel = category === 'movies' ? 'movies' : 'shows'
@@ -245,6 +263,10 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
   const [searchQuery, setSearchQuery]     = useState('')
   const [searchResults, setSearchResults] = useState<CloudResult[]>([])
   const [searching, setSearching]         = useState(false)
+
+  // Seed data from parent pre-fetch (captured at mount — only used on first load)
+  const prefetchedTmdbRef   = useRef(prefetchedTmdb   ?? [])
+  const prefetchedClaudeRef = useRef(prefetchedClaude ?? [])
 
   // Refs mirroring state for stale-closure-safe access in async callbacks
   const tmdbSuggestionsRef   = useRef<CloudResult[]>([])
@@ -278,20 +300,34 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
 
     const effectiveGenre = detectGenreFromText(listTitle + ' ' + description)
     effectiveGenreRef.current = effectiveGenre
-    const genreId = effectiveGenre ? genreMap[effectiveGenre] : undefined
 
-    const tmdbResults = await tmdbDiscover(category, yearFrom, yearTo, apiKey, genreId)
-    setTmdbSuggestions(tmdbResults)
-    tmdbSuggestionsRef.current = tmdbResults
-    setLoading(false)
+    // Use pre-fetched TMDB results if available, otherwise fetch now
+    const seedTmdb = prefetchedTmdbRef.current
+    if (seedTmdb.length > 0) {
+      setTmdbSuggestions(seedTmdb)
+      tmdbSuggestionsRef.current = seedTmdb
+      setLoading(false)
+    } else {
+      const genreId = effectiveGenre ? genreMap[effectiveGenre] : undefined
+      const tmdbResults = await tmdbDiscover(category, yearFrom, yearTo, apiKey, genreId)
+      setTmdbSuggestions(tmdbResults)
+      tmdbSuggestionsRef.current = tmdbResults
+      setLoading(false)
+    }
 
-    setClaudeLoading(true)
-    const claudeResults = await claudeSuggest(listTitle, category, yearFrom, yearTo, description, effectiveGenre, apiKey)
-    setClaudeLoading(false)
-
-    if (claudeResults.length > 0) {
-      setClaudeSuggestions(claudeResults)
-      claudeSuggestionsRef.current = claudeResults
+    // Use pre-fetched Claude results if available, otherwise fetch now
+    const seedClaude = prefetchedClaudeRef.current
+    if (seedClaude.length > 0) {
+      setClaudeSuggestions(seedClaude)
+      claudeSuggestionsRef.current = seedClaude
+    } else {
+      setClaudeLoading(true)
+      const claudeResults = await claudeSuggest(listTitle, category, yearFrom, yearTo, description, effectiveGenre, apiKey)
+      setClaudeLoading(false)
+      if (claudeResults.length > 0) {
+        setClaudeSuggestions(claudeResults)
+        claudeSuggestionsRef.current = claudeResults
+      }
     }
   }, [listTitle, category, yearFrom, yearTo, description, apiKey, genreMap])
 
