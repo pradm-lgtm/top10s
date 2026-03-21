@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
       const response = await client.messages.create({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 1024,
-        system: 'You are a film/TV suggestion engine. Anchor heavily to the original list context when making suggestions. The user is building a list and has already added some entries — use those to understand their taste. Never suggest titles the user has already added.',
+        system: 'You are a film/TV suggestion engine with deep knowledge of world cinema including Hollywood and international cinema (Bollywood, Korean, French, Japanese, etc.), actor and director filmographies, award winners, cult classics, and any era, genre, theme, or regional cinema. Anchor heavily to the original list context. Use the user\'s already-added titles to understand their taste. Never suggest titles the user has already added.',
         messages: [{ role: 'user', content: userMsg }],
       })
 
@@ -97,14 +97,17 @@ export async function POST(req: NextRequest) {
     const lines = [
       `Generate exactly ${count} specific ${catLabel} for a top-10 list called "${listTitle}".`,
       yearLine,
-      context ? `List vibe: "${context}"` : '',
+      context ? `List description: "${context}"` : '',
       genre ? `Genre focus: ${genre}` : '',
-      refineText ? `Refine request: "${refineText}"` : '',
+      refineText ? `Specific request: "${refineText}"` : '',
       '',
       'Rules:',
-      '- Be specific and use exact, well-known titles',
-      '- Prioritize relevance to the list name and context above all',
-      '- Include a mix of popular and critically acclaimed titles',
+      '- Return exact, real titles that exist',
+      '- If a specific actor, director, region, or language is mentioned, return titles strictly from that filmography or region/language',
+      '- For regional/language cinema (e.g. Bollywood, Korean, French, Japanese), return titles from that specific region and language',
+      '- For actor/director queries, return films they actually appeared in or directed',
+      '- For theme or award queries (e.g. Oscar winners, feel-good, based on true story), return titles that genuinely match',
+      '- Include a mix of mainstream hits, critical favorites, and cult classics',
       '- No duplicates',
       '',
       'Return ONLY a JSON array of title strings, nothing else.',
@@ -114,6 +117,7 @@ export async function POST(req: NextRequest) {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,
+      system: 'You are a film/TV suggestion engine with deep knowledge of world cinema. Generate relevant titles for any list context including:\n- Hollywood and international cinema (Bollywood, Korean, French, Japanese, etc.)\n- Actor and director filmographies\n- Award winners, cult classics, and mainstream hits\n- Any era, genre, theme, or regional cinema\n\nAlways return exact, well-known titles that exist and match the query. For non-English cinema, use the most commonly known title (English or original as appropriate).',
       messages: [{ role: 'user', content: lines }],
     })
 

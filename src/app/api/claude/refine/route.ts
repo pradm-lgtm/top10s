@@ -12,20 +12,25 @@ export async function POST(req: NextRequest) {
   try {
     const { refineText, suggestions, category, year, context } = await req.json()
 
-    const prompt = `You are helping reorder ${category} suggestions for a "Top 10" list.
-${year ? `Year: ${year}` : 'Scope: All-time'}
-${context ? `List context: ${context}` : ''}
-Refine request: "${refineText}"
-
-Reorder these suggestions from most to least relevant to the refine request.
-Return ONLY a JSON array of IDs (integers), nothing else.
-
-Suggestions (id: title):
-${(suggestions as { id: number; title: string }[]).map((s) => `${s.id}: ${s.title}`).join('\n')}`
+    const catLabel = category === 'movies' ? 'movies' : 'TV shows'
+    const prompt = [
+      `Reorder these ${catLabel} suggestions from most to least relevant to the user's request.`,
+      year ? `Year scope: ${year}` : 'Scope: All-time',
+      context ? `List context: ${context}` : '',
+      '',
+      `User request (use as-is — may reference an actor, director, region/language, theme, era, or any combination): "${refineText}"`,
+      '',
+      'Consider all natural language cues: actor/director names, regional cinema (Bollywood, Korean, French, etc.), languages, themes, awards, decades, and genres.',
+      'Bring the most relevant titles to the top. Return ONLY a JSON array of IDs (integers), nothing else.',
+      '',
+      'Suggestions (id: title):',
+      (suggestions as { id: number; title: string }[]).map((s) => `${s.id}: ${s.title}`).join('\n'),
+    ].filter(Boolean).join('\n')
 
     const response = await client.messages.create({
       model: 'claude-opus-4-6',
       max_tokens: 1024,
+      system: 'You are a film/TV curator with deep knowledge of world cinema including Hollywood and international cinema (Bollywood, Korean, French, Japanese, etc.), actor and director filmographies, award winners, cult classics, and any era, genre, theme, or regional cinema.',
       messages: [{ role: 'user', content: prompt }],
     })
 
