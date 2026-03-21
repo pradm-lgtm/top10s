@@ -1986,14 +1986,26 @@ function TieredEntries({
 }) {
   // New format: group by tier_id using tiers data
   if (tierData.length > 0) {
-    // Fall back to matching by tier label for entries that predate the DB tier system
+    // tier label → DB tier id (for entries that match by label but lack tier_id)
     const tierByLabel = new Map(tierData.map(t => [t.label, t.id]))
     const entriesByTier = new Map<string, ListEntry[]>()
     for (const entry of entries) {
-      const key = entry.tier_id ?? tierByLabel.get(entry.tier ?? '') ?? 'none'
+      // 1. tier_id  2. matching label  3. legacy tier string (own bucket)  4. unassigned
+      const key = entry.tier_id ?? tierByLabel.get(entry.tier ?? '') ?? entry.tier ?? 'none'
       if (!entriesByTier.has(key)) entriesByTier.set(key, [])
       entriesByTier.get(key)!.push(entry)
     }
+
+    // Virtual tier groups: legacy tier strings that don't map to any DB tier
+    const dbTierIds = new Set(tierData.map(t => t.id))
+    const virtualLabels = [...new Set(
+      entries.filter(e => e.tier && !e.tier_id && !tierByLabel.has(e.tier)).map(e => e.tier!)
+    )]
+    const allDisplayTiers = [
+      ...tierData.map((t, i) => ({ id: t.id, label: t.label, color: t.color ?? TIER_COLORS[i] ?? accentColor })),
+      ...virtualLabels.map((lbl, vi) => ({ id: lbl, label: lbl, color: TIER_COLORS[tierData.length + vi] ?? accentColor })),
+    ]
+    void dbTierIds // suppress unused-var lint
 
     const unassigned = entriesByTier.get('none') ?? []
 
@@ -2032,9 +2044,9 @@ function TieredEntries({
             </div>
           </div>
         )}
-        {tierData.map((tier, i) => {
+        {allDisplayTiers.map((tier, i) => {
           const tierEntries = entriesByTier.get(tier.id) ?? []
-          const color = tier.color ?? TIER_COLORS[i] ?? accentColor
+          const color = tier.color
           const label = tier.label
 
           return (
@@ -2557,10 +2569,18 @@ function TierRankedEntries({
     const tierByLabelTR = new Map(tierData.map(t => [t.label, t.id]))
     const entriesByTier = new Map<string, ListEntry[]>()
     for (const entry of [...entries].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))) {
-      const key = entry.tier_id ?? tierByLabelTR.get(entry.tier ?? '') ?? 'none'
+      const key = entry.tier_id ?? tierByLabelTR.get(entry.tier ?? '') ?? entry.tier ?? 'none'
       if (!entriesByTier.has(key)) entriesByTier.set(key, [])
       entriesByTier.get(key)!.push(entry)
     }
+
+    const virtualLabelsTR = [...new Set(
+      entries.filter(e => e.tier && !e.tier_id && !tierByLabelTR.has(e.tier)).map(e => e.tier!)
+    )]
+    const allDisplayTiersTR = [
+      ...tierData.map((t, i) => ({ id: t.id, label: t.label, color: t.color ?? TIER_RANKED_COLORS[i] ?? '#e8c547' })),
+      ...virtualLabelsTR.map((lbl, vi) => ({ id: lbl, label: lbl, color: TIER_RANKED_COLORS[tierData.length + vi] ?? '#e8c547' })),
+    ]
 
     const unassignedTR = entriesByTier.get('none') ?? []
 
@@ -2594,10 +2614,10 @@ function TierRankedEntries({
             </div>
           </div>
         )}
-        {tierData.map((tier, tierIndex) => {
+        {allDisplayTiersTR.map((tier, tierIndex) => {
           const tierEntries = entriesByTier.get(tier.id) ?? []
           if (tierEntries.length === 0) return null
-          const color = tier.color ?? TIER_RANKED_COLORS[tierIndex] ?? '#e8c547'
+          const color = tier.color
 
           return (
             <div key={tier.id}>
