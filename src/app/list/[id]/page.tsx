@@ -494,6 +494,19 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     setEditMode(false)
   }
 
+  // Warn / auto-discard when navigating away with unsaved tier changes
+  useEffect(() => {
+    if (!editMode) return
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', handler)
+    return () => {
+      window.removeEventListener('beforeunload', handler)
+      // Auto-discard staged changes when component unmounts while in edit mode
+      setEntries(entriesSnap.current)
+      setTiers(tiersSnap.current)
+    }
+  }, [editMode])
+
   function isUUID(s: string) {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
   }
@@ -662,6 +675,15 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
             href="/home"
             className="flex items-center gap-2 text-sm transition-colors group"
             style={{ color: 'var(--muted)' }}
+            onClick={(e) => {
+              if (editMode) {
+                e.preventDefault()
+                if (confirm('Leave without saving? Your unsaved changes will be discarded.')) {
+                  cancelEdit()
+                  router.push('/home')
+                }
+              }
+            }}
           >
             <span>←</span>
             <span className="font-bold" style={{ color: 'var(--foreground)' }}>Ranked</span>
