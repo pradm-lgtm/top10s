@@ -2177,7 +2177,7 @@ function TieredEntries({
                         {/* Move-tier dropdown (edit mode) */}
                         {editMode && onMoveTier && (
                           <select
-                            value={entry.tier_id ?? ''}
+                            value={entry.tier_id ?? entry.tier ?? ''}
                             onChange={e => { e.stopPropagation(); onMoveTier(entry.id, e.target.value) }}
                             onClick={e => e.stopPropagation()}
                             className="w-full rounded outline-none cursor-pointer"
@@ -2212,7 +2212,7 @@ function TieredEntries({
                       </span>
                       {editMode && onMoveTier && (
                         <select
-                          value={entry.tier_id ?? ''}
+                          value={entry.tier_id ?? entry.tier ?? ''}
                           onChange={e => { e.stopPropagation(); onMoveTier(entry.id, e.target.value) }}
                           onClick={e => e.stopPropagation()}
                           className="w-full rounded outline-none cursor-pointer"
@@ -2544,7 +2544,7 @@ function SortableTierRankedEntry({
         )}
         {editMode && onMoveTier && (
           <select
-            value={entry.tier_id ?? ''}
+            value={entry.tier_id ?? entry.tier ?? ''}
             onChange={e => { e.stopPropagation(); onMoveTier(entry.id, e.target.value) }}
             onClick={e => e.stopPropagation()}
             className="mt-1 w-full text-xs rounded outline-none cursor-pointer"
@@ -2666,7 +2666,7 @@ function TierRankedEntries({
         )}
         {allDisplayTiersTR.map((tier, tierIndex) => {
           const tierEntries = entriesByTier.get(tier.id) ?? []
-          if (tierEntries.length === 0) return null
+          if (tierEntries.length === 0 && !editMode) return null
           const color = tier.color
 
           return (
