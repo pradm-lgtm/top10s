@@ -44,17 +44,26 @@ export function RichTextEditor({
     },
     onUpdate({ editor }) {
       onChangeRef.current(editor.getJSON() as TiptapDoc)
-      setActiveMarks({ bold: editor.isActive('bold'), italic: editor.isActive('italic'), bulletList: editor.isActive('bulletList'), orderedList: editor.isActive('orderedList') })
     },
-    onSelectionUpdate({ editor }) {
-      setActiveMarks({ bold: editor.isActive('bold'), italic: editor.isActive('italic'), bulletList: editor.isActive('bulletList'), orderedList: editor.isActive('orderedList') })
-    },
-    onFocus({ editor }) {
-      setFocused(true)
-      setActiveMarks({ bold: editor.isActive('bold'), italic: editor.isActive('italic'), bulletList: editor.isActive('bulletList'), orderedList: editor.isActive('orderedList') })
-    },
+    onFocus() { setFocused(true) },
     onBlur() { setFocused(false) },
   })
+
+  // Update active marks on every transaction — this catches stored-mark toggles
+  // (e.g. clicking B/I with no selection) which onSelectionUpdate/onUpdate miss.
+  useEffect(() => {
+    if (!editor) return
+    function sync() {
+      setActiveMarks({
+        bold: editor!.isActive('bold'),
+        italic: editor!.isActive('italic'),
+        bulletList: editor!.isActive('bulletList'),
+        orderedList: editor!.isActive('orderedList'),
+      })
+    }
+    editor.on('transaction', sync)
+    return () => { editor.off('transaction', sync) }
+  }, [editor])
 
   // Sync external value changes (e.g. when parent resets the form)
   useEffect(() => {
