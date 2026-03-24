@@ -82,6 +82,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const entriesSnap = useRef<ListEntry[]>([])
   const tiersSnap = useRef<Tier[]>([])
   const [savingDescription, setSavingDescription] = useState(false)
+  const [copied, setCopied] = useState(false)
   const router = useRouter()
 
   const sensors = useSensors(
@@ -831,32 +832,58 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               editable={(isAdmin || isOwner) && editMode}
             />
           </h1>
-          {list.profiles && (
-            <Link
-              href={`/${list.profiles.username}`}
-              className="flex items-center gap-2 w-fit mb-4"
+          <div className="flex items-center gap-3 mb-4">
+            {list.profiles && (
+              <Link
+                href={`/${list.profiles.username}`}
+                className="flex items-center gap-2 w-fit"
+              >
+                {list.profiles.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={list.profiles.avatar_url}
+                    alt=""
+                    className="w-6 h-6 rounded-full object-cover shrink-0"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
+                    style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+                  >
+                    {(list.profiles.display_name ?? list.profiles.username)[0].toUpperCase()}
+                  </div>
+                )}
+                <span className="text-sm" style={{ color: 'var(--muted)' }}>
+                  {list.profiles.display_name ?? list.profiles.username}
+                </span>
+              </Link>
+            )}
+            <button
+              onClick={() => {
+                if (navigator.share) {
+                  navigator.share({ title: list.title, url: window.location.href })
+                } else {
+                  navigator.clipboard.writeText(window.location.href)
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 2000)
+                }
+              }}
+              title="Share"
+              className="w-7 h-7 flex items-center justify-center rounded-lg transition-all"
+              style={{
+                background: copied ? 'rgba(52,211,153,0.12)' : 'var(--surface)',
+                color: copied ? '#34d399' : 'var(--muted)',
+                border: `1px solid ${copied ? 'rgba(52,211,153,0.35)' : 'var(--border)'}`,
+              }}
             >
-              {list.profiles.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={list.profiles.avatar_url}
-                  alt=""
-                  className="w-6 h-6 rounded-full object-cover shrink-0"
-                  loading="lazy"
-                />
+              {copied ? (
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7l4 4 6-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
               ) : (
-                <div
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
-                  style={{ background: 'var(--accent)', color: '#0a0a0f' }}
-                >
-                  {(list.profiles.display_name ?? list.profiles.username)[0].toUpperCase()}
-                </div>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 4l3-3 3 3M2 10v2.5h10V10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
               )}
-              <span className="text-sm" style={{ color: 'var(--muted)' }}>
-                {list.profiles.display_name ?? list.profiles.username}
-              </span>
-            </Link>
-          )}
+            </button>
+          </div>
 
           <div className="text-base max-w-xl mt-1">
             {(isAdmin || isOwner) && editMode ? (
@@ -936,7 +963,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
           <>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleRankedDragEnd}>
             <SortableContext items={entries.map(e => e.id)} strategy={verticalListSortingStrategy}>
-              <ol className="space-y-3">
+              <ol className="space-y-2">
                 {entries.map((entry, i) => (
                   <SortableRankedEntry
                     key={entry.id}
@@ -1410,7 +1437,7 @@ function SortableRankedEntry({
   return (
     <li ref={setNodeRef} style={style}>
       <div
-        className={`rounded-xl p-4 sm:p-5 transition-colors${!isAdmin && !editMode ? ' cursor-pointer' : ''}`}
+        className={`rounded-xl p-3 sm:p-4 transition-colors${!isAdmin && !editMode ? ' cursor-pointer' : ''}`}
         style={{
           background: selectedEntryId === entry.id ? `${accentColor}08` : 'var(--surface)',
           border: `1px solid ${selectedEntryId === entry.id ? `${accentColor}40` : 'var(--border)'}`,
@@ -1436,7 +1463,7 @@ function SortableRankedEntry({
             </button>
           )}
           <div
-            className="text-2xl font-bold w-9 shrink-0 tabular-nums leading-none mt-1"
+            className="text-xl font-bold w-7 shrink-0 tabular-nums leading-none mt-0.5"
             style={{ color: index === 0 ? accentColor : index < 3 ? 'var(--foreground)' : 'var(--muted)' }}
           >
             {entry.rank ?? index + 1}
@@ -1446,15 +1473,15 @@ function SortableRankedEntry({
             imdbUrl ? (
               <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={src} alt={entry.title} className="w-10 h-[3.75rem] object-cover rounded" loading="lazy" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
+                <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded" loading="lazy" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
               </a>
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={src} alt={entry.title} className="w-10 h-[3.75rem] object-cover rounded shrink-0" loading="lazy" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
+              <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded shrink-0" loading="lazy" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
             )
           ) : (
             <div
-              className="w-10 h-[3.75rem] rounded shrink-0 flex items-end justify-center pb-1 overflow-hidden"
+              className="w-8 h-12 rounded shrink-0 flex items-end justify-center pb-1 overflow-hidden"
               style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', opacity: pending ? 0.4 : 1 }}
             >
               {!pending && <span className="text-[9px] text-center leading-tight px-1" style={{ color: 'var(--muted)' }}>{entry.title}</span>}
@@ -1462,11 +1489,11 @@ function SortableRankedEntry({
           )}
           {/* Title + reactions */}
           <div className="flex-1 min-w-0 pt-0.5">
-            <h3 className="font-semibold text-base leading-snug">
+            <h3 className="font-semibold text-sm leading-snug">
               <EditableText
                 value={entry.title}
                 onSave={(v) => saveEntryField(entry.id, 'title', v)}
-                className="font-semibold text-base"
+                className="font-semibold text-sm"
                 editable={isAdmin && !editMode}
                 renderValue={(v) =>
                   imdbUrl && !isAdmin ? (
@@ -1935,7 +1962,7 @@ function ExpandableNotes({ value, onSave, editable = false, placeholder }: {
     )
   }
 
-  const CLAMP_HEIGHT = '5.6rem' // ≈ 4 lines at 14px/1.6
+  const CLAMP_HEIGHT = '2.8rem' // ≈ 2 lines at 14px/1.6
 
   if (!value && editable) {
     return (
@@ -1963,9 +1990,9 @@ function ExpandableNotes({ value, onSave, editable = false, placeholder }: {
             maxHeight: expanded ? 'none' : CLAMP_HEIGHT,
             overflow: expanded ? 'visible' : 'hidden',
           } : {
-            overflow: expanded || value.length <= 240 ? 'visible' : 'hidden',
-            display: expanded || value.length <= 240 ? 'block' : '-webkit-box',
-            WebkitLineClamp: expanded || value.length <= 240 ? undefined : 4,
+            overflow: expanded || value.length <= 120 ? 'visible' : 'hidden',
+            display: expanded || value.length <= 120 ? 'block' : '-webkit-box',
+            WebkitLineClamp: expanded || value.length <= 120 ? undefined : 2,
             WebkitBoxOrient: 'vertical' as const,
             whiteSpace: 'pre-wrap',
           }),
@@ -1988,7 +2015,7 @@ function ExpandableNotes({ value, onSave, editable = false, placeholder }: {
           ✎ Edit note
         </button>
       )}
-      {(isJson ? overflows || expanded : value.length > 240) && (
+      {(isJson ? overflows || expanded : value.length > 120) && (
         <button
           onClick={(e) => { e.stopPropagation(); setExpanded(v => !v) }}
           className="text-xs mt-1"

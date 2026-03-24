@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Ranked",
-  description: "Prad's take on the best in film & TV, year by year.",
+  description: "Your take on the best in film & TV. Ranked.",
 };
 
 export default function RootLayout({

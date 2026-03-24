@@ -368,6 +368,14 @@ export default function HomePage() {
       reactionEmojis: reactionEmojisMap[list.id] ?? ['🔥'],
     }))
 
+    // Sort by engagement score (reactions + comments weighted), recency as tiebreak
+    const engagementScore = (l: RichList) => l.reactionCount * 2 + l.commentCount * 3
+    richLists.sort((a, b) => {
+      const scoreDiff = engagementScore(b) - engagementScore(a)
+      if (scoreDiff !== 0) return scoreDiff
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+
     // Auto-expand most recent year
     if (!didInitExpand.current) {
       didInitExpand.current = true
@@ -419,7 +427,7 @@ export default function HomePage() {
   const allTimeMovies = allTimeLists.filter((l) => l.category === 'movies')
   const allTimeTV     = allTimeLists.filter((l) => l.category === 'tv')
 
-  const recentLists = lists.slice(0, 5)
+  const recentLists = [...lists].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5)
 
   const annualLists = lists.filter((l) => l.year !== null)
   const years = [...new Set(annualLists.map((l) => l.year as number))].sort((a, b) => b - a)
@@ -470,27 +478,27 @@ export default function HomePage() {
                     {/* Mobile: grouped by category */}
                     <div className="sm:hidden space-y-6">
                       <div>
-                        <CategoryLabel category="movies" />
-                        <div className="space-y-4">
-                          {allTimeMovies.map((l) => <AllTimeCard key={l.id} list={l} posters={posters} />)}
-                        </div>
-                      </div>
-                      <div>
                         <CategoryLabel category="tv" />
                         <div className="space-y-4">
                           {allTimeTV.map((l) => <AllTimeCard key={l.id} list={l} posters={posters} />)}
+                        </div>
+                      </div>
+                      <div>
+                        <CategoryLabel category="movies" />
+                        <div className="space-y-4">
+                          {allTimeMovies.map((l) => <AllTimeCard key={l.id} list={l} posters={posters} />)}
                         </div>
                       </div>
                     </div>
                     {/* Desktop: side-by-side paired rows */}
                     <div className="hidden sm:block">
                       <div className="grid grid-cols-2 gap-8 mb-1">
-                        <CategoryLabel category="movies" />
                         <CategoryLabel category="tv" />
+                        <CategoryLabel category="movies" />
                       </div>
                       <PairedCardGrid
-                        leftList={allTimeMovies}
-                        rightList={allTimeTV}
+                        leftList={allTimeTV}
+                        rightList={allTimeMovies}
                         posters={posters}
                         Card={AllTimeCard}
                       />
@@ -558,27 +566,27 @@ export default function HomePage() {
                                 {/* Mobile: grouped by category */}
                                 <div className="sm:hidden space-y-6">
                                   <div>
-                                    <CategoryLabel category="movies" />
-                                    <div className="space-y-3">
-                                      {yearMovies.map((l) => <YearCard key={l.id} list={l} posters={posters} />)}
-                                    </div>
-                                  </div>
-                                  <div>
                                     <CategoryLabel category="tv" />
                                     <div className="space-y-3">
                                       {yearTV.map((l) => <YearCard key={l.id} list={l} posters={posters} />)}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <CategoryLabel category="movies" />
+                                    <div className="space-y-3">
+                                      {yearMovies.map((l) => <YearCard key={l.id} list={l} posters={posters} />)}
                                     </div>
                                   </div>
                                 </div>
                                 {/* Desktop: side-by-side paired rows */}
                                 <div className="hidden sm:block">
                                   <div className="grid grid-cols-2 gap-6 mb-1">
-                                    <CategoryLabel category="movies" />
                                     <CategoryLabel category="tv" />
+                                    <CategoryLabel category="movies" />
                                   </div>
                                   <PairedCardGrid
-                                    leftList={yearMovies}
-                                    rightList={yearTV}
+                                    leftList={yearTV}
+                                    rightList={yearMovies}
                                     posters={posters}
                                     Card={YearCard}
                                   />

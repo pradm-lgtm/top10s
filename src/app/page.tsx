@@ -32,12 +32,6 @@ export default function LandingPage() {
       <div className="relative z-10 w-full max-w-sm flex flex-col items-center gap-10">
         {/* Logo / Title */}
         <div className="text-center space-y-3">
-          <div
-            className="text-xs tracking-[0.4em] uppercase font-medium"
-            style={{ color: 'var(--accent)' }}
-          >
-            by Prad
-          </div>
           <h1
             className="text-5xl sm:text-6xl font-bold tracking-tight leading-none"
             style={{ color: 'var(--foreground)' }}
