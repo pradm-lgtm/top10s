@@ -349,26 +349,11 @@ export default function HomePage() {
 
     const listIds = raw.map((l) => l.id)
 
-    // Fetch top-3 entries for card display + all entry IDs for engagement counts
-    const [{ data: topEntries }, { data: allEntries }, { data: listReactions }, { data: listComments }] = await Promise.all([
-      supabase.from('list_entries').select('id, list_id, title, rank, image_url').in('list_id', listIds).lte('rank', 3).order('rank', { ascending: true }),
-      supabase.from('list_entries').select('id, list_id').in('list_id', listIds),
+    // Fetch top-3 entries + list-level engagement only (no entry-level IN queries)
+    const [{ data: topEntries }, { data: listReactions }, { data: listComments }] = await Promise.all([
+      supabase.from('list_entries').select('id, list_id, title, rank, image_url').in('list_id', listIds).not('rank', 'is', null).lte('rank', 3).order('rank', { ascending: true }),
       supabase.from('reactions').select('list_id, emoji').in('list_id', listIds),
       supabase.from('comments').select('list_id').in('list_id', listIds),
-    ])
-
-    // Build entry-id → list-id map for aggregating entry-level counts
-    const entryToList: Record<string, string> = {}
-    for (const e of allEntries ?? []) entryToList[e.id] = e.list_id
-    const allEntryIds = Object.keys(entryToList)
-
-    const [{ data: entryReactions }, { data: entryComments }] = await Promise.all([
-      allEntryIds.length > 0
-        ? supabase.from('entry_reactions').select('list_entry_id, emoji').in('list_entry_id', allEntryIds)
-        : Promise.resolve({ data: [] }),
-      allEntryIds.length > 0
-        ? supabase.from('entry_comments').select('list_entry_id').in('list_entry_id', allEntryIds)
-        : Promise.resolve({ data: [] }),
     ])
 
     const entryMap: Record<string, ListEntry[]> = {}
@@ -384,16 +369,6 @@ export default function HomePage() {
       if (!emojiTally[r.list_id]) emojiTally[r.list_id] = {}
       emojiTally[r.list_id][r.emoji] = (emojiTally[r.list_id][r.emoji] ?? 0) + 1
     }
-    for (const r of entryReactions ?? []) {
-      const lid = entryToList[r.list_entry_id]
-      if (!lid) continue
-      reactionMap[lid] = (reactionMap[lid] ?? 0) + 1
-      if (r.emoji) {
-        if (!emojiTally[lid]) emojiTally[lid] = {}
-        emojiTally[lid][r.emoji] = (emojiTally[lid][r.emoji] ?? 0) + 1
-      }
-    }
-    // All distinct emojis with any reactions, sorted by count desc, up to 3
     const reactionEmojisMap: Record<string, string[]> = {}
     for (const [lid, counts] of Object.entries(emojiTally)) {
       reactionEmojisMap[lid] = Object.entries(counts)
@@ -404,10 +379,6 @@ export default function HomePage() {
 
     const commentMap: Record<string, number> = {}
     for (const c of listComments ?? []) commentMap[c.list_id] = (commentMap[c.list_id] ?? 0) + 1
-    for (const c of entryComments ?? []) {
-      const lid = entryToList[c.list_entry_id]
-      if (lid) commentMap[lid] = (commentMap[lid] ?? 0) + 1
-    }
 
     const richLists: RichList[] = raw.map((list) => ({
       ...list,
