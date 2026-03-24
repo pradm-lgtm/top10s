@@ -334,6 +334,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set())
+  const [byYearOpen, setByYearOpen] = useState(false)
   const didInitExpand = useRef(false)
 
   useEffect(() => { fetchLists() }, [])
@@ -488,22 +489,6 @@ export default function HomePage() {
         {!loading && !fetchError && lists.length > 0 && (
           <div className="space-y-16">
 
-            {/* ── Section 0: Featured ── */}
-            {featuredLists.length > 0 && (
-              <section>
-                <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-bold tracking-[0.25em] uppercase px-2 py-0.5 rounded" style={{ background: 'rgba(232,197,71,0.12)', color: 'var(--accent)', border: '1px solid rgba(232,197,71,0.2)' }}>Featured</span>
-                  </div>
-                  <h2 className="text-2xl font-bold tracking-tight">Editorial Lists</h2>
-                  <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>IMDB, Obama, AFI — compare your taste.</p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {featuredLists.map((l) => <FeaturedCard key={l.id} list={l} posters={posters} />)}
-                </div>
-              </section>
-            )}
-
             {/* ── Section 1: All Time ── */}
             {allTimeLists.length > 0 && (
               <section>
@@ -571,14 +556,40 @@ export default function HomePage() {
               </section>
             )}
 
-            {/* ── Section 3: By Year ── */}
-            {years.length > 0 && (
+            {/* ── Section 3: Editorial Lists ── */}
+            {featuredLists.length > 0 && (
               <section>
                 <div className="mb-6">
-                  <h2 className="text-2xl font-bold tracking-tight">By Year</h2>
-                  <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>Year-by-year, side by side.</p>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-bold tracking-[0.25em] uppercase px-2 py-0.5 rounded" style={{ background: 'rgba(232,197,71,0.12)', color: 'var(--accent)', border: '1px solid rgba(232,197,71,0.2)' }}>Editorial</span>
+                  </div>
+                  <h2 className="text-2xl font-bold tracking-tight">Editorial Lists</h2>
+                  <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>IMDB, Obama, AFI — compare your taste.</p>
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {featuredLists.map((l) => <FeaturedCard key={l.id} list={l} posters={posters} />)}
+                </div>
+              </section>
+            )}
 
+            {/* ── Section 4: By Year (collapsed by default) ── */}
+            {years.length > 0 && (
+              <section>
+                <button
+                  onClick={() => setByYearOpen((o) => !o)}
+                  className="w-full flex items-center justify-between mb-6 text-left group"
+                >
+                  <div>
+                    <h2 className="text-2xl font-bold tracking-tight">By Year</h2>
+                    <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>Year-by-year, side by side.</p>
+                  </div>
+                  <span
+                    className="text-sm transition-transform duration-200 ml-4 shrink-0"
+                    style={{ color: 'var(--muted)', display: 'inline-block', transform: byYearOpen ? 'rotate(180deg)' : 'none' }}
+                  >▼</span>
+                </button>
+
+                {byYearOpen && (
                 <div className="space-y-3">
                   {years.map((year) => {
                     const yearMovies = annualLists.filter((l) => l.year === year && l.category === 'movies')
@@ -647,6 +658,7 @@ export default function HomePage() {
                     )
                   })}
                 </div>
+                )}
               </section>
             )}
 
