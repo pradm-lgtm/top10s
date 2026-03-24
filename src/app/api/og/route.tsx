@@ -8,20 +8,44 @@ export const runtime = 'nodejs'
 const W = 1200
 const H = 630
 const HEADER_H = 56
-const BOTTOM_H = 88
-const POSTER_H = H - HEADER_H - BOTTOM_H  // 486px
-const POSTER_W = Math.round(POSTER_H * (2 / 3)) // 324px — true 2:3 poster ratio
+const BOTTOM_H = 96
+const POSTER_H = H - HEADER_H - BOTTOM_H  // 478px
+const POSTER_W = Math.round(POSTER_H * (2 / 3)) // 318px — 2:3 poster ratio
 const POSTER_GAP = 14
-const POSTER_AREA_W = POSTER_W * 3 + POSTER_GAP * 2 // 980px
-const POSTER_PAD_X = Math.round((W - POSTER_AREA_W) / 2) // 110px
+const POSTER_AREA_W = POSTER_W * 3 + POSTER_GAP * 2
+const POSTER_PAD_X = Math.round((W - POSTER_AREA_W) / 2)
 
 async function fetchAsBase64(url: string): Promise<string | null> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(4000) })
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 5000)
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'RankedApp/1.0' },
+    })
+    clearTimeout(timer)
     if (!res.ok) return null
     const buf = await res.arrayBuffer()
     const mime = res.headers.get('content-type') ?? 'image/jpeg'
     return `data:${mime};base64,${Buffer.from(buf).toString('base64')}`
+  } catch {
+    return null
+  }
+}
+
+async function tmdbPosterUrl(title: string, category: 'movies' | 'tv'): Promise<string | null> {
+  const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY
+  if (!apiKey) return null
+  const type = category === 'movies' ? 'movie' : 'tv'
+  try {
+    const res = await fetch(
+      `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(title)}&api_key=${apiKey}&page=1`,
+      { headers: { 'User-Agent': 'RankedApp/1.0' } }
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    const hit = (data.results ?? []).find((r: { poster_path?: string }) => r.poster_path)
+    return hit?.poster_path ? `https://image.tmdb.org/t/p/w342${hit.poster_path}` : null
   } catch {
     return null
   }
@@ -74,12 +98,19 @@ export async function GET(req: NextRequest) {
 
   const accent = '#e8c547'
   const bg = '#0a0a0a'
-  const muted = 'rgba(255,255,255,0.45)'
 
-  // Fetch images in parallel
+  // Resolve poster URLs: use stored image_url, fall back to TMDB search
+  const resolvedPosterUrls = await Promise.all(
+    topEntries.map(async (e) => {
+      if (e.image_url) return e.image_url
+      return tmdbPosterUrl(e.title, list.category as 'movies' | 'tv')
+    })
+  )
+
+  // Fetch all images as base64 in parallel (avatar + posters)
   const [avatarSrc, ...posterSrcs] = await Promise.all([
     owner?.avatar_url ? fetchAsBase64(owner.avatar_url) : Promise.resolve(null),
-    ...topEntries.map((e) => e.image_url ? fetchAsBase64(e.image_url) : Promise.resolve(null)),
+    ...resolvedPosterUrls.map((url) => url ? fetchAsBase64(url) : Promise.resolve(null)),
   ])
 
   // Pad to 3 slots
@@ -94,7 +125,6 @@ export async function GET(req: NextRequest) {
           background: bg,
           display: 'flex',
           flexDirection: 'column',
-          position: 'relative',
           overflow: 'hidden',
           fontFamily: 'system-ui, -apple-system, sans-serif',
         }}
@@ -155,26 +185,29 @@ export async function GET(req: NextRequest) {
                   height: POSTER_H,
                   borderRadius: 10,
                   overflow: 'hidden',
-                  position: 'relative',
                   flexShrink: 0,
                   display: 'flex',
+                  position: 'relative',
                   background: '#111118',
                   boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
                 }}
               >
+                {/* Poster image — explicit px dimensions, not 100% */}
                 {src ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={src}
                     alt=""
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', top: 0, left: 0 }}
+                    style={{ width: POSTER_W, height: POSTER_H, objectFit: 'cover' }}
                   />
                 ) : (
-                  // Placeholder
                   <div
                     style={{
-                      position: 'absolute', inset: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      width: POSTER_W,
+                      height: POSTER_H,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                       background: 'linear-gradient(160deg, #1a1a2e 0%, #0f0f1a 100%)',
                     }}
                   >
@@ -184,29 +217,32 @@ export async function GET(req: NextRequest) {
                   </div>
                 )}
 
-                {/* Gradient scrim at bottom */}
+                {/* Gradient scrim */}
                 <div
                   style={{
-                    position: 'absolute', bottom: 0, left: 0, right: 0, height: 96,
-                    background: 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, transparent 100%)',
+                    position: 'absolute',
+                    bottom: 0, left: 0,
+                    width: POSTER_W, height: 100,
+                    background: 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, transparent 100%)',
                     display: 'flex',
                   }}
                 />
 
-                {/* Entry title */}
+                {/* Rank + title overlay */}
                 {entry && (
                   <div
                     style={{
-                      position: 'absolute', bottom: 10, left: 10, right: 10,
-                      display: 'flex', flexDirection: 'column', gap: 2,
+                      position: 'absolute',
+                      bottom: 10, left: 10, right: 10,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 3,
                     }}
                   >
-                    {i === 0 && (
-                      <span style={{ color: accent, fontSize: 10, fontWeight: 700, letterSpacing: 2 }}>
-                        #1
-                      </span>
-                    )}
-                    <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>
+                    <span style={{ color: i === 0 ? accent : 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: 700, letterSpacing: 2 }}>
+                      #{entry.rank ?? i + 1}
+                    </span>
+                    <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>
                       {entry.title}
                     </span>
                   </div>
@@ -225,49 +261,51 @@ export async function GET(req: NextRequest) {
             padding: `0 ${POSTER_PAD_X}px`,
             height: BOTTOM_H,
             flexShrink: 0,
-            borderTop: '1px solid rgba(255,255,255,0.06)',
+            borderTop: '1px solid rgba(255,255,255,0.07)',
           }}
         >
-          {/* List title */}
+          {/* Left: list title */}
           <span
             style={{
               color: '#ffffff',
-              fontSize: 28,
+              fontSize: 26,
               fontWeight: 800,
               letterSpacing: -0.5,
               flex: 1,
               overflow: 'hidden',
               whiteSpace: 'nowrap',
               textOverflow: 'ellipsis',
-              marginRight: 32,
+              marginRight: 24,
             }}
           >
             {list.title}{list.year ? ` (${list.year})` : ''}
           </span>
 
-          {/* Owner + extra count */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            {avatarSrc ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={avatarSrc} alt="" style={{ width: 30, height: 30, borderRadius: 15, objectFit: 'cover' }} />
-            ) : (
-              <div
-                style={{
-                  width: 30, height: 30, borderRadius: 15,
-                  background: accent,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 13, fontWeight: 800, color: bg,
-                }}
-              >
-                {initial}
-              </div>
-            )}
-            <span style={{ color: muted, fontSize: 15 }}>{ownerName}</span>
+          {/* Right: +X more (prominent) + owner */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
             {extraCount > 0 && (
-              <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 14 }}>
-                · +{extraCount} more
+              <span style={{ color: accent, fontSize: 18, fontWeight: 800, letterSpacing: -0.3 }}>
+                +{extraCount} more
               </span>
             )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {avatarSrc ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={avatarSrc} alt="" style={{ width: 24, height: 24, borderRadius: 12, objectFit: 'cover' }} />
+              ) : (
+                <div
+                  style={{
+                    width: 24, height: 24, borderRadius: 12,
+                    background: accent,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11, fontWeight: 800, color: bg,
+                  }}
+                >
+                  {initial}
+                </div>
+              )}
+              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>{ownerName}</span>
+            </div>
           </div>
         </div>
       </div>
