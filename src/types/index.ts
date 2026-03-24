@@ -22,6 +22,9 @@ export type List = {
   genre: string | null
   description: string | null
   owner_id: string | null
+  featured: boolean
+  source_label: string | null
+  source_url: string | null
   created_at: string
   profiles?: { username: string; display_name: string | null; avatar_url: string | null } | null
 }

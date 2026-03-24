@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Strangers — Featured & Objective Lists"
-status: draft
+status: in-progress
 depends_on: "1"
 priority: high
 created: 2026-03-23
@@ -20,18 +20,18 @@ that looks curated and authoritative, not like a regular user profile.
 ## Tasks
 
 ### Database
-- [ ] Add a featured boolean column to lists table (default false)
-- [ ] Add a source_label text column to lists (e.g. "IMDB", "Barack Obama", 
+- [x] Add a featured boolean column to lists table (default false)
+- [x] Add a source_label text column to lists (e.g. "IMDB", "Barack Obama",
       "AFI", "Academy Awards")
-- [ ] Add a source_url text column (link to original list)
+- [x] Add a source_url text column (link to original list)
 
 ### Editorial list type UI
-- [ ] On home page, add a "Featured Lists" section above All Time
-- [ ] Featured list cards look distinct — show source label badge 
+- [x] On home page, add a "Featured Lists" section above All Time
+- [x] Featured list cards look distinct — show source label badge
       (e.g. "IMDB Top 250") instead of a user avatar
-- [ ] On list detail page, featured lists show a source attribution 
+- [x] On list detail page, featured lists show a source attribution
       line with link to original ("Source: IMDB Top 250")
-- [ ] Featured lists are read-only — no edit mode, no admin controls
+- [x] Featured lists are read-only — no edit mode, no admin controls
 
 ### Seed the following lists via admin:
 - [ ] IMDB Top 250 Movies (top 25 as a ranked list)
@@ -40,8 +40,8 @@ that looks curated and authoritative, not like a regular user profile.
 - [ ] Barack Obama's favourite movies (his annual lists)
 
 ### Admin tooling
-- [ ] Add ability to mark any list as featured from admin mode
-- [ ] Add source_label and source_url fields to admin edit mode
+- [x] Add ability to mark any list as featured from admin mode
+- [x] Add source_label and source_url fields to admin edit mode
 
 ## Testing
 - [ ] Featured Lists section appears at top of home page

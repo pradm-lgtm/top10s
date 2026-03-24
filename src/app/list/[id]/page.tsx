@@ -209,7 +209,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     setLoading(false)
   }
 
-  async function saveListField(field: string, value: string) {
+  async function saveListField(field: string, value: string | boolean) {
     if (isAdmin) {
       await fetch(`/api/admin/lists/${id}`, {
         method: 'PATCH',
@@ -726,8 +726,8 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               {isMovie ? 'Movies' : 'TV Shows'}
             </span>
 
-            {/* Owner controls */}
-            {(isOwner || isAdmin) && (
+            {/* Owner controls — hidden for featured/editorial lists */}
+            {(isOwner || isAdmin) && !list.featured && (
               <div className="flex items-center gap-2">
                 {editMode ? (
                   <>
@@ -834,31 +834,61 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
             />
           </h1>
           <div className="flex items-center gap-3 mb-4">
-            {list.profiles && (
-              <Link
-                href={`/${list.profiles.username}`}
-                className="flex items-center gap-2 w-fit"
-              >
-                {list.profiles.avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={list.profiles.avatar_url}
-                    alt=""
-                    className="w-6 h-6 rounded-full object-cover shrink-0"
-                    loading="lazy"
-                  />
+            {list.featured ? (
+              /* Source badge for featured/editorial lists */
+              list.source_label && (
+                list.source_url ? (
+                  <a
+                    href={list.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div
+                      className="text-[10px] font-bold tracking-[0.2em] uppercase px-2 py-0.5 rounded"
+                      style={{ background: 'rgba(232,197,71,0.12)', color: 'var(--accent)', border: '1px solid rgba(232,197,71,0.2)' }}
+                    >
+                      {list.source_label}
+                    </div>
+                    <span className="text-xs" style={{ color: 'var(--muted)' }}>↗</span>
+                  </a>
                 ) : (
                   <div
-                    className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
-                    style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+                    className="text-[10px] font-bold tracking-[0.2em] uppercase px-2 py-0.5 rounded"
+                    style={{ background: 'rgba(232,197,71,0.12)', color: 'var(--accent)', border: '1px solid rgba(232,197,71,0.2)' }}
                   >
-                    {(list.profiles.display_name ?? list.profiles.username)[0].toUpperCase()}
+                    {list.source_label}
                   </div>
-                )}
-                <span className="text-sm" style={{ color: 'var(--muted)' }}>
-                  {list.profiles.display_name ?? list.profiles.username}
-                </span>
-              </Link>
+                )
+              )
+            ) : (
+              list.profiles && (
+                <Link
+                  href={`/${list.profiles.username}`}
+                  className="flex items-center gap-2 w-fit"
+                >
+                  {list.profiles.avatar_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={list.profiles.avatar_url}
+                      alt=""
+                      className="w-6 h-6 rounded-full object-cover shrink-0"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
+                      style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+                    >
+                      {(list.profiles.display_name ?? list.profiles.username)[0].toUpperCase()}
+                    </div>
+                  )}
+                  <span className="text-sm" style={{ color: 'var(--muted)' }}>
+                    {list.profiles.display_name ?? list.profiles.username}
+                  </span>
+                </Link>
+              )
             )}
             <button
               onClick={() => setShowShare(true)}
@@ -910,6 +940,42 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               )
             ) : null}
           </div>
+
+          {/* Admin: featured toggle + source fields */}
+          {isAdmin && (
+            <div className="mt-5 pt-4 flex flex-wrap items-center gap-3" style={{ borderTop: '1px solid var(--border)' }}>
+              <button
+                onClick={async () => {
+                  await saveListField('featured', !list.featured)
+                  setList((prev) => prev ? { ...prev, featured: !prev.featured } : prev)
+                }}
+                className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all"
+                style={{
+                  background: list.featured ? 'rgba(232,197,71,0.15)' : 'var(--surface)',
+                  color: list.featured ? 'var(--accent)' : 'var(--muted)',
+                  border: `1px solid ${list.featured ? 'rgba(232,197,71,0.4)' : 'var(--border)'}`,
+                }}
+              >
+                {list.featured ? '★ Featured' : '☆ Mark as featured'}
+              </button>
+              <input
+                type="text"
+                defaultValue={list.source_label ?? ''}
+                placeholder="Source label (e.g. IMDB)"
+                onBlur={(e) => { if (e.target.value !== (list.source_label ?? '')) saveListField('source_label', e.target.value) }}
+                className="text-xs px-3 py-1.5 rounded-lg outline-none flex-1 min-w-[140px] max-w-[200px]"
+                style={{ background: 'var(--surface)', color: 'var(--foreground)', border: '1px solid var(--border)' }}
+              />
+              <input
+                type="text"
+                defaultValue={list.source_url ?? ''}
+                placeholder="Source URL"
+                onBlur={(e) => { if (e.target.value !== (list.source_url ?? '')) saveListField('source_url', e.target.value) }}
+                className="text-xs px-3 py-1.5 rounded-lg outline-none flex-1 min-w-[180px]"
+                style={{ background: 'var(--surface)', color: 'var(--foreground)', border: '1px solid var(--border)' }}
+              />
+            </div>
+          )}
         </div>
       </div>
 

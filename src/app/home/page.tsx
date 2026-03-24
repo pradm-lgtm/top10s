@@ -211,6 +211,56 @@ function YearCard({ list, posters }: { list: RichList; posters: Record<string, s
   )
 }
 
+// ── Featured card ───────────────────────────────────────────────────────────
+
+function FeaturedCard({ list, posters }: { list: RichList; posters: Record<string, string | null> }) {
+  const router = useRouter()
+  const isMovie = list.category === 'movies'
+  const accent = isMovie ? 'var(--accent)' : '#a78bfa'
+
+  return (
+    <div
+      className="cursor-pointer rounded-xl p-4 flex flex-col gap-3 h-full transition-all duration-200 hover:translate-y-[-2px]"
+      style={{ background: 'var(--surface)', border: '1px solid rgba(232,197,71,0.25)', boxShadow: '0 0 24px rgba(232,197,71,0.04)' }}
+      onClick={() => router.push(`/list/${list.id}`)}
+    >
+      {/* Source badge instead of owner chip */}
+      <div className="flex items-center gap-2">
+        <div
+          className="text-[10px] font-bold tracking-[0.2em] uppercase px-2 py-0.5 rounded"
+          style={{ background: 'rgba(232,197,71,0.12)', color: 'var(--accent)', border: '1px solid rgba(232,197,71,0.2)' }}
+        >
+          {list.source_label ?? 'Featured'}
+        </div>
+        <span className="text-[10px]" style={{ color: 'var(--muted)' }}>
+          {isMovie ? '🎬 Movies' : '📺 TV Shows'}
+        </span>
+      </div>
+
+      <h3 className="font-semibold text-base leading-tight">{list.title}</h3>
+
+      <div className="flex items-start gap-4">
+        <PosterStack entries={list.entries} size="md" posters={posters} />
+        <ol className="flex-1 min-w-0 space-y-1.5 pt-1">
+          {list.entries.slice(0, 3).map((entry) => (
+            <li key={entry.id} className="flex items-center gap-2 text-xs min-w-0">
+              {entry.rank != null && entry.rank > 0 && (
+                <span className="font-bold w-4 shrink-0 text-right" style={{ color: accent }}>{entry.rank}</span>
+              )}
+              <span className="truncate" style={{ color: 'var(--muted)' }}>{entry.title}</span>
+            </li>
+          ))}
+          {list.entries.length === 0 && (
+            <li className="text-xs italic" style={{ color: 'var(--muted)' }}>Coming soon…</li>
+          )}
+        </ol>
+      </div>
+
+      <StatsRow reactionCount={list.reactionCount} commentCount={list.commentCount} reactionEmojis={list.reactionEmojis} />
+    </div>
+  )
+}
+
 // ── Category label ─────────────────────────────────────────────────────────
 
 function CategoryLabel({ category }: { category: 'movies' | 'tv' }) {
@@ -423,13 +473,16 @@ export default function HomePage() {
     })
   }
 
-  const allTimeLists  = lists.filter((l) => l.year === null)
+  const featuredLists = lists.filter((l) => l.featured)
+  const nonFeatured   = lists.filter((l) => !l.featured)
+
+  const allTimeLists  = nonFeatured.filter((l) => l.year === null)
   const allTimeMovies = allTimeLists.filter((l) => l.category === 'movies')
   const allTimeTV     = allTimeLists.filter((l) => l.category === 'tv')
 
-  const recentLists = [...lists].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5)
+  const recentLists = [...nonFeatured].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5)
 
-  const annualLists = lists.filter((l) => l.year !== null)
+  const annualLists = nonFeatured.filter((l) => l.year !== null)
   const years = [...new Set(annualLists.map((l) => l.year as number))].sort((a, b) => b - a)
 
   return (
@@ -463,6 +516,22 @@ export default function HomePage() {
 
         {!loading && !fetchError && lists.length > 0 && (
           <div className="space-y-16">
+
+            {/* ── Section 0: Featured ── */}
+            {featuredLists.length > 0 && (
+              <section>
+                <div className="mb-6">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-bold tracking-[0.25em] uppercase px-2 py-0.5 rounded" style={{ background: 'rgba(232,197,71,0.12)', color: 'var(--accent)', border: '1px solid rgba(232,197,71,0.2)' }}>Featured</span>
+                  </div>
+                  <h2 className="text-2xl font-bold tracking-tight">Editorial Lists</h2>
+                  <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>IMDB, Obama, AFI — compare your taste.</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {featuredLists.map((l) => <FeaturedCard key={l.id} list={l} posters={posters} />)}
+                </div>
+              </section>
+            )}
 
             {/* ── Section 1: All Time ── */}
             {allTimeLists.length > 0 && (
