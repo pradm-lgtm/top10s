@@ -48,7 +48,7 @@ export async function generateMetadata(
       description,
       url: `${siteUrl}/list/${id}`,
       siteName: 'Ranked',
-      images: [{ url: ogImageUrl, width: 1200, height: 630, alt: list.title }],
+      images: [{ url: ogImageUrl, secureUrl: ogImageUrl, width: 1200, height: 630, alt: list.title }],
       type: 'website',
     },
     twitter: {

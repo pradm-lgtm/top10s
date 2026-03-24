@@ -8,9 +8,9 @@ export const runtime = 'nodejs'
 const W = 1200
 const H = 630
 const HEADER_H = 56
-const BOTTOM_H = 96
-const POSTER_H = H - HEADER_H - BOTTOM_H  // 478px
-const POSTER_W = Math.round(POSTER_H * (2 / 3)) // 318px — 2:3 poster ratio
+const BOTTOM_H = 140
+const POSTER_H = H - HEADER_H - BOTTOM_H  // 434px
+const POSTER_W = Math.round(POSTER_H * (2 / 3)) // 289px — 2:3 poster ratio
 const POSTER_GAP = 14
 const POSTER_AREA_W = POSTER_W * 3 + POSTER_GAP * 2
 const POSTER_PAD_X = Math.round((W - POSTER_AREA_W) / 2)
@@ -99,18 +99,33 @@ export async function GET(req: NextRequest) {
   const accent = '#e8c547'
   const bg = '#0a0a0a'
 
-  // Resolve poster URLs: use stored image_url, fall back to TMDB search
-  const resolvedPosterUrls = await Promise.all(
-    topEntries.map(async (e) => {
-      if (e.image_url) return e.image_url
-      return tmdbPosterUrl(e.title, list.category as 'movies' | 'tv')
-    })
-  )
+  // Resolve + fetch all images with a 3.5s budget (WhatsApp crawler times out at ~5s)
+  const IMAGE_BUDGET_MS = 3500
+  const imageStart = Date.now()
+
+  const resolvedPosterUrls = await Promise.race([
+    Promise.all(
+      topEntries.map(async (e) => {
+        if (e.image_url) return e.image_url
+        return tmdbPosterUrl(e.title, list.category as 'movies' | 'tv')
+      })
+    ),
+    new Promise<null[]>((resolve) =>
+      setTimeout(() => resolve([null, null, null]), IMAGE_BUDGET_MS)
+    ),
+  ])
+
+  const remaining = IMAGE_BUDGET_MS - (Date.now() - imageStart)
 
   // Fetch all images as base64 in parallel (avatar + posters)
-  const [avatarSrc, ...posterSrcs] = await Promise.all([
-    owner?.avatar_url ? fetchAsBase64(owner.avatar_url) : Promise.resolve(null),
-    ...resolvedPosterUrls.map((url) => url ? fetchAsBase64(url) : Promise.resolve(null)),
+  const [avatarSrc, ...posterSrcs] = await Promise.race([
+    Promise.all([
+      owner?.avatar_url ? fetchAsBase64(owner.avatar_url) : Promise.resolve(null),
+      ...resolvedPosterUrls.map((url) => url ? fetchAsBase64(url) : Promise.resolve(null)),
+    ]),
+    new Promise<null[]>((resolve) =>
+      setTimeout(() => resolve([null, null, null, null]), Math.max(remaining, 500))
+    ),
   ])
 
   // Pad to 3 slots
@@ -268,7 +283,7 @@ export async function GET(req: NextRequest) {
           <span
             style={{
               color: '#ffffff',
-              fontSize: 26,
+              fontSize: 32,
               fontWeight: 800,
               letterSpacing: -0.5,
               flex: 1,
@@ -282,29 +297,29 @@ export async function GET(req: NextRequest) {
           </span>
 
           {/* Right: +X more (prominent) + owner */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
             {extraCount > 0 && (
-              <span style={{ color: accent, fontSize: 18, fontWeight: 800, letterSpacing: -0.3 }}>
+              <span style={{ color: accent, fontSize: 24, fontWeight: 800, letterSpacing: -0.3 }}>
                 +{extraCount} more
               </span>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {avatarSrc ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={avatarSrc} alt="" style={{ width: 24, height: 24, borderRadius: 12, objectFit: 'cover' }} />
+                <img src={avatarSrc} alt="" style={{ width: 28, height: 28, borderRadius: 14, objectFit: 'cover' }} />
               ) : (
                 <div
                   style={{
-                    width: 24, height: 24, borderRadius: 12,
+                    width: 28, height: 28, borderRadius: 14,
                     background: accent,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 11, fontWeight: 800, color: bg,
+                    fontSize: 13, fontWeight: 800, color: bg,
                   }}
                 >
                   {initial}
                 </div>
               )}
-              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>{ownerName}</span>
+              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 17 }}>{ownerName}</span>
             </div>
           </div>
         </div>

@@ -35,6 +35,15 @@ export default function ShareSheet({ listId, listTitle, url, onClose }: Props) {
 
   const platforms = [
     {
+      name: 'Messages',
+      href: `sms:?body=${encodedTitle}%20${encoded}`,
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C6.477 2 2 6.145 2 11.243c0 2.908 1.317 5.51 3.383 7.266L4.5 22l3.878-1.66C9.496 20.768 10.72 21 12 21c5.523 0 10-4.145 10-9.757S17.523 2 12 2zm1 13H7v-2h6v2zm2-4H7V9h8v2z" />
+        </svg>
+      ),
+    },
+    {
       name: 'Twitter / X',
       href: `https://twitter.com/intent/tweet?url=${encoded}&text=${encodedTitle}`,
       icon: (
@@ -117,7 +126,7 @@ export default function ShareSheet({ listId, listTitle, url, onClose }: Props) {
           />
 
           {/* Platform buttons */}
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-5 gap-3">
             {platforms.map((p) => (
               <a
                 key={p.name}
