@@ -9,6 +9,7 @@ import { useAdmin } from '@/context/admin'
 import { useAuth } from '@/context/auth'
 import { EditableText } from '@/components/EditableText'
 import { EntryDrawer } from '@/components/EntryDrawer'
+import ShareSheet from '@/components/ShareSheet'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { parseNotes, tiptapToHtml } from '@/lib/notes'
 import type { TiptapDoc } from '@/lib/notes'
@@ -82,7 +83,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const entriesSnap = useRef<ListEntry[]>([])
   const tiersSnap = useRef<Tier[]>([])
   const [savingDescription, setSavingDescription] = useState(false)
-  const [copied, setCopied] = useState(false)
+  const [showShare, setShowShare] = useState(false)
   const router = useRouter()
 
   const sensors = useSensors(
@@ -860,28 +861,16 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               </Link>
             )}
             <button
-              onClick={() => {
-                if (navigator.share) {
-                  navigator.share({ title: list.title, url: window.location.href })
-                } else {
-                  navigator.clipboard.writeText(window.location.href)
-                  setCopied(true)
-                  setTimeout(() => setCopied(false), 2000)
-                }
-              }}
+              onClick={() => setShowShare(true)}
               title="Share"
               className="w-7 h-7 flex items-center justify-center rounded-lg transition-all"
               style={{
-                background: copied ? 'rgba(52,211,153,0.12)' : 'var(--surface)',
-                color: copied ? '#34d399' : 'var(--muted)',
-                border: `1px solid ${copied ? 'rgba(52,211,153,0.35)' : 'var(--border)'}`,
+                background: 'var(--surface)',
+                color: 'var(--muted)',
+                border: '1px solid var(--border)',
               }}
             >
-              {copied ? (
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7l4 4 6-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 4l3-3 3 3M2 10v2.5h10V10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              )}
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 4l3-3 3 3M2 10v2.5h10V10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </button>
           </div>
 
@@ -1293,6 +1282,15 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         onReactionToggled={handleReactionToggled}
         onRegisterVisitor={registerVisitor}
       />
+
+      {showShare && (
+        <ShareSheet
+          listId={list.id}
+          listTitle={list.title}
+          url={typeof window !== 'undefined' ? window.location.href : ''}
+          onClose={() => setShowShare(false)}
+        />
+      )}
     </div>
   )
 }

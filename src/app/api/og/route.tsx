@@ -4,13 +4,33 @@ import { getAdminSupabase } from '@/lib/supabase-admin'
 
 export const runtime = 'nodejs'
 
+// Image dimensions
+const W = 1200
+const H = 630
+const HEADER_H = 56
+const BOTTOM_H = 88
+const POSTER_H = H - HEADER_H - BOTTOM_H  // 486px
+const POSTER_W = Math.round(POSTER_H * (2 / 3)) // 324px — true 2:3 poster ratio
+const POSTER_GAP = 14
+const POSTER_AREA_W = POSTER_W * 3 + POSTER_GAP * 2 // 980px
+const POSTER_PAD_X = Math.round((W - POSTER_AREA_W) / 2) // 110px
+
+async function fetchAsBase64(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(4000) })
+    if (!res.ok) return null
+    const buf = await res.arrayBuffer()
+    const mime = res.headers.get('content-type') ?? 'image/jpeg'
+    return `data:${mime};base64,${Buffer.from(buf).toString('base64')}`
+  } catch {
+    return null
+  }
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const id = searchParams.get('id')
-
-  if (!id) {
-    return new Response('Missing id', { status: 400 })
-  }
+  if (!id) return new Response('Missing id', { status: 400 })
 
   const supabase = getAdminSupabase()
 
@@ -32,86 +52,68 @@ export async function GET(req: NextRequest) {
       .eq('list_id', id),
   ])
 
-  if (!list) {
-    return new Response('Not found', { status: 404 })
-  }
+  if (!list) return new Response('Not found', { status: 404 })
 
-  const owner = (Array.isArray(list.profiles) ? list.profiles[0] : list.profiles) as { username: string; display_name: string | null; avatar_url: string | null } | null
+  const owner = (Array.isArray(list.profiles) ? list.profiles[0] : list.profiles) as {
+    username: string
+    display_name: string | null
+    avatar_url: string | null
+  } | null
+
   const ownerName = owner?.display_name ?? owner?.username ?? ''
   const initial = ownerName ? ownerName[0].toUpperCase() : '?'
   const isMovie = list.category === 'movies'
-  const accent = '#e8c547'
   const totalCount = count ?? 0
-
-  const formatLabel = list.list_format === 'ranked' ? 'Ranked' : list.list_format === 'tiered' ? 'Tiered' : 'Tier-Ranked'
-  const categoryEmoji = isMovie ? '🎬' : '📺'
-  const categoryLabel = isMovie ? 'Movies' : 'TV Shows'
-
-  // Fetch avatar as base64 if available to avoid CORS issues in ImageResponse
-  let avatarSrc: string | null = null
-  if (owner?.avatar_url) {
-    try {
-      const res = await fetch(owner.avatar_url)
-      const buf = await res.arrayBuffer()
-      const mime = res.headers.get('content-type') ?? 'image/jpeg'
-      avatarSrc = `data:${mime};base64,${Buffer.from(buf).toString('base64')}`
-    } catch {
-      // fall back to initial
-    }
-  }
-
-  // Fetch poster images as base64
-  const posterSrcs: (string | null)[] = await Promise.all(
-    (entries ?? []).slice(0, 3).map(async (entry) => {
-      if (!entry.image_url) return null
-      try {
-        const res = await fetch(entry.image_url)
-        const buf = await res.arrayBuffer()
-        const mime = res.headers.get('content-type') ?? 'image/jpeg'
-        return `data:${mime};base64,${Buffer.from(buf).toString('base64')}`
-      } catch {
-        return null
-      }
-    })
-  )
-
   const topEntries = entries ?? []
-  const hasPosters = posterSrcs.some(Boolean)
+  const extraCount = totalCount - topEntries.length
+
+  const categoryLabel = isMovie ? 'MOVIES' : 'TV SHOWS'
+  const formatLabel =
+    list.list_format === 'ranked' ? 'RANKED' :
+    list.list_format === 'tiered' ? 'TIERED' : 'TIER-RANKED'
+
+  const accent = '#e8c547'
+  const bg = '#0a0a0a'
+  const muted = 'rgba(255,255,255,0.45)'
+
+  // Fetch images in parallel
+  const [avatarSrc, ...posterSrcs] = await Promise.all([
+    owner?.avatar_url ? fetchAsBase64(owner.avatar_url) : Promise.resolve(null),
+    ...topEntries.map((e) => e.image_url ? fetchAsBase64(e.image_url) : Promise.resolve(null)),
+  ])
+
+  // Pad to 3 slots
+  while (posterSrcs.length < 3) posterSrcs.push(null)
 
   return new ImageResponse(
     (
       <div
         style={{
-          width: 1200,
-          height: 630,
-          background: '#0a0a0f',
+          width: W,
+          height: H,
+          background: bg,
           display: 'flex',
           flexDirection: 'column',
-          padding: '52px 64px 44px',
-          fontFamily: 'system-ui, -apple-system, sans-serif',
           position: 'relative',
           overflow: 'hidden',
+          fontFamily: 'system-ui, -apple-system, sans-serif',
         }}
       >
-        {/* Gold top bar */}
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: accent, display: 'flex' }} />
+        {/* Gold top accent */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: accent, display: 'flex' }} />
 
-        {/* Subtle radial glow */}
+        {/* ── HEADER ── */}
         <div
           style={{
-            position: 'absolute',
-            top: -120,
-            left: '50%',
-            width: 800,
-            height: 400,
-            background: 'radial-gradient(ellipse, rgba(232,197,71,0.07) 0%, transparent 70%)',
             display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: `18px ${POSTER_PAD_X}px 0`,
+            height: HEADER_H,
+            flexShrink: 0,
           }}
-        />
-
-        {/* Header row: RANKED wordmark + category badge */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 36 }}>
-          <span style={{ color: accent, fontSize: 13, letterSpacing: 7, fontWeight: 700 }}>
+        >
+          <span style={{ color: accent, fontSize: 12, letterSpacing: 8, fontWeight: 700 }}>
             RANKED
           </span>
           <div
@@ -120,143 +122,156 @@ export async function GET(req: NextRequest) {
               alignItems: 'center',
               gap: 6,
               border: '1px solid rgba(232,197,71,0.3)',
-              padding: '5px 14px',
-              borderRadius: 4,
+              padding: '4px 12px',
+              borderRadius: 3,
               color: accent,
-              fontSize: 12,
-              letterSpacing: 2,
+              fontSize: 11,
+              letterSpacing: 2.5,
               fontWeight: 600,
             }}
           >
-            <span>{categoryEmoji}</span>
-            <span>{categoryLabel.toUpperCase()} · {formatLabel.toUpperCase()}</span>
+            {categoryLabel} · {formatLabel}
           </div>
         </div>
 
-        {/* Main area */}
-        <div style={{ display: 'flex', flex: 1, gap: 48 }}>
-
-          {/* Left: title + entries + owner */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {/* Title */}
+        {/* ── POSTERS ── */}
+        <div
+          style={{
+            display: 'flex',
+            gap: POSTER_GAP,
+            padding: `0 ${POSTER_PAD_X}px`,
+            height: POSTER_H,
+            flexShrink: 0,
+          }}
+        >
+          {[0, 1, 2].map((i) => {
+            const entry = topEntries[i]
+            const src = posterSrcs[i]
+            return (
               <div
+                key={i}
                 style={{
-                  color: '#ffffff',
-                  fontSize: topEntries.length > 0 ? 50 : 68,
-                  fontWeight: 800,
-                  lineHeight: 1.1,
-                  letterSpacing: -1,
-                  marginBottom: 28,
-                  maxWidth: hasPosters ? 640 : '100%',
+                  width: POSTER_W,
+                  height: POSTER_H,
+                  borderRadius: 10,
+                  overflow: 'hidden',
+                  position: 'relative',
+                  flexShrink: 0,
+                  display: 'flex',
+                  background: '#111118',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
                 }}
               >
-                {list.title}
-              </div>
-
-              {/* Top entries list */}
-              {topEntries.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {topEntries.map((entry, i) => (
-                    <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                      <span
-                        style={{
-                          color: i === 0 ? accent : 'rgba(255,255,255,0.35)',
-                          fontSize: 20,
-                          fontWeight: 800,
-                          width: 28,
-                          textAlign: 'right',
-                          display: 'flex',
-                          justifyContent: 'flex-end',
-                        }}
-                      >
-                        {entry.rank ?? i + 1}
-                      </span>
-                      <span style={{ color: i === 0 ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.6)', fontSize: 20, fontWeight: 500 }}>
-                        {entry.title}
-                      </span>
-                    </div>
-                  ))}
-                  {totalCount > 3 && (
-                    <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: 14, marginLeft: 42, marginTop: 2, display: 'flex' }}>
-                      +{totalCount - 3} more
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Owner row */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              {avatarSrc ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={avatarSrc} style={{ width: 36, height: 36, borderRadius: 18, objectFit: 'cover' }} alt="" />
-              ) : (
-                <div
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
-                    background: accent,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 16,
-                    fontWeight: 800,
-                    color: '#0a0a0f',
-                  }}
-                >
-                  {initial}
-                </div>
-              )}
-              <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 18 }}>{ownerName}</span>
-              {list.year && (
-                <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 18 }}>· {list.year}</span>
-              )}
-            </div>
-          </div>
-
-          {/* Right: poster stack */}
-          {hasPosters && (
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 10,
-                alignItems: 'flex-end',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              {posterSrcs.map((src, i) =>
-                src ? (
+                {src ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    key={i}
                     src={src}
-                    style={{
-                      width: 110,
-                      height: 165,
-                      objectFit: 'cover',
-                      borderRadius: 8,
-                      opacity: i === 0 ? 1 : i === 1 ? 0.75 : 0.5,
-                      boxShadow: '0 4px 24px rgba(0,0,0,0.7)',
-                    }}
                     alt=""
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', top: 0, left: 0 }}
                   />
-                ) : null
-              )}
-            </div>
-          )}
+                ) : (
+                  // Placeholder
+                  <div
+                    style={{
+                      position: 'absolute', inset: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'linear-gradient(160deg, #1a1a2e 0%, #0f0f1a 100%)',
+                    }}
+                  >
+                    <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 13, textAlign: 'center', padding: '0 16px', lineHeight: 1.4 }}>
+                      {entry?.title ?? ''}
+                    </span>
+                  </div>
+                )}
+
+                {/* Gradient scrim at bottom */}
+                <div
+                  style={{
+                    position: 'absolute', bottom: 0, left: 0, right: 0, height: 96,
+                    background: 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, transparent 100%)',
+                    display: 'flex',
+                  }}
+                />
+
+                {/* Entry title */}
+                {entry && (
+                  <div
+                    style={{
+                      position: 'absolute', bottom: 10, left: 10, right: 10,
+                      display: 'flex', flexDirection: 'column', gap: 2,
+                    }}
+                  >
+                    {i === 0 && (
+                      <span style={{ color: accent, fontSize: 10, fontWeight: 700, letterSpacing: 2 }}>
+                        #1
+                      </span>
+                    )}
+                    <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>
+                      {entry.title}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
 
-        {/* Bottom border */}
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 1, background: 'rgba(232,197,71,0.15)', display: 'flex' }} />
+        {/* ── BOTTOM STRIP ── */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: `0 ${POSTER_PAD_X}px`,
+            height: BOTTOM_H,
+            flexShrink: 0,
+            borderTop: '1px solid rgba(255,255,255,0.06)',
+          }}
+        >
+          {/* List title */}
+          <span
+            style={{
+              color: '#ffffff',
+              fontSize: 28,
+              fontWeight: 800,
+              letterSpacing: -0.5,
+              flex: 1,
+              overflow: 'hidden',
+              whiteSpace: 'nowrap',
+              textOverflow: 'ellipsis',
+              marginRight: 32,
+            }}
+          >
+            {list.title}{list.year ? ` (${list.year})` : ''}
+          </span>
+
+          {/* Owner + extra count */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            {avatarSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={avatarSrc} alt="" style={{ width: 30, height: 30, borderRadius: 15, objectFit: 'cover' }} />
+            ) : (
+              <div
+                style={{
+                  width: 30, height: 30, borderRadius: 15,
+                  background: accent,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 13, fontWeight: 800, color: bg,
+                }}
+              >
+                {initial}
+              </div>
+            )}
+            <span style={{ color: muted, fontSize: 15 }}>{ownerName}</span>
+            {extraCount > 0 && (
+              <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 14 }}>
+                · +{extraCount} more
+              </span>
+            )}
+          </div>
+        </div>
       </div>
     ),
-    {
-      width: 1200,
-      height: 630,
-    }
+    { width: W, height: H }
   )
 }
