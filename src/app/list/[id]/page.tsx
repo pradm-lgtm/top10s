@@ -84,6 +84,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const tiersSnap = useRef<Tier[]>([])
   const [savingDescription, setSavingDescription] = useState(false)
   const [showShare, setShowShare] = useState(false)
+  const [showCompare, setShowCompare] = useState(false)
   const router = useRouter()
 
   const sensors = useSensors(
@@ -893,6 +894,19 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               )
             )}
             <button
+              onClick={() => setShowCompare(true)}
+              title="Compare"
+              className="flex items-center gap-1.5 px-2.5 h-7 rounded-lg text-xs font-medium transition-all"
+              style={{
+                background: 'var(--surface)',
+                color: 'var(--muted)',
+                border: '1px solid var(--border)',
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M1 6.5h11M5 2.5 1 6.5l4 4M8 2.5l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Compare
+            </button>
+            <button
               onClick={() => setShowShare(true)}
               title="Share"
               className="w-7 h-7 flex items-center justify-center rounded-lg transition-all"
@@ -1369,9 +1383,154 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
           onClose={() => setShowShare(false)}
         />
       )}
+
+      {showCompare && (
+        <ComparePicker
+          currentListId={list.id}
+          category={list.category}
+          onClose={() => setShowCompare(false)}
+        />
+      )}
     </div>
   )
 }
+
+// ── Compare Picker ───────────────────────────────────────────────────────────
+
+type SearchResult = {
+  id: string
+  title: string
+  year: number | null
+  category: string
+  list_type: string
+  owner_id: string | null
+  profiles: { username: string; display_name: string | null; avatar_url: string | null } | null
+}
+
+function ComparePicker({
+  currentListId,
+  category,
+  onClose,
+}: {
+  currentListId: string
+  category: 'movies' | 'tv'
+  onClose: () => void
+}) {
+  const router = useRouter()
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<SearchResult[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      setLoading(true)
+      const res = await fetch(`/api/lists/search?category=${category}&q=${encodeURIComponent(query)}`)
+      const data = await res.json()
+      setResults((data as SearchResult[]).filter((l: SearchResult) => l.id !== currentListId))
+      setLoading(false)
+    }, 300)
+    return () => clearTimeout(t)
+  }, [query, category, currentListId])
+
+  function pick(listId: string) {
+    onClose()
+    router.push(`/compare/${currentListId}/${listId}`)
+  }
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40"
+        style={{ background: 'rgba(0,0,0,0.6)' }}
+        onClick={onClose}
+      />
+
+      {/* Sheet */}
+      <div
+        className="fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl flex flex-col"
+        style={{
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
+          maxHeight: '80vh',
+        }}
+      >
+        {/* Handle */}
+        <div className="flex justify-center pt-3 pb-1 shrink-0">
+          <div className="w-8 h-1 rounded-full" style={{ background: 'var(--border)' }} />
+        </div>
+
+        <div className="px-5 pb-3 shrink-0">
+          <h3 className="font-bold text-base mb-3">Compare with…</h3>
+          <input
+            autoFocus
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder={`Search ${category} lists…`}
+            className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+            style={{
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border)',
+              color: 'var(--foreground)',
+            }}
+          />
+        </div>
+
+        {/* Results */}
+        <div className="overflow-y-auto flex-1 px-5 pb-5">
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <div
+                className="w-5 h-5 rounded-full border-2 animate-spin"
+                style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }}
+              />
+            </div>
+          ) : results.length === 0 ? (
+            <p className="text-sm py-6 text-center" style={{ color: 'var(--muted)' }}>
+              {query ? 'No lists found.' : 'Start typing to search lists…'}
+            </p>
+          ) : (
+            <div className="space-y-1">
+              {results.map(list => {
+                const owner = list.profiles
+                const label = owner?.display_name ?? owner?.username ?? 'Unknown'
+                const initial = label[0]?.toUpperCase() ?? '?'
+                return (
+                  <button
+                    key={list.id}
+                    onClick={() => pick(list.id)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors hover:opacity-80"
+                    style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
+                  >
+                    {owner?.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={owner.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
+                    ) : (
+                      <div
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                        style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+                      >
+                        {initial}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{list.title}</div>
+                      <div className="text-xs truncate" style={{ color: 'var(--muted)' }}>
+                        {label}{list.year ? ` · ${list.year}` : ''}
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ── Collapsible section ──────────────────────────────────────────────────────
 
 function CollapsibleSection({
   label,

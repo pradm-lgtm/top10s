@@ -1,7 +1,7 @@
 ---
 phase: 3
 title: "Strangers — Side by Side Comparisons"
-status: draft
+status: in-progress
 depends_on: "2"
 priority: high
 created: 2026-03-23
