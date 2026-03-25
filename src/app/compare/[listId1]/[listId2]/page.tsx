@@ -169,9 +169,8 @@ function EntryRow({
     <div
       className="flex items-center gap-2.5 py-2 px-3 rounded-lg"
       style={{
-        background: matched ? 'rgba(232,197,71,0.08)' : 'transparent',
-        border: `1px solid ${matched ? 'rgba(232,197,71,0.3)' : 'transparent'}`,
-        opacity: matched ? 1 : 0.4,
+        background: 'transparent',
+        opacity: matched ? 1 : 0.55,
       }}
     >
       {/* Tier badge or rank */}
@@ -202,7 +201,7 @@ function EntryRow({
       </div>
 
       {/* Title */}
-      <span className="text-sm leading-snug min-w-0 flex-1 truncate" style={{ color: matched ? 'var(--foreground)' : 'var(--muted)' }}>
+      <span className="text-sm leading-snug min-w-0 flex-1 truncate" style={{ color: 'var(--foreground)' }}>
         {entry.title}
       </span>
 
