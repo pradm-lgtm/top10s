@@ -1016,6 +1016,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
             </>
           ) : (
           <>
+          {editMode ? (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleRankedDragEnd}>
             <SortableContext items={entries.map(e => e.id)} strategy={verticalListSortingStrategy}>
               <ol className="space-y-2">
@@ -1040,6 +1041,11 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               </ol>
             </SortableContext>
           </DndContext>
+          ) : (
+            <div style={{ margin: '0 -16px' }}>
+              <RankedPosterGrid entries={entries} posters={posters} onEntryClick={handleEntryClick} />
+            </div>
+          )}
 
           {/* Add Entry */}
           {(isAdmin || isOwner) && editMode && (
@@ -1466,6 +1472,110 @@ const TIER_COLORS = [
 ]
 
 const SWATCH_COLORS = ['#e8c547', '#34d399', '#60a5fa', '#a78bfa', '#fb923c', '#f87171', '#f472b6', '#38bdf8', '#4ade80', '#6b7280']
+
+// ─── RankedPosterGrid ─────────────────────────────────────────────────────────
+
+function RankedPosterGrid({
+  entries,
+  posters,
+  onEntryClick,
+}: {
+  entries: ListEntry[]
+  posters: Record<string, PosterInfo>
+  onEntryClick: (e: ListEntry) => void
+}) {
+  return (
+    <div style={{ padding: '0 3px' }}>
+      <div
+        className="grid grid-cols-3 md:grid-cols-4"
+        style={{ gap: 3 }}
+      >
+        {entries.map((entry, i) => {
+          const src = entry.image_url ?? posters[entry.id]?.poster
+          const rank = entry.rank ?? (i + 1)
+          const isTop3 = rank <= 3
+          return (
+            <div
+              key={entry.id}
+              className="active:scale-[0.97] transition-transform duration-100 select-none"
+              style={{
+                position: 'relative',
+                aspectRatio: '2/3',
+                borderRadius: 5,
+                overflow: 'hidden',
+                cursor: 'pointer',
+                background: '#111118',
+              }}
+              onClick={() => onEntryClick(entry)}
+            >
+              {src && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={src}
+                  alt=""
+                  loading="lazy"
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              )}
+
+              {/* Gradient scrim for legibility */}
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 0, left: 0, right: 0,
+                  height: '65%',
+                  background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.35) 55%, transparent 100%)',
+                }}
+              />
+
+              {/* Rank badge — bottom-left */}
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 6, left: 6,
+                  width: 22, height: 22,
+                  borderRadius: '50%',
+                  background: isTop3 ? '#f59e0b' : 'rgba(0,0,0,0.65)',
+                  border: isTop3 ? 'none' : '1px solid rgba(255,255,255,0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: isTop3 ? '#0a0a0f' : '#fff',
+                  zIndex: 1,
+                  flexShrink: 0,
+                }}
+              >
+                {rank}
+              </div>
+
+              {/* Title — bottom-right of badge */}
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 7, left: 34, right: 4,
+                  fontSize: 9,
+                  fontWeight: 600,
+                  color: '#fff',
+                  textShadow: '0 1px 4px rgba(0,0,0,0.95)',
+                  overflow: 'hidden',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical' as const,
+                  lineHeight: 1.3,
+                  zIndex: 1,
+                }}
+              >
+                {entry.title}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 // ─── SortableRankedEntry ──────────────────────────────────────────────────────
 
@@ -2771,6 +2881,7 @@ function TierRankedEntries({
                 <h3 className="text-lg font-bold" style={{ color }}>{tier.label}</h3>
               </div>
 
+              {editMode ? (
               <DndContext sensors={activeSensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDragEnd(e, tier.id)}>
                 <SortableContext items={tierEntries.map(e => e.id)} strategy={verticalListSortingStrategy}>
                   <div className="space-y-1.5">
@@ -2795,6 +2906,11 @@ function TierRankedEntries({
                   </div>
                 </SortableContext>
               </DndContext>
+              ) : (
+                <div style={{ margin: '0 -16px' }}>
+                  <RankedPosterGrid entries={tierEntries} posters={posters} onEntryClick={(e) => onEntryClick?.(e)} />
+                </div>
+              )}
             </div>
           )
         })}
