@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { parseNotes, tiptapToHtml } from '@/lib/notes'
 import type { ListEntry } from '@/types'
 
 const EMOJIS = ['🔥', '❤️', '😮', '😂', '👏']
@@ -186,6 +187,19 @@ export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClos
 
             {/* Scrollable body */}
             <div className="flex-1 overflow-y-auto p-5 space-y-6 min-h-0">
+              {/* Full description */}
+              {entry.notes && (() => {
+                const doc = parseNotes(entry.notes)
+                const html = doc ? tiptapToHtml(doc) : entry.notes
+                if (!html.trim()) return null
+                return (
+                  <div
+                    className="entry-notes"
+                    dangerouslySetInnerHTML={{ __html: html }}
+                  />
+                )
+              })()}
+
               {/* Reactions */}
               <div>
                 <p className="text-xs tracking-[0.2em] uppercase font-semibold mb-3" style={{ color: 'var(--muted)' }}>

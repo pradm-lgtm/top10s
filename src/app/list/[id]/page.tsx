@@ -11,7 +11,7 @@ import { EditableText } from '@/components/EditableText'
 import { EntryDrawer } from '@/components/EntryDrawer'
 import ShareSheet from '@/components/ShareSheet'
 import { RichTextEditor } from '@/components/RichTextEditor'
-import { parseNotes, tiptapToHtml } from '@/lib/notes'
+import { parseNotes, tiptapToHtml, notesToPlainText } from '@/lib/notes'
 import type { TiptapDoc } from '@/lib/notes'
 import type { PosterInfo } from '@/lib/tmdb'
 import type { List, ListEntry, Tier, Comment, ReactionCount, HonorableMention, AlsoWatched } from '@/types'
@@ -258,9 +258,11 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         body: JSON.stringify({ [field]: value }),
       })
     }
-    setEntries((prev) =>
-      prev.map((e) => e.id === entryId ? { ...e, [field]: value } : e)
-    )
+    setEntries((prev) => {
+      const updated = prev.map((e) => e.id === entryId ? { ...e, [field]: value } : e)
+      entriesSnap.current = updated
+      return updated
+    })
   }
 
   async function addEntry(e: React.FormEvent) {
@@ -1011,7 +1013,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                   hasEntries={(tierId) => entries.some(e => e.tier_id === tierId || e.tier === tierId)}
                 />
               )}
-              <TierRankedEntries entries={entries} tiers={effectiveTiers} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} onMoveTier={editMode ? moveEntryToTier : undefined} onTierItemDragEnd={editMode ? handleTierItemDragEnd : undefined} editMode={editMode} sensors={sensors} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
+              <TierRankedEntries entries={entries} tiers={effectiveTiers} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} onMoveTier={editMode ? moveEntryToTier : undefined} onTierItemDragEnd={editMode ? handleTierItemDragEnd : undefined} editMode={editMode} sensors={sensors} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} visitorId={visitorId} />
               {(isOwner || isAdmin) && editMode && <TieredAddForm tiers={effectiveTiers} category={list.category} title={newTieredTitle} setTitle={setNewTieredTitle} posterUrl={newTieredPosterUrl} setPosterUrl={setNewTieredPosterUrl} tierId={newTieredTierId} setTierId={setNewTieredTierId} notes={newTieredNotes} setNotes={setNewTieredNotes} open={addingTieredEntry} setOpen={setAddingTieredEntry} saving={savingTieredEntry} onSubmit={addTieredEntry} />}
             </>
           ) : (
@@ -1042,9 +1044,13 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
             </SortableContext>
           </DndContext>
           ) : (
-            <div style={{ margin: '0 -16px' }}>
-              <RankedPosterGrid entries={entries} posters={posters} onEntryClick={handleEntryClick} />
-            </div>
+            <RankedRowList
+              entries={entries}
+              posters={posters}
+              entryReactions={entryReactions}
+              commentCounts={commentCounts}
+              onEntryClick={handleEntryClick}
+            />
           )}
 
           {/* Add Entry */}
@@ -1473,106 +1479,172 @@ const TIER_COLORS = [
 
 const SWATCH_COLORS = ['#e8c547', '#34d399', '#60a5fa', '#a78bfa', '#fb923c', '#f87171', '#f472b6', '#38bdf8', '#4ade80', '#6b7280']
 
-// ─── RankedPosterGrid ─────────────────────────────────────────────────────────
+// ─── RankedRowList ────────────────────────────────────────────────────────────
 
-function RankedPosterGrid({
+function RankedRowList({
   entries,
   posters,
+  entryReactions,
+  commentCounts,
   onEntryClick,
 }: {
   entries: ListEntry[]
   posters: Record<string, PosterInfo>
+  entryReactions: Record<string, Record<string, number>>
+  commentCounts: Record<string, number>
   onEntryClick: (e: ListEntry) => void
 }) {
+  const [isDesktop, setIsDesktop] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    setIsDesktop(mq.matches)
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  const posterW = isDesktop ? 100 : 90
+  const posterH = isDesktop ? 150 : 135
+  const titleSize = isDesktop ? 17 : 16
+  const descSize = isDesktop ? 13 : 12
+
+  const REACTION_EMOJIS = ['🔥', '❤️', '😮', '😂', '👏']
+
   return (
-    <div style={{ padding: '0 3px' }}>
-      <div
-        className="grid grid-cols-3 md:grid-cols-4"
-        style={{ gap: 3 }}
-      >
-        {entries.map((entry, i) => {
-          const src = entry.image_url ?? posters[entry.id]?.poster
-          const rank = entry.rank ?? (i + 1)
-          const isTop3 = rank <= 3
-          return (
+    <div>
+      {entries.map((entry, i) => {
+        const rank = entry.rank ?? (i + 1)
+        const isTop3 = rank <= 3
+        const src = entry.image_url ?? posters[entry.id]?.poster
+        const plainNotes = notesToPlainText(entry.notes)
+        const hasNotes = plainNotes.trim().length > 0
+
+        // Split first sentence for pull-quote styling
+        const sentenceEnd = plainNotes.search(/[.!?](\s|$)/)
+        const firstSentence = sentenceEnd >= 0 ? plainNotes.slice(0, sentenceEnd + 1) : ''
+        const restText = sentenceEnd >= 0 ? plainNotes.slice(sentenceEnd + 1).trimStart() : plainNotes
+        const showReadMore = plainNotes.length > 120
+
+        // Non-zero reactions + comment count
+        const activeReactions = REACTION_EMOJIS.filter(e => (entryReactions[entry.id]?.[e] ?? 0) > 0)
+        const commentCount = commentCounts[entry.id] ?? 0
+        const hasCounts = activeReactions.length > 0 || commentCount > 0
+
+        return (
+          <div key={entry.id}>
+            {i > 0 && <div style={{ height: '0.5px', background: '#1a1a1a', margin: '0 16px' }} />}
             <div
-              key={entry.id}
-              className="active:scale-[0.97] transition-transform duration-100 select-none"
-              style={{
-                position: 'relative',
-                aspectRatio: '2/3',
-                borderRadius: 5,
-                overflow: 'hidden',
-                cursor: 'pointer',
-                background: '#111118',
-              }}
+              style={{ display: 'flex', gap: 10, padding: '14px 16px', cursor: 'pointer' }}
               onClick={() => onEntryClick(entry)}
             >
-              {src && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={src}
-                  alt=""
-                  loading="lazy"
-                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-              )}
-
-              {/* Gradient scrim for legibility */}
+              {/* Rank number */}
               <div
                 style={{
-                  position: 'absolute',
-                  bottom: 0, left: 0, right: 0,
-                  height: '65%',
-                  background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.35) 55%, transparent 100%)',
-                }}
-              />
-
-              {/* Rank badge — bottom-left */}
-              <div
-                style={{
-                  position: 'absolute',
-                  bottom: 6, left: 6,
-                  width: 22, height: 22,
-                  borderRadius: '50%',
-                  background: isTop3 ? '#f59e0b' : 'rgba(0,0,0,0.65)',
-                  border: isTop3 ? 'none' : '1px solid rgba(255,255,255,0.3)',
+                  width: 36,
+                  flexShrink: 0,
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: isTop3 ? '#0a0a0f' : '#fff',
-                  zIndex: 1,
-                  flexShrink: 0,
+                  justifyContent: 'flex-end',
+                  fontSize: rank <= 3 ? 28 : rank <= 9 ? 24 : 20,
+                  fontWeight: rank <= 3 ? 800 : 700,
+                  color: rank <= 3 ? '#f59e0b' : '#fff',
+                  opacity: rank <= 3 ? 1 : rank <= 9 ? 0.5 : 0.35,
+                  lineHeight: 1,
+                  paddingBottom: 2,
                 }}
               >
                 {rank}
               </div>
 
-              {/* Title — bottom-right of badge */}
+              {/* Poster */}
               <div
                 style={{
-                  position: 'absolute',
-                  bottom: 7, left: 34, right: 4,
-                  fontSize: 9,
-                  fontWeight: 600,
-                  color: '#fff',
-                  textShadow: '0 1px 4px rgba(0,0,0,0.95)',
+                  flexShrink: 0,
+                  width: posterW,
+                  height: posterH,
+                  borderRadius: 5,
                   overflow: 'hidden',
-                  display: '-webkit-box',
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: 'vertical' as const,
-                  lineHeight: 1.3,
-                  zIndex: 1,
+                  background: '#111118',
                 }}
               >
-                {entry.title}
+                {src && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={src}
+                    alt=""
+                    loading="lazy"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                )}
+              </div>
+
+              {/* Text side */}
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                {/* Title */}
+                <div
+                  style={{
+                    fontSize: titleSize,
+                    fontWeight: 600,
+                    color: '#fff',
+                    lineHeight: 1.3,
+                    marginBottom: hasNotes ? 4 : 0,
+                  }}
+                >
+                  {entry.title}
+                </div>
+
+                {/* Description teaser */}
+                {hasNotes && (
+                  <>
+                    <div
+                      style={{
+                        fontSize: descSize,
+                        lineHeight: 1.6,
+                        overflow: 'hidden',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical' as const,
+                      }}
+                    >
+                      {firstSentence && (
+                        <span style={{ color: 'rgba(255,255,255,0.85)', fontStyle: 'italic' }}>
+                          {firstSentence}{restText ? ' ' : ''}
+                        </span>
+                      )}
+                      {restText && (
+                        <span style={{ color: 'rgba(255,255,255,0.6)' }}>
+                          {restText}
+                        </span>
+                      )}
+                    </div>
+                    {showReadMore && (
+                      <span style={{ color: '#f59e0b', fontSize: 11, marginTop: 3, display: 'block' }}>
+                        read more →
+                      </span>
+                    )}
+                  </>
+                )}
+
+                {/* Reaction + comment counts */}
+                {hasCounts && (
+                  <div
+                    style={{
+                      display: 'flex', gap: 8, flexWrap: 'wrap',
+                      marginTop: 'auto', paddingTop: 6,
+                      fontSize: 11, color: '#555',
+                    }}
+                  >
+                    {commentCount > 0 && <span>💬 {commentCount}</span>}
+                    {activeReactions.map(e => (
+                      <span key={e}>{e} {entryReactions[entry.id][e]}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
-          )
-        })}
-      </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -2095,6 +2167,13 @@ function ExpandableNotes({ value, onSave, editable = false, placeholder }: {
     setOverflows(el.scrollHeight > el.clientHeight + 2)
   }, [value, expanded])
 
+  // Pre-seed editDoc when entering editing mode so Save works even if the
+  // user doesn't type anything (Tiptap's onUpdate only fires on changes).
+  function startEditing() {
+    setEditDoc(doc ?? { type: 'doc', content: [{ type: 'paragraph' }] })
+    setEditing(true)
+  }
+
   if (!value && !editable) return null
 
   if (editing) {
@@ -2142,9 +2221,9 @@ function ExpandableNotes({ value, onSave, editable = false, placeholder }: {
     return (
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); setEditing(true) }}
-        className="flex items-center gap-1 text-xs"
-        style={{ color: 'var(--muted)', opacity: 0.5 }}
+        onClick={(e) => { e.stopPropagation(); startEditing() }}
+        className="flex items-center gap-1 text-xs px-2 py-1 rounded"
+        style={{ color: 'var(--accent)', border: '1px dashed var(--accent)', opacity: 0.6 }}
       >
         <span>✎</span> Add a note
       </button>
@@ -2172,7 +2251,7 @@ function ExpandableNotes({ value, onSave, editable = false, placeholder }: {
           }),
           cursor: editable ? 'pointer' : 'default',
         }}
-        onClick={editable ? (e) => { e.stopPropagation(); setEditing(true) } : undefined}
+        onClick={editable ? (e) => { e.stopPropagation(); startEditing() } : undefined}
       >
         {isJson ? (
           <div dangerouslySetInnerHTML={{ __html: html! }} />
@@ -2181,7 +2260,7 @@ function ExpandableNotes({ value, onSave, editable = false, placeholder }: {
       {editable && (
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); setEditing(true) }}
+          onClick={(e) => { e.stopPropagation(); startEditing() }}
           className="flex items-center gap-1 text-xs mt-1"
           style={{ color: 'var(--muted)', opacity: 0.4 }}
           title="Edit note"
@@ -2687,13 +2766,14 @@ function TieredEntries({
 
 function SortableTierRankedEntry({
   entry, color, editMode, isAdmin, isOwner, onDelete, onMoveTier, tiers,
-  posters, onEntryClick, commentCounts, entryReactions, selectedEntryId,
+  posters, onEntryClick, commentCounts, entryReactions, selectedEntryId, saveEntryField,
 }: {
   entry: ListEntry; color: string; editMode: boolean; isAdmin: boolean; isOwner: boolean
   onDelete?: (id: string) => void; onMoveTier?: (entryId: string, tierId: string) => void
   tiers: Tier[]; posters: Record<string, PosterInfo>; onEntryClick?: (e: ListEntry) => void
   commentCounts: Record<string, number>; entryReactions: Record<string, Record<string, number>>
   selectedEntryId: string | null
+  saveEntryField?: (id: string, field: string, value: string | number) => Promise<void>
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: entry.id })
   const info = posters[entry.id]
@@ -2743,6 +2823,16 @@ function SortableTierRankedEntry({
             <ExpandableNotes value={entry.notes} />
           </div>
         )}
+        {editMode && saveEntryField && (
+          <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+            <ExpandableNotes
+              value={entry.notes ?? ''}
+              onSave={(v) => saveEntryField(entry.id, 'notes', v)}
+              editable
+              placeholder="Add a description…"
+            />
+          </div>
+        )}
         {editMode && onMoveTier && (
           <select
             value={entry.tier_id ?? entry.tier ?? ''}
@@ -2770,6 +2860,272 @@ function SortableTierRankedEntry({
   )
 }
 
+// ─── TierRankedPosterGrid ─────────────────────────────────────────────────────
+
+const TIER_GRID_COLS = 4
+const TIER_REACTION_EMOJIS = ['🔥', '❤️', '😮', '😂', '👏']
+
+function TierRankedPosterGrid({
+  entries,
+  posters,
+  entryReactions,
+  commentCounts,
+  visitorId,
+  onEntryClick,
+}: {
+  entries: ListEntry[]
+  posters: Record<string, PosterInfo>
+  entryReactions: Record<string, Record<string, number>>
+  commentCounts: Record<string, number>
+  visitorId: string
+  onEntryClick?: (entry: ListEntry) => void
+}) {
+  const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null)
+  const [expandedReactions, setExpandedReactions] = useState<Record<string, { emoji: string; count: number; reacted: boolean }[]>>({})
+
+  const rows: ListEntry[][] = []
+  for (let i = 0; i < entries.length; i += TIER_GRID_COLS) {
+    rows.push(entries.slice(i, i + TIER_GRID_COLS))
+  }
+
+  async function handleExpandClick(entry: ListEntry) {
+    if (expandedEntryId === entry.id) {
+      setExpandedEntryId(null)
+      return
+    }
+    setExpandedEntryId(entry.id)
+    if (!expandedReactions[entry.id]) {
+      const { data } = await supabase
+        .from('entry_reactions')
+        .select('emoji, visitor_id')
+        .eq('list_entry_id', entry.id)
+      if (data) {
+        const counts: Record<string, { count: number; reacted: boolean }> = {}
+        for (const e of TIER_REACTION_EMOJIS) counts[e] = { count: 0, reacted: false }
+        for (const r of data) {
+          if (counts[r.emoji]) {
+            counts[r.emoji].count++
+            if (r.visitor_id === visitorId) counts[r.emoji].reacted = true
+          }
+        }
+        setExpandedReactions(prev => ({
+          ...prev,
+          [entry.id]: TIER_REACTION_EMOJIS.map(e => ({ emoji: e, ...counts[e] })),
+        }))
+      }
+    }
+  }
+
+  async function toggleReaction(entry: ListEntry, emoji: string) {
+    if (!visitorId) return
+    const current = expandedReactions[entry.id]
+    if (!current) return
+    const rx = current.find(r => r.emoji === emoji)!
+    const hasReacted = rx.reacted
+    setExpandedReactions(prev => ({
+      ...prev,
+      [entry.id]: current.map(r =>
+        r.emoji === emoji ? { ...r, count: r.count + (hasReacted ? -1 : 1), reacted: !hasReacted } : r
+      ),
+    }))
+    if (hasReacted) {
+      await supabase.from('entry_reactions').delete()
+        .eq('list_entry_id', entry.id).eq('visitor_id', visitorId).eq('emoji', emoji)
+    } else {
+      await supabase.from('entry_reactions').insert({ list_entry_id: entry.id, visitor_id: visitorId, emoji })
+    }
+  }
+
+  return (
+    <div style={{ paddingTop: 4 }}>
+      {rows.map((row, rowIdx) => {
+        const expandedEntry = expandedEntryId ? (row.find(e => e.id === expandedEntryId) ?? null) : null
+        const isOpen = expandedEntry !== null
+
+        return (
+          <div key={rowIdx} style={{ marginBottom: 14 }}>
+            {/* 4-column poster grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 5, alignItems: 'start' }}>
+              {row.map((entry, colIdx) => {
+                const rank = entry.rank ?? (rowIdx * TIER_GRID_COLS + colIdx + 1)
+                const isTop3 = rank <= 3
+                const src = entry.image_url ?? posters[entry.id]?.poster
+                const plainNotes = notesToPlainText(entry.notes)
+                const hasNotes = plainNotes.trim().length > 0
+                const teaser = plainNotes.slice(0, 55) + (plainNotes.length > 55 ? '…' : '')
+                const isExpanded = expandedEntryId === entry.id
+
+                return (
+                  <div key={entry.id}>
+                    {/* Poster — padding-bottom trick keeps 2/3 ratio regardless of grid stretching */}
+                    <div
+                      style={{ position: 'relative', paddingBottom: '150%', borderRadius: 5, overflow: 'hidden', background: '#111118', cursor: 'pointer' }}
+                      onClick={() => onEntryClick?.(entry)}
+                    >
+                      {src && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={src}
+                          alt=""
+                          loading="lazy"
+                          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      )}
+                      <div
+                        style={{
+                          position: 'absolute', bottom: 5, left: 5,
+                          minWidth: 20, height: 20, borderRadius: 10,
+                          padding: '0 4px',
+                          background: isTop3 ? '#f59e0b' : 'rgba(0,0,0,0.78)',
+                          border: isTop3 ? 'none' : '1px solid rgba(255,255,255,0.25)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 10, fontWeight: 800,
+                          color: isTop3 ? '#0a0a0f' : '#fff',
+                          letterSpacing: '-0.3px',
+                        }}
+                      >
+                        {rank}
+                      </div>
+                    </div>
+
+                    {/* Below poster */}
+                    <div style={{ marginTop: 4, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 11, fontWeight: 500,
+                          color: 'rgba(255,255,255,0.75)',
+                          overflow: 'hidden',
+                          whiteSpace: 'nowrap',
+                          textOverflow: 'ellipsis',
+                          lineHeight: 1.3,
+                          marginBottom: hasNotes ? 2 : 0,
+                        }}
+                      >
+                        {entry.title}
+                      </div>
+                      {hasNotes && !isExpanded && (
+                        <>
+                          <div
+                            style={{
+                              fontSize: 10,
+                              color: 'rgba(255,255,255,0.45)',
+                              fontStyle: 'italic',
+                              overflow: 'hidden',
+                              whiteSpace: 'nowrap',
+                              textOverflow: 'ellipsis',
+                              lineHeight: 1.4,
+                              marginBottom: 2,
+                            }}
+                          >
+                            {teaser}
+                          </div>
+                          <button
+                            onClick={(ev) => { ev.stopPropagation(); handleExpandClick(entry) }}
+                            style={{
+                              fontSize: 10, color: '#f59e0b',
+                              background: 'none', border: 'none',
+                              cursor: 'pointer', padding: 0,
+                            }}
+                          >
+                            read more
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Expanding description card */}
+            <div
+              style={{
+                overflow: 'hidden',
+                maxHeight: isOpen ? 900 : 0,
+                transition: 'max-height 250ms ease',
+                marginTop: isOpen ? 8 : 0,
+              }}
+            >
+              {expandedEntry && (() => {
+                const doc = parseNotes(expandedEntry.notes ?? '')
+                const html = doc ? tiptapToHtml(doc) : (expandedEntry.notes ?? '')
+                const reactions = expandedReactions[expandedEntry.id]
+                  ?? TIER_REACTION_EMOJIS.map(e => ({ emoji: e, count: entryReactions[expandedEntry.id]?.[e] ?? 0, reacted: false }))
+                const commentCount = commentCounts[expandedEntry.id] ?? 0
+
+                return (
+                  <div
+                    style={{
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '0.5px solid rgba(255,255,255,0.08)',
+                      borderRadius: 8,
+                      padding: 16,
+                      position: 'relative',
+                    }}
+                  >
+                    <button
+                      onClick={() => setExpandedEntryId(null)}
+                      style={{
+                        position: 'absolute', top: 10, right: 12,
+                        color: 'rgba(255,255,255,0.35)', fontSize: 13, lineHeight: 1,
+                        background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                      }}
+                    >✕</button>
+
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 10, paddingRight: 24 }}>
+                      {expandedEntry.title}
+                    </div>
+
+                    <div
+                      className="entry-notes"
+                      style={{ fontSize: 13, marginBottom: 14 }}
+                      dangerouslySetInnerHTML={{ __html: html }}
+                    />
+
+                    {/* Reactions */}
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+                      {reactions.map(r => (
+                        <button
+                          key={r.emoji}
+                          onClick={() => toggleReaction(expandedEntry, r.emoji)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 4, fontSize: 13,
+                            color: r.reacted ? '#f59e0b' : 'rgba(255,255,255,0.5)',
+                            background: 'none', border: 'none',
+                            cursor: visitorId ? 'pointer' : 'default', padding: 0,
+                          }}
+                        >
+                          <span>{r.emoji}</span>
+                          {r.count > 0 && (
+                            <span style={{ fontSize: 12, color: r.reacted ? '#f59e0b' : 'rgba(255,255,255,0.4)' }}>
+                              {r.count}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Comment count → opens drawer */}
+                    <button
+                      onClick={() => onEntryClick?.(expandedEntry)}
+                      style={{
+                        fontSize: 12, color: 'rgba(255,255,255,0.35)',
+                        background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                      }}
+                    >
+                      💬 {commentCount > 0 ? `${commentCount} comment${commentCount === 1 ? '' : 's'}` : 'Leave a comment'}
+                    </button>
+                  </div>
+                )
+              })()}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function TierRankedEntries({
   entries,
   tiers: tierData,
@@ -2787,6 +3143,7 @@ function TierRankedEntries({
   commentCounts = {},
   entryReactions = {},
   selectedEntryId,
+  visitorId = '',
 }: {
   entries: ListEntry[]
   tiers: Tier[]
@@ -2804,6 +3161,7 @@ function TierRankedEntries({
   commentCounts?: Record<string, number>
   entryReactions?: Record<string, Record<string, number>>
   selectedEntryId?: string | null
+  visitorId?: string
 }) {
   const fallbackSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
   const activeSensors = sensors ?? fallbackSensors
@@ -2860,6 +3218,7 @@ function TierRankedEntries({
                   commentCounts={commentCounts}
                   entryReactions={entryReactions}
                   selectedEntryId={selectedEntryId ?? null}
+                  saveEntryField={saveEntryField}
                 />
               ))}
             </div>
@@ -2901,15 +3260,21 @@ function TierRankedEntries({
                         commentCounts={commentCounts}
                         entryReactions={entryReactions}
                         selectedEntryId={selectedEntryId ?? null}
+                        saveEntryField={saveEntryField}
                       />
                     ))}
                   </div>
                 </SortableContext>
               </DndContext>
               ) : (
-                <div style={{ margin: '0 -16px' }}>
-                  <RankedPosterGrid entries={tierEntries} posters={posters} onEntryClick={(e) => onEntryClick?.(e)} />
-                </div>
+                <TierRankedPosterGrid
+                  entries={tierEntries}
+                  posters={posters}
+                  entryReactions={entryReactions ?? {}}
+                  commentCounts={commentCounts ?? {}}
+                  visitorId={visitorId}
+                  onEntryClick={(e) => onEntryClick?.(e)}
+                />
               )}
             </div>
           )
@@ -2983,6 +3348,7 @@ function TierRankedEntries({
                       commentCounts={commentCounts}
                       entryReactions={entryReactions}
                       selectedEntryId={selectedEntryId ?? null}
+                      saveEntryField={saveEntryField}
                     />
                   ))}
                 </div>

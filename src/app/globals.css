@@ -42,6 +42,16 @@ body {
 .rich-notes ol { list-style: decimal; padding-left: 1.2em; margin: 0.3em 0; }
 .rich-notes li { margin: 0.15em 0; }
 
+/* Entry notes — polished "film review" rendering for drawer / full view */
+.entry-notes { color: rgba(255,255,255,0.75); font-size: 14px; line-height: 1.7; }
+.entry-notes p { margin: 0 0 0.75em 0; }
+.entry-notes p:last-child { margin-bottom: 0; }
+.entry-notes strong { color: rgba(255,255,255,0.95); font-weight: 600; }
+.entry-notes em { color: rgba(255,255,255,0.7); font-style: italic; }
+.entry-notes ul { list-style: disc; padding-left: 16px; margin: 0.4em 0; }
+.entry-notes ol { list-style: decimal; padding-left: 16px; margin: 0.4em 0; }
+.entry-notes li { margin: 0.2em 0; color: rgba(255,255,255,0.75); }
+
 /* Rich text editor inner content — .ProseMirror is always on the contenteditable div */
 .ProseMirror { outline: none; }
 .ProseMirror p { margin: 0 0 0.4em 0; }

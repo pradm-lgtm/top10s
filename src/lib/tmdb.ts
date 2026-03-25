@@ -34,11 +34,12 @@ async function searchTmdb(
   const results = (data.results ?? []) as { poster_path?: string; vote_count: number; id: number; name?: string; title?: string }[]
   const withPoster = results.filter((r) => r.poster_path)
   const queryLower = query.toLowerCase()
-  // Prefer exact title match before falling back to highest vote_count
-  const exact = withPoster.find(
+  // Among exact title matches pick the most popular; fall back to overall most popular
+  const exactMatches = withPoster.filter(
     (r) => (r.name ?? r.title ?? '').toLowerCase() === queryLower
   )
-  const best = exact ?? withPoster.sort((a, b) => b.vote_count - a.vote_count)[0]
+  const pool = exactMatches.length > 0 ? exactMatches : withPoster
+  const best = pool.sort((a, b) => b.vote_count - a.vote_count)[0]
   return {
     poster: best?.poster_path ? `${TMDB_IMAGE_BASE}${best.poster_path}` : null,
     tmdbId: best?.id ?? null,

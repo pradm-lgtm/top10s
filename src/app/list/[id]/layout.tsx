@@ -37,7 +37,7 @@ export async function generateMetadata(
     ? `${topTitles}${extra}`
     : `A ${list.category === 'movies' ? 'movies' : 'TV shows'} list on Ranked`
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://top10s.vercel.app'
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? ''
   const ogImageUrl = `${siteUrl}/api/og?id=${id}`
 
   return {
