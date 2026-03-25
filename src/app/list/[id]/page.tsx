@@ -2971,63 +2971,49 @@ function TierRankedPosterGrid({
                           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                         />
                       )}
-                      <div
-                        style={{
-                          position: 'absolute', bottom: 5, left: 5,
-                          minWidth: 20, height: 20, borderRadius: 10,
-                          padding: '0 4px',
-                          background: isTop3 ? '#f59e0b' : 'rgba(0,0,0,0.78)',
-                          border: isTop3 ? 'none' : '1px solid rgba(255,255,255,0.25)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 10, fontWeight: 800,
-                          color: isTop3 ? '#0a0a0f' : '#fff',
-                          letterSpacing: '-0.3px',
-                        }}
-                      >
-                        {rank}
-                      </div>
                     </div>
 
                     {/* Below poster */}
                     <div style={{ marginTop: 4, minWidth: 0 }}>
+                      {/* Rank + title on same line */}
                       <div
                         style={{
-                          fontSize: 11, fontWeight: 500,
-                          color: 'rgba(255,255,255,0.75)',
+                          display: 'flex', alignItems: 'baseline', gap: 4,
                           overflow: 'hidden',
-                          whiteSpace: 'nowrap',
-                          textOverflow: 'ellipsis',
                           lineHeight: 1.3,
                           marginBottom: hasNotes ? 2 : 0,
                         }}
                       >
-                        {entry.title}
+                        <span style={{ fontSize: 12, fontWeight: isTop3 ? 700 : 600, color: isTop3 ? '#f59e0b' : 'rgba(255,255,255,0.4)', flexShrink: 0 }}>{rank}</span>
+                        <span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.75)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{entry.title}</span>
                       </div>
-                      {hasNotes && !isExpanded && (
+                      {hasNotes && (
                         <>
-                          <div
-                            style={{
-                              fontSize: 10,
-                              color: 'rgba(255,255,255,0.45)',
-                              fontStyle: 'italic',
-                              overflow: 'hidden',
-                              whiteSpace: 'nowrap',
-                              textOverflow: 'ellipsis',
-                              lineHeight: 1.4,
-                              marginBottom: 2,
-                            }}
-                          >
-                            {teaser}
-                          </div>
+                          {!isExpanded && (
+                            <div
+                              style={{
+                                fontSize: 10,
+                                color: 'rgba(255,255,255,0.45)',
+                                fontStyle: 'italic',
+                                overflow: 'hidden',
+                                whiteSpace: 'nowrap',
+                                textOverflow: 'ellipsis',
+                                lineHeight: 1.4,
+                                marginBottom: 2,
+                              }}
+                            >
+                              {teaser}
+                            </div>
+                          )}
                           <button
                             onClick={(ev) => { ev.stopPropagation(); handleExpandClick(entry) }}
                             style={{
-                              fontSize: 10, color: '#f59e0b',
+                              fontSize: 11, color: '#f59e0b',
                               background: 'none', border: 'none',
                               cursor: 'pointer', padding: 0,
                             }}
                           >
-                            read more
+                            {isExpanded ? '… less' : '… more'}
                           </button>
                         </>
                       )}
@@ -3060,19 +3046,9 @@ function TierRankedPosterGrid({
                       border: '0.5px solid rgba(255,255,255,0.08)',
                       borderRadius: 8,
                       padding: 16,
-                      position: 'relative',
                     }}
                   >
-                    <button
-                      onClick={() => setExpandedEntryId(null)}
-                      style={{
-                        position: 'absolute', top: 10, right: 12,
-                        color: 'rgba(255,255,255,0.35)', fontSize: 13, lineHeight: 1,
-                        background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                      }}
-                    >✕</button>
-
-                    <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 10, paddingRight: 24 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 10 }}>
                       {expandedEntry.title}
                     </div>
 

@@ -78,7 +78,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function signInWithGoogle() {
-    const raw = process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    const raw = isLocalhost ? window.location.origin : (process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin)
     const base = raw.startsWith('http') ? raw : `https://${raw}`
     await supabase.auth.signInWithOAuth({
       provider: 'google',
