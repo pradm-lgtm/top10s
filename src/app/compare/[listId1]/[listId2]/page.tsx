@@ -174,21 +174,21 @@ function EntryRow({
         opacity: matched ? 1 : 0.4,
       }}
     >
-      {/* Rank or tier badge */}
+      {/* Tier badge or rank */}
       <div className="shrink-0 w-14 flex justify-end">
-        {hasRank ? (
-          <span
-            className="text-xs tabular-nums"
-            style={{ color: (entry.rank ?? 0) <= 3 ? accentColor : 'var(--muted)', fontWeight: (entry.rank ?? 0) <= 3 ? 700 : 500 }}
-          >
-            {entry.rank}
-          </span>
-        ) : tierLabel ? (
+        {tierLabel ? (
           <span
             className="text-[10px] px-1.5 py-0.5 rounded font-medium truncate max-w-[56px]"
             style={{ background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)' }}
           >
             {tierLabel}
+          </span>
+        ) : hasRank ? (
+          <span
+            className="text-xs tabular-nums"
+            style={{ color: (entry.rank ?? 0) <= 3 ? accentColor : 'var(--muted)', fontWeight: (entry.rank ?? 0) <= 3 ? 700 : 500 }}
+          >
+            {entry.rank}
           </span>
         ) : null}
       </div>
@@ -316,22 +316,34 @@ export default function ComparePage() {
     )
   }
 
-  // Tier label lookups
+  // Tier lookup maps
   const tierMap1 = new Map(tiers1.map(t => [t.id, t.label]))
-  const tierByLabel1 = new Map(tiers1.map(t => [t.label, t.id]))
+  const tierPos1 = new Map(tiers1.map(t => [t.id, t.position]))
+  const tierByLabel1 = new Map(tiers1.map(t => [t.label, t]))
   const tierMap2 = new Map(tiers2.map(t => [t.id, t.label]))
-  const tierByLabel2 = new Map(tiers2.map(t => [t.label, t.id]))
+  const tierPos2 = new Map(tiers2.map(t => [t.id, t.position]))
+  const tierByLabel2 = new Map(tiers2.map(t => [t.label, t]))
 
-  function getTierLabel1(entry: ListEntry): string | null {
-    if (entry.tier_id) return tierMap1.get(entry.tier_id) ?? entry.tier ?? null
-    if (entry.tier) return tierByLabel1.has(entry.tier) ? entry.tier : entry.tier
+  function getTierLabel(entry: ListEntry, tMap: Map<string, string>, tByLabel: Map<string, Tier>): string | null {
+    if (entry.tier_id) return tMap.get(entry.tier_id) ?? entry.tier ?? null
+    if (entry.tier && tByLabel.has(entry.tier)) return entry.tier
+    if (entry.tier) return entry.tier
     return null
   }
-  function getTierLabel2(entry: ListEntry): string | null {
-    if (entry.tier_id) return tierMap2.get(entry.tier_id) ?? entry.tier ?? null
-    if (entry.tier) return tierByLabel2.has(entry.tier) ? entry.tier : entry.tier
-    return null
+
+  function sortByTierThenRank(entries: ListEntry[], tPos: Map<string, number>, tByLabel: Map<string, Tier>): ListEntry[] {
+    return [...entries].sort((a, b) => {
+      const posA = a.tier_id ? (tPos.get(a.tier_id) ?? 999) : (a.tier ? (tByLabel.get(a.tier)?.position ?? 999) : 999)
+      const posB = b.tier_id ? (tPos.get(b.tier_id) ?? 999) : (b.tier ? (tByLabel.get(b.tier)?.position ?? 999) : 999)
+      if (posA !== posB) return posA - posB
+      return (a.rank ?? 9999) - (b.rank ?? 9999)
+    })
   }
+
+  const hasTiers1 = tiers1.length > 0
+  const hasTiers2 = tiers2.length > 0
+  const sorted1 = hasTiers1 ? sortByTierThenRank(entries1, tierPos1, tierByLabel1) : entries1
+  const sorted2 = hasTiers2 ? sortByTierThenRank(entries2, tierPos2, tierByLabel2) : entries2
 
   // Compute matches
   const norm1 = new Map(entries1.map(e => [normalizeTitle(e.title), e]))
@@ -360,26 +372,23 @@ export default function ComparePage() {
         {/* Page title */}
         <div className="mb-8">
           <h1 className="text-xl font-bold leading-snug">
-            {owner1Label} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>vs.</span> {owner2Label}
+            {list1.title} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>vs.</span> {list2.title}
           </h1>
-          <p className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>
-            {list1.title} · {list2.title}
-          </p>
         </div>
 
         {/* Overlap score card */}
-        <div className="rounded-xl p-5 mb-8" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <div className="flex items-baseline gap-3 mb-1">
+        <div className="rounded-xl p-5 mb-8 text-center" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div className="flex items-baseline justify-center gap-3 mb-1">
             <span className="text-4xl font-bold" style={{ color: 'var(--accent)' }}>{matchCount}</span>
             <span className="text-sm" style={{ color: 'var(--muted)' }}>
               {matchCount === 1 ? 'title' : 'titles'} in common
-              {totalUnique > 0 && <span className="ml-1 opacity-50">/ {totalUnique} unique</span>}
+              {totalUnique > 0 && <span className="ml-1" style={{ color: 'var(--muted)' }}>/ {totalUnique} unique</span>}
             </span>
           </div>
 
           {/* Matched title thumbnails */}
           {matchCount > 0 && (
-            <div className="flex flex-wrap gap-2 mt-3">
+            <div className="flex flex-wrap justify-center gap-2 mt-3">
               {matchedEntries1.map(e => {
                 const poster = e.image_url ?? posters1[e.id] ?? null
                 return (
@@ -453,13 +462,13 @@ export default function ComparePage() {
               </div>
             </div>
             <div className="space-y-0.5">
-              {entries1.map(entry => (
+              {sorted1.map(entry => (
                 <EntryRow
                   key={entry.id}
                   entry={entry}
                   matched={matchedKeys.has(normalizeTitle(entry.title))}
                   poster={entry.image_url ?? posters1[entry.id] ?? null}
-                  tierLabel={getTierLabel1(entry)}
+                  tierLabel={getTierLabel(entry, tierMap1, tierByLabel1)}
                 />
               ))}
             </div>
@@ -484,13 +493,13 @@ export default function ComparePage() {
               </div>
             </div>
             <div className="space-y-0.5">
-              {entries2.map(entry => (
+              {sorted2.map(entry => (
                 <EntryRow
                   key={entry.id}
                   entry={entry}
                   matched={matchedKeys.has(normalizeTitle(entry.title))}
                   poster={entry.image_url ?? posters2[entry.id] ?? null}
-                  tierLabel={getTierLabel2(entry)}
+                  tierLabel={getTierLabel(entry, tierMap2, tierByLabel2)}
                 />
               ))}
             </div>
