@@ -37,7 +37,8 @@ export async function generateMetadata(
     ? `${topTitles}${extra}`
     : `A ${list.category === 'movies' ? 'movies' : 'TV shows'} list on Ranked`
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? ''
+  const rawSite = process.env.NEXT_PUBLIC_SITE_URL ?? 'rankedhq.app'
+  const siteUrl = rawSite.startsWith('http') ? rawSite : `https://${rawSite}`
   const ogImageUrl = `${siteUrl}/api/og?id=${id}`
 
   return {

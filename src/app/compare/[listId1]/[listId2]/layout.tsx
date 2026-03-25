@@ -21,8 +21,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const title = `${name1} vs ${name2} — ${list1.title}`
   const description = `Compare "${list1.title}" by ${name1} against "${list2.title}" by ${name2} on Ranked.`
-  const rawSite = process.env.NEXT_PUBLIC_SITE_URL ?? ''
-  const siteUrl = rawSite.startsWith('http') ? rawSite : rawSite ? `https://${rawSite}` : ''
+  const rawSite = process.env.NEXT_PUBLIC_SITE_URL ?? 'rankedhq.app'
+  const siteUrl = rawSite.startsWith('http') ? rawSite : `https://${rawSite}`
   const url = `${siteUrl}/compare/${listId1}/${listId2}`
   const ogImage = `${siteUrl}/api/og/compare?id1=${listId1}&id2=${listId2}`
 
