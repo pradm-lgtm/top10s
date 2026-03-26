@@ -703,21 +703,20 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       >
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link
-            href={fromCompare ?? '/home'}
-            className="flex items-center gap-2 text-sm transition-colors group"
+            href="/home"
+            className="flex items-center text-sm transition-colors group"
             style={{ color: 'var(--muted)' }}
             onClick={(e) => {
               if (editMode) {
                 e.preventDefault()
                 if (confirm('Leave without saving? Your unsaved changes will be discarded.')) {
                   cancelEdit()
-                  router.push(fromCompare ?? '/home')
+                  router.push('/home')
                 }
               }
             }}
           >
-            <span>←</span>
-            <span className="font-bold" style={{ color: 'var(--foreground)' }}>{fromCompare ? 'Compare' : 'Ranked'}</span>
+            <span className="font-bold" style={{ color: 'var(--foreground)' }}>Ranked</span>
           </Link>
 
           <div className="flex items-center gap-2">
@@ -996,6 +995,20 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
           )}
         </div>
       </div>
+
+      {fromCompare && (
+        <div className="border-b" style={{ background: 'rgba(232,197,71,0.06)', borderColor: 'rgba(232,197,71,0.15)' }}>
+          <div className="max-w-3xl mx-auto px-4 py-2.5">
+            <Link
+              href={fromCompare}
+              className="inline-flex items-center gap-1.5 text-sm font-medium"
+              style={{ color: 'rgba(232,197,71,0.75)' }}
+            >
+              ← Back to comparison
+            </Link>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-3xl mx-auto px-4 pb-20 space-y-12">
         {/* Entries */}
