@@ -821,6 +821,15 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         }}
       >
         <div className="max-w-3xl mx-auto">
+          {fromCompare && (
+            <Link
+              href={fromCompare}
+              className="inline-flex items-center gap-1.5 text-sm mb-6"
+              style={{ color: 'var(--muted)' }}
+            >
+              ← Back to comparison
+            </Link>
+          )}
           <div
             className="text-xs tracking-[0.3em] uppercase font-medium mb-3"
             style={{ color: accentColor }}
@@ -995,20 +1004,6 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
           )}
         </div>
       </div>
-
-      {fromCompare && (
-        <div className="border-b" style={{ background: 'rgba(232,197,71,0.06)', borderColor: 'rgba(232,197,71,0.15)' }}>
-          <div className="max-w-3xl mx-auto px-4 py-2.5">
-            <Link
-              href={fromCompare}
-              className="inline-flex items-center gap-1.5 text-sm font-medium"
-              style={{ color: 'rgba(232,197,71,0.75)' }}
-            >
-              ← Back to comparison
-            </Link>
-          </div>
-        </div>
-      )}
 
       <main className="max-w-3xl mx-auto px-4 pb-20 space-y-12">
         {/* Entries */}
