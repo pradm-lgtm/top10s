@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use, useRef } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { fetchPosters } from '@/lib/tmdb'
 import { useAdmin } from '@/context/admin'
@@ -86,6 +86,8 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [showShare, setShowShare] = useState(false)
   const [showCompare, setShowCompare] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const fromCompare = searchParams.get('from')
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -701,7 +703,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       >
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link
-            href="/home"
+            href={fromCompare ?? '/home'}
             className="flex items-center gap-2 text-sm transition-colors group"
             style={{ color: 'var(--muted)' }}
             onClick={(e) => {
@@ -709,13 +711,13 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                 e.preventDefault()
                 if (confirm('Leave without saving? Your unsaved changes will be discarded.')) {
                   cancelEdit()
-                  router.push('/home')
+                  router.push(fromCompare ?? '/home')
                 }
               }
             }}
           >
             <span>←</span>
-            <span className="font-bold" style={{ color: 'var(--foreground)' }}>Ranked</span>
+            <span className="font-bold" style={{ color: 'var(--foreground)' }}>{fromCompare ? 'Compare' : 'Ranked'}</span>
           </Link>
 
           <div className="flex items-center gap-2">

@@ -697,7 +697,7 @@ export default function ComparePage() {
             <div className="flex items-center justify-between mb-4 px-1">
               <div className="flex items-center gap-2">
                 <OwnerChip list={list1} />
-                <Link href={`/list/${id1}`} className="text-xs" style={{ color: 'var(--muted)' }}>View →</Link>
+                <Link href={`/list/${id1}?from=/compare/${id1}/${id2}`} className="text-xs" style={{ color: 'var(--muted)' }}>View →</Link>
                 <button
                   onClick={() => setSwapSlot(1)}
                   className="text-xs px-2 py-0.5 rounded"
@@ -714,7 +714,7 @@ export default function ComparePage() {
                 >
                   ⇄ Swap
                 </button>
-                <Link href={`/list/${id2}`} className="text-xs" style={{ color: 'var(--muted)' }}>View →</Link>
+                <Link href={`/list/${id2}?from=/compare/${id1}/${id2}`} className="text-xs" style={{ color: 'var(--muted)' }}>View →</Link>
                 <OwnerChip list={list2} />
               </div>
             </div>
@@ -817,7 +817,7 @@ export default function ComparePage() {
                     <span className="text-xs truncate hidden sm:block" style={{ color: 'var(--muted)' }}>· {list1.title}</span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Link href={`/list/${id1}`} className="text-xs" style={{ color: 'var(--muted)' }}>View →</Link>
+                    <Link href={`/list/${id1}?from=/compare/${id1}/${id2}`} className="text-xs" style={{ color: 'var(--muted)' }}>View →</Link>
                     <button onClick={() => setSwapSlot(1)} className="text-xs px-2 py-0.5 rounded" style={{ color: 'var(--muted)', border: '1px solid var(--border)' }}>⇄ Swap</button>
                   </div>
                 </div>
@@ -841,7 +841,7 @@ export default function ComparePage() {
                     <span className="text-xs truncate hidden sm:block" style={{ color: 'var(--muted)' }}>· {list2.title}</span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Link href={`/list/${id2}`} className="text-xs" style={{ color: 'var(--muted)' }}>View →</Link>
+                    <Link href={`/list/${id2}?from=/compare/${id1}/${id2}`} className="text-xs" style={{ color: 'var(--muted)' }}>View →</Link>
                     <button onClick={() => setSwapSlot(2)} className="text-xs px-2 py-0.5 rounded" style={{ color: 'var(--muted)', border: '1px solid var(--border)' }}>⇄ Swap</button>
                   </div>
                 </div>
