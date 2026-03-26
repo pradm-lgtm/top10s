@@ -116,7 +116,7 @@ export async function GET(req: NextRequest) {
         <div style={{ display: 'flex', flex: 1, alignItems: 'center', padding: `0 ${PAD}px`, gap: 0 }}>
 
           {/* Left stack — list 1 */}
-          <div style={{ position: 'relative', width: STACK_AREA_W + 16, height: STACK_H + STACK_OFFSET, flexShrink: 0 }}>
+          <div style={{ position: 'relative', width: STACK_AREA_W + 16, height: STACK_H + STACK_OFFSET, flexShrink: 0, display: 'flex' }}>
             {/* Back poster (offset) */}
             <div style={{
               position: 'absolute', top: STACK_OFFSET, left: STACK_OFFSET,
@@ -161,7 +161,7 @@ export async function GET(req: NextRequest) {
           </div>
 
           {/* Right stack — list 2 */}
-          <div style={{ position: 'relative', width: STACK_AREA_W + 16, height: STACK_H + STACK_OFFSET, flexShrink: 0 }}>
+          <div style={{ position: 'relative', width: STACK_AREA_W + 16, height: STACK_H + STACK_OFFSET, flexShrink: 0, display: 'flex' }}>
             {/* Back poster */}
             <div style={{
               position: 'absolute', top: STACK_OFFSET, left: 0,
