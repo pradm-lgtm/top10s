@@ -371,6 +371,12 @@ export default function ComparePage() {
   }
 
   function sortByTierThenRank(entries: ListEntry[], tPos: Map<string, number>, tByLabel: Map<string, Tier>): ListEntry[] {
+    const hasRanks = entries.some(e => e.rank && e.rank > 0)
+    if (hasRanks) {
+      // Tier-ranked list: sort purely by rank — most reliable, avoids DB position issues
+      return [...entries].sort((a, b) => (a.rank ?? 9999) - (b.rank ?? 9999))
+    }
+    // Purely tiered list: sort by tier DB position
     return [...entries].sort((a, b) => {
       const posA = a.tier_id ? (tPos.get(a.tier_id) ?? 999) : (a.tier ? (tByLabel.get(a.tier)?.position ?? 999) : 999)
       const posB = b.tier_id ? (tPos.get(b.tier_id) ?? 999) : (b.tier ? (tByLabel.get(b.tier)?.position ?? 999) : 999)
@@ -449,6 +455,12 @@ export default function ComparePage() {
       seen.get(key)!.rows.push(row)
     }
     return groups.sort((a, b) => {
+      // For tier-ranked lists: sort groups by the minimum rank of their entries.
+      // This is robust against DB position values being out of order.
+      // For purely tiered lists (all ranks null/0) fall back to DB position index.
+      const minRank = (g: TierGroup) => Math.min(...g.rows.map(r => (r.entry1 ?? r.entry2!)?.rank ?? 9999))
+      const rA = minRank(a), rB = minRank(b)
+      if (rA !== 9999 || rB !== 9999) return rA - rB
       const idxA = a.tierLabel != null ? (tierOrderIdx.get(a.tierLabel) ?? 9999) : 9999
       const idxB = b.tierLabel != null ? (tierOrderIdx.get(b.tierLabel) ?? 9999) : 9999
       return idxA - idxB
