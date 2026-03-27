@@ -1627,6 +1627,18 @@ function Step3({
     </div>
   )
 }
+// ─── Weekly prompt title transform ───────────────────────────────────────────
+
+function promptToListTitle(promptText: string): string {
+  // "What are your top 5 horror movies?" → "My Top 5 Horror Movies"
+  const body = promptText
+    .replace(/^what are your top 5 /i, '')
+    .replace(/\?$/, '')
+    .trim()
+  const capitalized = body.replace(/\b\w/g, (c) => c.toUpperCase())
+  return `My Top 5 ${capitalized}`
+}
+
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
 function CreatePageInner() {
@@ -1670,7 +1682,7 @@ function CreatePageInner() {
         const data = JSON.parse(stored) as { week_number: number; prompt_text: string; suggestions: { title: string; poster_url: string | null }[] }
         sessionStorage.removeItem('weekly_prompt_data')
         if (data.week_number === weekNum) {
-          setTitle(data.prompt_text)
+          setTitle(promptToListTitle(data.prompt_text))
           const detected = detectFromTitle(data.prompt_text)
           if (detected.category) setCategory(detected.category)
           if (data.suggestions.length > 0) {
@@ -1694,7 +1706,7 @@ function CreatePageInner() {
     fetch(`/api/weekly-prompt?week=${weekNum}`)
       .then((r) => r.json())
       .then((data) => {
-        setTitle(data.prompt_text ?? '')
+        setTitle(promptToListTitle(data.prompt_text ?? ''))
         const detected = detectFromTitle(data.prompt_text ?? '')
         if (detected.category) setCategory(detected.category)
         setStep(3)

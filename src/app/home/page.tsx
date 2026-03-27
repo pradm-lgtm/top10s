@@ -361,6 +361,7 @@ function PairedCardGrid<T extends RichList>({
 
 export default function HomePage() {
   const { user, profile, signInWithGoogle } = useAuth()
+  const router = useRouter()
   const [lists, setLists] = useState<RichList[]>([])
   const [posters, setPosters] = useState<Record<string, string | null>>({})
   const [loading, setLoading] = useState(true)
@@ -384,12 +385,28 @@ export default function HomePage() {
 
   useEffect(() => { fetchLists() }, [])
 
+  // Show prompt to everyone — visitors included
+  useEffect(() => {
+    const weekKey = `prompt_dismissed_${Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000))}`
+    setPromptDismissed(localStorage.getItem(weekKey) === '1')
+    fetchWeeklyPrompt()
+  }, [])
+
   useEffect(() => {
     if (!user || !profile) return
     fetchFollowingIds()
+    // Re-fetch with alternate-prompt check now that we have a profile
     fetchWeeklyPrompt()
-    const weekKey = `prompt_dismissed_${Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000))}`
-    setPromptDismissed(localStorage.getItem(weekKey) === '1')
+    // Redirect if user just signed in with a pending prompt selection
+    const pending = localStorage.getItem('pending_prompt')
+    if (pending) {
+      localStorage.removeItem('pending_prompt')
+      try {
+        const data = JSON.parse(pending)
+        sessionStorage.setItem('weekly_prompt_data', JSON.stringify(data))
+        router.push(`/create?promptWeek=${data.week_number}`)
+      } catch {}
+    }
   }, [user, profile])
 
   async function fetchFollowingIds() {
@@ -409,19 +426,20 @@ export default function HomePage() {
   }
 
   async function fetchWeeklyPrompt() {
-    if (!profile) return
     try {
       const weekNumber = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000))
-      // Check if user already created a list for this week's prompt
-      const { data: existing } = await supabase
-        .from('lists')
-        .select('id')
-        .eq('owner_id', profile.id)
-        .eq('prompt_week', weekNumber)
-        .limit(1)
-        .maybeSingle()
-
-      const week = existing ? weekNumber + 1 : weekNumber
+      let week = weekNumber
+      // If logged in, skip to next week's prompt if they already made one this week
+      if (profile) {
+        const { data: existing } = await supabase
+          .from('lists')
+          .select('id')
+          .eq('owner_id', profile.id)
+          .eq('prompt_week', weekNumber)
+          .limit(1)
+          .maybeSingle()
+        if (existing) week = weekNumber + 1
+      }
       const res = await fetch(`/api/weekly-prompt?week=${week}`)
       if (res.ok) setWeeklyPrompt(await res.json())
     } catch {}
@@ -594,7 +612,7 @@ export default function HomePage() {
       .map((l) => [l.owner_id!, l.profiles!])
   ).values()].slice(0, 4)
 
-  const showWeeklyPrompt = !!user && !!weeklyPrompt && !promptDismissed
+  const showWeeklyPrompt = !!weeklyPrompt && !promptDismissed
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
@@ -633,6 +651,8 @@ export default function HomePage() {
               <WeeklyPromptCard
                 prompt={weeklyPrompt}
                 onDismiss={dismissPrompt}
+                user={user}
+                onSignIn={signInWithGoogle}
               />
             )}
 
@@ -875,7 +895,17 @@ export default function HomePage() {
 
 // ── Weekly Prompt Card ─────────────────────────────────────────────────────
 
-function WeeklyPromptCard({ prompt, onDismiss }: { prompt: WeeklyPrompt; onDismiss: () => void }) {
+function WeeklyPromptCard({
+  prompt,
+  onDismiss,
+  user,
+  onSignIn,
+}: {
+  prompt: WeeklyPrompt
+  onDismiss: () => void
+  user: ReturnType<typeof useAuth>['user']
+  onSignIn: () => void
+}) {
   const router = useRouter()
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const hasSuggestions = prompt.suggestions.length > 0
@@ -891,6 +921,12 @@ function WeeklyPromptCard({ prompt, onDismiss }: { prompt: WeeklyPrompt; onDismi
   function startList() {
     const selectedSuggestions = prompt.suggestions.filter((_, i) => selected.has(i))
     const payload = { ...prompt, suggestions: selectedSuggestions }
+    if (!user) {
+      // Persist selections to localStorage so they survive the OAuth redirect
+      localStorage.setItem('pending_prompt', JSON.stringify(payload))
+      onSignIn()
+      return
+    }
     sessionStorage.setItem('weekly_prompt_data', JSON.stringify(payload))
     router.push(`/create?promptWeek=${prompt.week_number}`)
   }
