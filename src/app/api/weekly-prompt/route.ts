@@ -21,22 +21,28 @@ async function fetchPosterForTitle(title: string): Promise<string | null> {
   const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY
   if (!apiKey) return null
 
-  for (const type of ['movie', 'tv']) {
-    try {
-      const res = await fetch(
-        `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(title)}&api_key=${apiKey}&page=1`
-      )
-      if (!res.ok) continue
-      const data = await res.json()
-      const best = ((data.results ?? []) as { poster_path?: string; vote_count: number }[])
-        .filter((r) => r.poster_path)
-        .sort((a, b) => b.vote_count - a.vote_count)[0]
-      if (best?.poster_path) return `https://image.tmdb.org/t/p/w185${best.poster_path}`
-    } catch {
-      // continue to next type
-    }
-  }
-  return null
+  const results = await Promise.all(
+    ['movie', 'tv'].map(async (type) => {
+      try {
+        const res = await fetch(
+          `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(title)}&api_key=${apiKey}&page=1`
+        )
+        if (!res.ok) return null
+        const data = await res.json()
+        return ((data.results ?? []) as { poster_path?: string; vote_count: number }[])
+          .filter((r) => r.poster_path)
+          .sort((a, b) => b.vote_count - a.vote_count)[0] ?? null
+      } catch {
+        return null
+      }
+    })
+  )
+
+  const best = results
+    .filter((r): r is { poster_path: string; vote_count: number } => !!r?.poster_path)
+    .sort((a, b) => b.vote_count - a.vote_count)[0]
+
+  return best ? `https://image.tmdb.org/t/p/w185${best.poster_path}` : null
 }
 
 // GET /api/weekly-prompt?week=<number>
