@@ -387,14 +387,19 @@ export default function HomePage() {
 
   // Show prompt to everyone — visitors included
   useEffect(() => {
-    const weekKey = `prompt_dismissed_${Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000))}`
-    setPromptDismissed(localStorage.getItem(weekKey) === '1')
+    const weekNumber = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000))
+    const visitorKey = `prompt_dismissed_${weekNumber}`
+    setPromptDismissed(localStorage.getItem(visitorKey) === '1')
     fetchWeeklyPrompt()
   }, [])
 
   useEffect(() => {
     if (!user || !profile) return
     fetchFollowingIds()
+    // Re-check dismissal with user-specific key so accounts don't bleed into each other
+    const weekNumber = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000))
+    const userKey = `prompt_dismissed_${weekNumber}_${user.id}`
+    setPromptDismissed(localStorage.getItem(userKey) === '1')
     // Re-fetch with alternate-prompt check now that we have a profile
     fetchWeeklyPrompt()
     // Redirect if user just signed in with a pending prompt selection
@@ -473,8 +478,11 @@ export default function HomePage() {
   }
 
   function dismissPrompt() {
-    const weekKey = `prompt_dismissed_${Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000))}`
-    localStorage.setItem(weekKey, '1')
+    const weekNumber = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000))
+    const key = user
+      ? `prompt_dismissed_${weekNumber}_${user.id}`
+      : `prompt_dismissed_${weekNumber}`
+    localStorage.setItem(key, '1')
     setPromptDismissed(true)
   }
 
