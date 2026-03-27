@@ -5,8 +5,20 @@ export const runtime = 'nodejs'
 
 const W = 1200
 const H = 630
+const CELL_W = 400  // W / 3
+const CELL_H = 315  // H / 2
 const accent = '#e8c547'
 const bg = '#0a0a0a'
+
+// Grid positions for 3×2 layout
+const CELLS = [
+  { left: 0,    top: 0    },
+  { left: 400,  top: 0    },
+  { left: 800,  top: 0    },
+  { left: 0,    top: 315  },
+  { left: 400,  top: 315  },
+  { left: 800,  top: 315  },
+]
 
 async function fetchAsBase64(url: string): Promise<string | null> {
   try {
@@ -26,7 +38,7 @@ async function fetchAsBase64(url: string): Promise<string | null> {
 export async function GET() {
   const supabase = getAdminSupabase()
 
-  // Get 6 diverse poster images from recent entries that have images
+  // Get 6 diverse posters from recent entries that have images
   const { data: entries } = await supabase
     .from('list_entries')
     .select('list_id, image_url')
@@ -34,7 +46,6 @@ export async function GET() {
     .order('created_at', { ascending: false })
     .limit(40)
 
-  // Dedupe by list_id, take 6
   const seen = new Set<string>()
   const posterUrls: string[] = []
   for (const e of entries ?? []) {
@@ -43,17 +54,17 @@ export async function GET() {
       posterUrls.push(e.image_url)
     }
   }
-  while (posterUrls.length < 6) posterUrls.push('')
+
+  // Tile if fewer than 6
+  const filled: string[] = Array.from({ length: 6 }, (_, i) =>
+    posterUrls.length > 0 ? posterUrls[i % posterUrls.length] : ''
+  )
 
   // Fetch all 6 as base64 with a 4s budget
   const posterSrcs = await Promise.race([
-    Promise.all(posterUrls.map((url) => url ? fetchAsBase64(url) : Promise.resolve(null))),
+    Promise.all(filled.map((url) => url ? fetchAsBase64(url) : Promise.resolve(null))),
     new Promise<null[]>((resolve) => setTimeout(() => resolve([null, null, null, null, null, null]), 4000)),
   ])
-
-  // 3 cols × 2 rows
-  const CELL_W = W / 3   // 400
-  const CELL_H = H / 2   // 315
 
   return new ImageResponse(
     (
@@ -68,74 +79,90 @@ export async function GET() {
           fontFamily: 'system-ui, -apple-system, sans-serif',
         }}
       >
-        {/* ── Background poster grid ── */}
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexWrap: 'wrap' }}>
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <div
-              key={i}
-              style={{
-                width: CELL_W,
-                height: CELL_H,
-                overflow: 'hidden',
-                display: 'flex',
-                opacity: 0.22,
-              }}
-            >
-              {posterSrcs[i] ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={posterSrcs[i]!}
-                  alt=""
-                  style={{ width: CELL_W, height: CELL_H, objectFit: 'cover' }}
-                />
-              ) : (
-                <div style={{ width: CELL_W, height: CELL_H, background: '#111118', display: 'flex' }} />
-              )}
-            </div>
-          ))}
-        </div>
+        {/* ── Poster grid: 3×2, each cell absolutely positioned ── */}
+        {CELLS.map((pos, i) => (
+          <div
+            key={i}
+            style={{
+              position: 'absolute',
+              left: pos.left,
+              top: pos.top,
+              width: CELL_W,
+              height: CELL_H,
+              overflow: 'hidden',
+              display: 'flex',
+            }}
+          >
+            {posterSrcs[i] ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={posterSrcs[i]!}
+                alt=""
+                style={{ width: CELL_W, height: CELL_H, objectFit: 'cover' }}
+              />
+            ) : (
+              <div style={{ width: CELL_W, height: CELL_H, background: '#111118', display: 'flex' }} />
+            )}
+          </div>
+        ))}
 
-        {/* ── Dark vignette overlay ── */}
+        {/* ── Dark overlay covering full canvas ── */}
         <div
           style={{
             position: 'absolute',
-            inset: 0,
-            background: 'radial-gradient(ellipse 70% 70% at 50% 50%, rgba(10,10,10,0.65) 0%, rgba(10,10,10,0.92) 100%)',
+            top: 0,
+            left: 0,
+            width: W,
+            height: H,
+            background: 'rgba(0,0,0,0.65)',
             display: 'flex',
           }}
         />
 
         {/* ── Gold top accent bar ── */}
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: accent, display: 'flex' }} />
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: W,
+            height: 3,
+            background: accent,
+            display: 'flex',
+          }}
+        />
 
         {/* ── Centered content ── */}
         <div
           style={{
             position: 'absolute',
-            inset: 0,
+            top: 0,
+            left: 0,
+            width: W,
+            height: H,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 0,
           }}
         >
-          {/* Bars icon */}
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 7, marginBottom: 28 }}>
-            <div style={{ width: 18, height: 52, borderRadius: 4, background: accent }} />
-            <div style={{ width: 18, height: 37, borderRadius: 4, background: accent }} />
-            <div style={{ width: 18, height: 24, borderRadius: 4, background: accent }} />
+          {/* Descending bars icon */}
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, marginBottom: 24 }}>
+            <div style={{ width: 18, height: 52, borderRadius: 4, background: accent, display: 'flex' }} />
+            <div style={{ width: 18, height: 37, borderRadius: 4, background: accent, display: 'flex' }} />
+            <div style={{ width: 18, height: 24, borderRadius: 4, background: accent, display: 'flex' }} />
           </div>
 
           {/* Wordmark */}
           <div
             style={{
-              color: accent,
-              fontSize: 80,
+              color: '#ffffff',
+              fontSize: 88,
               fontWeight: 800,
-              letterSpacing: 18,
+              letterSpacing: 20,
               lineHeight: 1,
               marginBottom: 20,
+              display: 'flex',
             }}
           >
             RANKED
@@ -144,10 +171,11 @@ export async function GET() {
           {/* Tagline */}
           <div
             style={{
-              color: 'rgba(255,255,255,0.55)',
+              color: accent,
               fontSize: 26,
-              fontWeight: 400,
-              letterSpacing: 3,
+              fontWeight: 500,
+              letterSpacing: 4,
+              display: 'flex',
             }}
           >
             Your take. Ranked.
