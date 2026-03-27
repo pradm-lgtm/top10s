@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/context/auth'
 import { NavAuth } from '@/components/NavAuth'
+import { NotificationBell } from '@/components/NotificationBell'
 
 export function AppHeader() {
   const { user, profile } = useAuth()
@@ -70,6 +71,7 @@ export function AppHeader() {
           >
             + Create
           </button>
+          <NotificationBell />
           <NavAuth />
         </div>
       </div>

@@ -25,8 +25,24 @@ export type List = {
   featured: boolean
   source_label: string | null
   source_url: string | null
+  prompt_week: number | null
   created_at: string
   profiles?: { username: string; display_name: string | null; avatar_url: string | null } | null
+}
+
+export type Notification = {
+  id: string
+  user_id: string
+  type: 'new_follower' | 'new_comment' | 'new_reaction' | 'new_list_from_following'
+  actor_id: string | null
+  list_id: string | null
+  comment_id: string | null
+  read: boolean
+  created_at: string
+  // Enriched by GET /api/notifications
+  actor_name?: string
+  actor_username?: string | null
+  list_title?: string | null
 }
 
 export type Tier = {

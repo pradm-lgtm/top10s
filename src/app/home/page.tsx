@@ -9,29 +9,57 @@ import { AppHeader } from '@/components/AppHeader'
 import { useAuth } from '@/context/auth'
 import type { List, ListEntry } from '@/types'
 
-type OwnerInfo = { username: string; display_name: string | null; avatar_url: string | null }
+type OwnerInfo = { id: string; username: string; display_name: string | null; avatar_url: string | null }
 type RichList = List & { entries: ListEntry[]; profiles: OwnerInfo | null; reactionCount: number; commentCount: number; reactionEmojis: string[] }
+type WeeklyPrompt = { week_number: number; prompt_text: string; suggestions: { title: string; poster_url: string | null }[] }
 
 // ── Owner chip ─────────────────────────────────────────────────────────────
 
-function OwnerChip({ owner, onClick }: { owner: OwnerInfo; onClick?: (e: React.MouseEvent) => void }) {
+function OwnerChip({
+  owner,
+  onClick,
+  followingIds,
+  onFollowToggle,
+}: {
+  owner: OwnerInfo
+  onClick?: (e: React.MouseEvent) => void
+  followingIds?: Set<string>
+  onFollowToggle?: (userId: string, e: React.MouseEvent) => void
+}) {
   const initial = (owner.display_name ?? owner.username)[0].toUpperCase()
+  const isFollowing = followingIds?.has(owner.id)
   return (
-    <Link href={`/${owner.username}`} onClick={onClick} className="flex items-center gap-1.5 w-fit">
-      {owner.avatar_url ? (
-        <img src={owner.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover shrink-0" loading="lazy" />
-      ) : (
-        <div
-          className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
-          style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+    <div className="flex items-center gap-1.5 w-fit group/chip">
+      <Link href={`/${owner.username}`} onClick={onClick} className="flex items-center gap-1.5">
+        {owner.avatar_url ? (
+          <img src={owner.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover shrink-0" loading="lazy" />
+        ) : (
+          <div
+            className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+            style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+          >
+            {initial}
+          </div>
+        )}
+        <span className="text-xs" style={{ color: 'var(--muted)' }}>
+          {owner.display_name ?? owner.username}
+        </span>
+      </Link>
+      {onFollowToggle && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onFollowToggle(owner.id, e) }}
+          className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold opacity-0 group-hover/chip:opacity-100 sm:opacity-0 sm:group-hover/chip:opacity-100 transition-opacity"
+          style={{
+            background: isFollowing ? 'var(--surface-2)' : 'rgba(232,197,71,0.15)',
+            color: isFollowing ? 'var(--muted)' : 'var(--accent)',
+            border: `1px solid ${isFollowing ? 'var(--border)' : 'rgba(232,197,71,0.3)'}`,
+          }}
+          title={isFollowing ? 'Unfollow' : 'Follow'}
         >
-          {initial}
-        </div>
+          {isFollowing ? '✓' : '+'}
+        </button>
       )}
-      <span className="text-xs" style={{ color: 'var(--muted)' }}>
-        {owner.display_name ?? owner.username}
-      </span>
-    </Link>
+    </div>
   )
 }
 
@@ -100,7 +128,7 @@ function PosterStack({
 
 // ── All-time card ───────────────────────────────────────────────────────────
 
-function AllTimeCard({ list, posters }: { list: RichList; posters: Record<string, string | null> }) {
+function AllTimeCard({ list, posters, followingIds, onFollowToggle }: { list: RichList; posters: Record<string, string | null>; followingIds?: Set<string>; onFollowToggle?: (userId: string, e: React.MouseEvent) => void }) {
   const router = useRouter()
   const isMovie = list.category === 'movies'
   const accent = isMovie ? 'var(--accent)' : '#a78bfa'
@@ -115,7 +143,7 @@ function AllTimeCard({ list, posters }: { list: RichList; posters: Record<string
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = hoverBorder; e.currentTarget.style.boxShadow = hoverShadow }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = '' }}
     >
-      {list.profiles && <OwnerChip owner={list.profiles} onClick={(e) => e.stopPropagation()} />}
+      {list.profiles && <OwnerChip owner={list.profiles} onClick={(e) => e.stopPropagation()} followingIds={followingIds} onFollowToggle={onFollowToggle} />}
 
       <h3 className="font-semibold text-base leading-tight">{list.title}</h3>
 
@@ -172,7 +200,7 @@ function RecentCard({ list, posters }: { list: RichList; posters: Record<string,
 
 // ── Year card ──────────────────────────────────────────────────────────────
 
-function YearCard({ list, posters }: { list: RichList; posters: Record<string, string | null> }) {
+function YearCard({ list, posters, followingIds, onFollowToggle }: { list: RichList; posters: Record<string, string | null>; followingIds?: Set<string>; onFollowToggle?: (userId: string, e: React.MouseEvent) => void }) {
   const router = useRouter()
   const isMovie = list.category === 'movies'
   const accent = isMovie ? 'var(--accent)' : '#a78bfa'
@@ -187,7 +215,7 @@ function YearCard({ list, posters }: { list: RichList; posters: Record<string, s
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = hoverBorder; e.currentTarget.style.boxShadow = hoverShadow }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = '' }}
     >
-      {list.profiles && <OwnerChip owner={list.profiles} onClick={(e) => e.stopPropagation()} />}
+      {list.profiles && <OwnerChip owner={list.profiles} onClick={(e) => e.stopPropagation()} followingIds={followingIds} onFollowToggle={onFollowToggle} />}
       <h3 className="font-semibold text-sm leading-tight">{list.title}</h3>
       <div className="flex items-start gap-3">
         <PosterStack entries={list.entries} size="sm" posters={posters} />
@@ -302,11 +330,15 @@ function PairedCardGrid<T extends RichList>({
   rightList,
   posters,
   Card,
+  followingIds,
+  onFollowToggle,
 }: {
   leftList: T[]
   rightList: T[]
   posters: Record<string, string | null>
-  Card: React.ComponentType<{ list: T; posters: Record<string, string | null> }>
+  Card: React.ComponentType<{ list: T; posters: Record<string, string | null>; followingIds?: Set<string>; onFollowToggle?: (userId: string, e: React.MouseEvent) => void }>
+  followingIds?: Set<string>
+  onFollowToggle?: (userId: string, e: React.MouseEvent) => void
 }) {
   const rowCount = Math.max(leftList.length, rightList.length)
   return (
@@ -314,10 +346,10 @@ function PairedCardGrid<T extends RichList>({
       {Array.from({ length: rowCount }).map((_, i) => (
         <div key={i} className="grid grid-cols-1 sm:grid-cols-2 gap-8">
           <div className="flex flex-col">
-            {leftList[i] && <Card list={leftList[i]} posters={posters} />}
+            {leftList[i] && <Card list={leftList[i]} posters={posters} followingIds={followingIds} onFollowToggle={onFollowToggle} />}
           </div>
           <div className="flex flex-col">
-            {rightList[i] && <Card list={rightList[i]} posters={posters} />}
+            {rightList[i] && <Card list={rightList[i]} posters={posters} followingIds={followingIds} onFollowToggle={onFollowToggle} />}
           </div>
         </div>
       ))}
@@ -328,7 +360,7 @@ function PairedCardGrid<T extends RichList>({
 // ── Main page ───────────────────────────────────────────────────────────────
 
 export default function HomePage() {
-  const { user } = useAuth()
+  const { user, profile, signInWithGoogle } = useAuth()
   const [lists, setLists] = useState<RichList[]>([])
   const [posters, setPosters] = useState<Record<string, string | null>>({})
   const [loading, setLoading] = useState(true)
@@ -337,13 +369,107 @@ export default function HomePage() {
   const [byYearOpen, setByYearOpen] = useState(false)
   const didInitExpand = useRef(false)
 
+  // Following feed
+  const [feedFilter, setFeedFilter] = useState<'everyone' | 'following'>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('home_feed_filter') as 'everyone' | 'following') ?? 'everyone'
+    }
+    return 'everyone'
+  })
+  const [followingIds, setFollowingIds] = useState<Set<string>>(new Set())
+
+  // Weekly prompt
+  const [weeklyPrompt, setWeeklyPrompt] = useState<WeeklyPrompt | null>(null)
+  const [promptDismissed, setPromptDismissed] = useState(false)
+
   useEffect(() => { fetchLists() }, [])
+
+  useEffect(() => {
+    if (!user || !profile) return
+    fetchFollowingIds()
+    fetchWeeklyPrompt()
+    const weekKey = `prompt_dismissed_${Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000))}`
+    setPromptDismissed(localStorage.getItem(weekKey) === '1')
+  }, [user, profile])
+
+  async function fetchFollowingIds() {
+    if (!profile) return
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) return
+      const res = await fetch(`/api/follow/list?userId=${profile.id}&type=following`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data: { id: string }[] = await res.json()
+        setFollowingIds(new Set(data.map((p) => p.id)))
+      }
+    } catch {}
+  }
+
+  async function fetchWeeklyPrompt() {
+    if (!profile) return
+    try {
+      const weekNumber = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000))
+      // Check if user already created a list for this week's prompt
+      const { data: existing } = await supabase
+        .from('lists')
+        .select('id')
+        .eq('owner_id', profile.id)
+        .eq('prompt_week', weekNumber)
+        .limit(1)
+        .maybeSingle()
+
+      const week = existing ? weekNumber + 1 : weekNumber
+      const res = await fetch(`/api/weekly-prompt?week=${week}`)
+      if (res.ok) setWeeklyPrompt(await res.json())
+    } catch {}
+  }
+
+  async function handleFollowToggle(userId: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!user || !profile) {
+      signInWithGoogle()
+      return
+    }
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) return
+
+    if (followingIds.has(userId)) {
+      setFollowingIds((prev) => { const next = new Set(prev); next.delete(userId); return next })
+      await fetch('/api/follow', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ following_id: userId }),
+      })
+    } else {
+      setFollowingIds((prev) => new Set([...prev, userId]))
+      await fetch('/api/follow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ following_id: userId }),
+      })
+    }
+  }
+
+  function dismissPrompt() {
+    const weekKey = `prompt_dismissed_${Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000))}`
+    localStorage.setItem(weekKey, '1')
+    setPromptDismissed(true)
+  }
+
+  function saveFeedFilter(f: 'everyone' | 'following') {
+    setFeedFilter(f)
+    localStorage.setItem('home_feed_filter', f)
+  }
 
   async function fetchLists() {
     try {
     const { data: raw, error } = await supabase
       .from('lists')
-      .select('*, profiles(username, display_name, avatar_url)')
+      .select('*, profiles(id, username, display_name, avatar_url)')
       .order('created_at', { ascending: false })
 
     if (error || !raw) { setLoading(false); return }
@@ -446,7 +572,12 @@ export default function HomePage() {
   }
 
   const featuredLists = lists.filter((l) => l.featured)
-  const nonFeatured   = lists.filter((l) => !l.featured)
+  const allLists      = lists.filter((l) => !l.featured)
+
+  // Following feed filter
+  const nonFeatured = feedFilter === 'following' && user
+    ? allLists.filter((l) => l.owner_id && followingIds.has(l.owner_id))
+    : allLists
 
   const allTimeLists  = nonFeatured.filter((l) => l.year === null)
   const allTimeMovies = allTimeLists.filter((l) => l.category === 'movies')
@@ -456,6 +587,14 @@ export default function HomePage() {
 
   const annualLists = nonFeatured.filter((l) => l.year !== null)
   const years = [...new Set(annualLists.map((l) => l.year as number))].sort((a, b) => b - a)
+
+  // Active user suggestions for Following empty state
+  const activeProfiles = [...new Map(
+    allLists.filter((l) => l.profiles && l.owner_id && !followingIds.has(l.owner_id) && l.owner_id !== profile?.id)
+      .map((l) => [l.owner_id!, l.profiles!])
+  ).values()].slice(0, 4)
+
+  const showWeeklyPrompt = !!user && !!weeklyPrompt && !promptDismissed
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
@@ -489,6 +628,63 @@ export default function HomePage() {
         {!loading && !fetchError && lists.length > 0 && (
           <div className="space-y-16">
 
+            {/* ── Weekly Prompt Card ── */}
+            {showWeeklyPrompt && weeklyPrompt && (
+              <WeeklyPromptCard
+                prompt={weeklyPrompt}
+                onDismiss={dismissPrompt}
+              />
+            )}
+
+            {/* ── Feed filter tabs (logged-in users only) ── */}
+            {user && (
+              <div className="flex gap-1 -mt-8 mb-2">
+                {(['everyone', 'following'] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => saveFeedFilter(f)}
+                    className="px-4 py-1.5 rounded-full text-sm font-medium transition-all capitalize"
+                    style={
+                      feedFilter === f
+                        ? { background: 'var(--accent)', color: '#0a0a0f' }
+                        : { background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }
+                    }
+                  >
+                    {f.charAt(0).toUpperCase() + f.slice(1)}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* ── Following empty state ── */}
+            {feedFilter === 'following' && user && nonFeatured.length === 0 && (
+              <section>
+                <div className="py-10 text-center">
+                  <p className="text-base font-semibold mb-2">Follow people to see their lists here</p>
+                  <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>Here are some people with great taste:</p>
+                  <div className="flex flex-wrap justify-center gap-3">
+                    {activeProfiles.map((p) => (
+                      <Link
+                        key={p.username}
+                        href={`/${p.username}`}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl transition-opacity hover:opacity-80"
+                        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+                      >
+                        {p.avatar_url ? (
+                          <img src={p.avatar_url} alt="" className="w-6 h-6 rounded-full" loading="lazy" />
+                        ) : (
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ background: 'var(--accent)', color: '#0a0a0f' }}>
+                            {(p.display_name ?? p.username)[0].toUpperCase()}
+                          </div>
+                        )}
+                        <span className="text-sm font-medium">{p.display_name ?? p.username}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            )}
+
             {/* ── Section 1: All Time ── */}
             {allTimeLists.length > 0 && (
               <section>
@@ -505,13 +701,13 @@ export default function HomePage() {
                       <div>
                         <CategoryLabel category="tv" />
                         <div className="space-y-4">
-                          {allTimeTV.map((l) => <AllTimeCard key={l.id} list={l} posters={posters} />)}
+                          {allTimeTV.map((l) => <AllTimeCard key={l.id} list={l} posters={posters} followingIds={followingIds} onFollowToggle={handleFollowToggle} />)}
                         </div>
                       </div>
                       <div>
                         <CategoryLabel category="movies" />
                         <div className="space-y-4">
-                          {allTimeMovies.map((l) => <AllTimeCard key={l.id} list={l} posters={posters} />)}
+                          {allTimeMovies.map((l) => <AllTimeCard key={l.id} list={l} posters={posters} followingIds={followingIds} onFollowToggle={handleFollowToggle} />)}
                         </div>
                       </div>
                     </div>
@@ -526,6 +722,8 @@ export default function HomePage() {
                         rightList={allTimeMovies}
                         posters={posters}
                         Card={AllTimeCard}
+                        followingIds={followingIds}
+                        onFollowToggle={handleFollowToggle}
                       />
                     </div>
                   </div>
@@ -534,7 +732,7 @@ export default function HomePage() {
                   <div className="max-w-xl">
                     {allTimeLists.length > 0 && <CategoryLabel category={allTimeLists[0].category} />}
                     <div className="space-y-4">
-                      {allTimeLists.map((l) => <AllTimeCard key={l.id} list={l} posters={posters} />)}
+                      {allTimeLists.map((l) => <AllTimeCard key={l.id} list={l} posters={posters} followingIds={followingIds} onFollowToggle={handleFollowToggle} />)}
                     </div>
                   </div>
                 )}
@@ -619,13 +817,13 @@ export default function HomePage() {
                                   <div>
                                     <CategoryLabel category="tv" />
                                     <div className="space-y-3">
-                                      {yearTV.map((l) => <YearCard key={l.id} list={l} posters={posters} />)}
+                                      {yearTV.map((l) => <YearCard key={l.id} list={l} posters={posters} followingIds={followingIds} onFollowToggle={handleFollowToggle} />)}
                                     </div>
                                   </div>
                                   <div>
                                     <CategoryLabel category="movies" />
                                     <div className="space-y-3">
-                                      {yearMovies.map((l) => <YearCard key={l.id} list={l} posters={posters} />)}
+                                      {yearMovies.map((l) => <YearCard key={l.id} list={l} posters={posters} followingIds={followingIds} onFollowToggle={handleFollowToggle} />)}
                                     </div>
                                   </div>
                                 </div>
@@ -640,6 +838,8 @@ export default function HomePage() {
                                     rightList={yearMovies}
                                     posters={posters}
                                     Card={YearCard}
+                                    followingIds={followingIds}
+                                    onFollowToggle={handleFollowToggle}
                                   />
                                 </div>
                               </div>
@@ -648,7 +848,7 @@ export default function HomePage() {
                                 {yearMovies.length > 0 && <CategoryLabel category="movies" />}
                                 {yearTV.length > 0 && <CategoryLabel category="tv" />}
                                 <div className="space-y-3">
-                                  {[...yearMovies, ...yearTV].map((l) => <YearCard key={l.id} list={l} posters={posters} />)}
+                                  {[...yearMovies, ...yearTV].map((l) => <YearCard key={l.id} list={l} posters={posters} followingIds={followingIds} onFollowToggle={handleFollowToggle} />)}
                                 </div>
                               </div>
                             )}
@@ -669,6 +869,128 @@ export default function HomePage() {
       <div className="text-center py-8">
         <a href="/privacy" className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>Privacy Policy</a>
       </div>
+    </div>
+  )
+}
+
+// ── Weekly Prompt Card ─────────────────────────────────────────────────────
+
+function WeeklyPromptCard({ prompt, onDismiss }: { prompt: WeeklyPrompt; onDismiss: () => void }) {
+  const router = useRouter()
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const hasSuggestions = prompt.suggestions.length > 0
+
+  function toggleSuggestion(i: number) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      next.has(i) ? next.delete(i) : next.add(i)
+      return next
+    })
+  }
+
+  function startList() {
+    const selectedSuggestions = prompt.suggestions.filter((_, i) => selected.has(i))
+    const payload = { ...prompt, suggestions: selectedSuggestions }
+    sessionStorage.setItem('weekly_prompt_data', JSON.stringify(payload))
+    router.push(`/create?promptWeek=${prompt.week_number}`)
+  }
+
+  return (
+    <div
+      className="relative rounded-2xl p-5 sm:p-6 overflow-hidden"
+      style={{ background: 'var(--surface)', border: '1px solid rgba(232,197,71,0.3)', boxShadow: '0 0 40px rgba(232,197,71,0.06)' }}
+    >
+      {/* Dismiss button */}
+      <button
+        onClick={onDismiss}
+        className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-full transition-opacity hover:opacity-60 text-xs"
+        style={{ color: 'var(--muted)', background: 'var(--surface-2)' }}
+        aria-label="Dismiss"
+      >
+        ×
+      </button>
+
+      {/* Label */}
+      <div className="flex items-center gap-2 mb-3">
+        <span
+          className="text-[10px] font-bold tracking-[0.2em] uppercase px-2 py-0.5 rounded"
+          style={{ background: 'rgba(232,197,71,0.12)', color: 'var(--accent)', border: '1px solid rgba(232,197,71,0.2)' }}
+        >
+          This Week
+        </span>
+      </div>
+
+      {/* Prompt text */}
+      <p className="text-xl sm:text-2xl font-bold leading-tight mb-2" style={{ maxWidth: 520 }}>
+        {prompt.prompt_text}
+      </p>
+
+      {/* Poster thumbnails */}
+      {hasSuggestions && (
+        <>
+          <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
+            Tap any to add to your list
+          </p>
+          <div className="flex gap-2 mb-5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+            {prompt.suggestions.map((s, i) => {
+              const isSelected = selected.has(i)
+              return (
+                <button
+                  key={i}
+                  onClick={() => toggleSuggestion(i)}
+                  className="shrink-0 relative rounded-lg overflow-hidden transition-all duration-150"
+                  style={{
+                    width: 56,
+                    height: 84,
+                    outline: isSelected ? '2px solid var(--accent)' : '2px solid transparent',
+                    outlineOffset: 2,
+                  }}
+                  title={s.title}
+                >
+                  {s.poster_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={s.poster_url}
+                      alt={s.title}
+                      className="w-full h-full object-cover"
+                      style={{ opacity: isSelected ? 1 : 0.5, filter: isSelected ? 'none' : 'blur(0.5px)', transition: 'opacity 0.15s, filter 0.15s' }}
+                    />
+                  ) : (
+                    <div
+                      className="w-full h-full flex items-center justify-center text-[9px] text-center px-1"
+                      style={{ background: 'var(--surface-2)', color: 'var(--muted)' }}
+                    >
+                      {s.title}
+                    </div>
+                  )}
+                  {/* Checkmark overlay */}
+                  {isSelected && (
+                    <div
+                      className="absolute inset-0 flex items-end justify-end p-1"
+                    >
+                      <span
+                        className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
+                        style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+                      >
+                        ✓
+                      </span>
+                    </div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {/* CTA */}
+      <button
+        onClick={startList}
+        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-opacity hover:opacity-80"
+        style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+      >
+        Start your list →
+      </button>
     </div>
   )
 }

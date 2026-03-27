@@ -16,6 +16,9 @@ type GroupedByYear = {
   tv: ListWithPreview[]
 }
 
+type FollowStats = { following: boolean; followerCount: number; followingCount: number }
+type ProfileBasic = { id: string; username: string; display_name: string | null; avatar_url: string | null }
+
 const GENRE_COLORS: Record<string, string> = {
   'rom-com':  '#f472b6',
   'horror':   '#f87171',
@@ -33,7 +36,7 @@ function themeColor(genre: string | null) {
 export default function ProfilePage() {
   const params = useParams()
   const username = params.username as string
-  const { profile: authProfile } = useAuth()
+  const { profile: authProfile, user, signInWithGoogle } = useAuth()
 
   const [profile, setProfile] = useState<Profile | null>(null)
   const [annualGrouped, setAnnualGrouped] = useState<GroupedByYear[]>([])
@@ -41,83 +44,158 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
+  const [activeTab, setActiveTab] = useState<'lists' | 'following'>('lists')
+  const [followStats, setFollowStats] = useState<FollowStats>({ following: false, followerCount: 0, followingCount: 0 })
+  const [unfollowPending, setUnfollowPending] = useState(false)
+  const [followers, setFollowers] = useState<ProfileBasic[]>([])
+  const [following, setFollowing] = useState<ProfileBasic[]>([])
+  const [followListLoaded, setFollowListLoaded] = useState(false)
+  const [followLoading, setFollowLoading] = useState(false)
+
   const isOwnProfile = authProfile?.username === username
 
   useEffect(() => {
     if (username) loadProfile(username)
   }, [username])
 
+  // Fetch follow stats whenever profile changes or auth changes
+  useEffect(() => {
+    if (!profile) return
+    fetchFollowStats()
+  }, [profile, user])
+
   async function loadProfile(uname: string) {
     try {
-    const { data: prof } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('username', uname)
-      .single()
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('username', uname)
+        .single()
 
-    if (!prof) {
-      setNotFound(true)
+      if (!prof) {
+        setNotFound(true)
+        setLoading(false)
+        return
+      }
+      setProfile(prof)
+
+      const { data: lists } = await supabase
+        .from('lists')
+        .select('*')
+        .eq('owner_id', prof.id)
+        .order('year', { ascending: false, nullsFirst: false })
+
+      if (!lists || lists.length === 0) {
+        setLoading(false)
+        return
+      }
+
+      const listIds = lists.map((l) => l.id)
+      const { data: entries } = await supabase
+        .from('list_entries')
+        .select('*')
+        .in('list_id', listIds)
+        .lte('rank', 3)
+        .order('rank', { ascending: true })
+
+      const entryMap: Record<string, ListEntry[]> = {}
+      for (const entry of entries ?? []) {
+        if (!entryMap[entry.list_id]) entryMap[entry.list_id] = []
+        entryMap[entry.list_id].push(entry)
+      }
+
+      const withPreviews: ListWithPreview[] = lists.map((list) => ({
+        ...list,
+        entries: entryMap[list.id] ?? [],
+      }))
+
+      const annual = withPreviews.filter((l) => l.list_type !== 'theme')
+      const THEME_ORDER = ['All-Time TV Shows', 'Marvel Movies (Phases 1-4)', 'Rom-Coms 💞']
+      const theme = withPreviews
+        .filter((l) => l.list_type === 'theme')
+        .sort((a, b) => {
+          const ai = THEME_ORDER.indexOf(a.title)
+          const bi = THEME_ORDER.indexOf(b.title)
+          return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+        })
+
+      const yearMap: Record<number, { movies: ListWithPreview[]; tv: ListWithPreview[] }> = {}
+      for (const list of annual) {
+        const y = list.year!
+        if (!yearMap[y]) yearMap[y] = { movies: [], tv: [] }
+        yearMap[y][list.category].push(list)
+      }
+      const grouped: GroupedByYear[] = Object.entries(yearMap)
+        .sort(([a], [b]) => Number(b) - Number(a))
+        .map(([year, cats]) => ({ year: Number(year), ...cats }))
+
+      setAnnualGrouped(grouped)
+      setThemeLists(theme)
       setLoading(false)
-      return
-    }
-    setProfile(prof)
-
-    const { data: lists } = await supabase
-      .from('lists')
-      .select('*')
-      .eq('owner_id', prof.id)
-      .order('year', { ascending: false, nullsFirst: false })
-
-    if (!lists || lists.length === 0) {
-      setLoading(false)
-      return
-    }
-
-    const listIds = lists.map((l) => l.id)
-    const { data: entries } = await supabase
-      .from('list_entries')
-      .select('*')
-      .in('list_id', listIds)
-      .lte('rank', 3)
-      .order('rank', { ascending: true })
-
-    const entryMap: Record<string, ListEntry[]> = {}
-    for (const entry of entries ?? []) {
-      if (!entryMap[entry.list_id]) entryMap[entry.list_id] = []
-      entryMap[entry.list_id].push(entry)
-    }
-
-    const withPreviews: ListWithPreview[] = lists.map((list) => ({
-      ...list,
-      entries: entryMap[list.id] ?? [],
-    }))
-
-    const annual = withPreviews.filter((l) => l.list_type !== 'theme')
-    const THEME_ORDER = ['All-Time TV Shows', 'Marvel Movies (Phases 1-4)', 'Rom-Coms 💞']
-    const theme = withPreviews
-      .filter((l) => l.list_type === 'theme')
-      .sort((a, b) => {
-        const ai = THEME_ORDER.indexOf(a.title)
-        const bi = THEME_ORDER.indexOf(b.title)
-        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
-      })
-
-    const yearMap: Record<number, { movies: ListWithPreview[]; tv: ListWithPreview[] }> = {}
-    for (const list of annual) {
-      const y = list.year!
-      if (!yearMap[y]) yearMap[y] = { movies: [], tv: [] }
-      yearMap[y][list.category].push(list)
-    }
-    const grouped: GroupedByYear[] = Object.entries(yearMap)
-      .sort(([a], [b]) => Number(b) - Number(a))
-      .map(([year, cats]) => ({ year: Number(year), ...cats }))
-
-    setAnnualGrouped(grouped)
-    setThemeLists(theme)
-    setLoading(false)
     } catch (err) {
       console.error('loadProfile error:', err)
       setLoading(false)
+    }
+  }
+
+  async function fetchFollowStats() {
+    if (!profile) return
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      const res = await fetch(
+        `/api/follow/status?userId=${profile.id}`,
+        token ? { headers: { Authorization: `Bearer ${token}` } } : {}
+      )
+      if (res.ok) setFollowStats(await res.json())
+    } catch {}
+  }
+
+  async function loadFollowList() {
+    if (!profile || followListLoaded) return
+    setFollowListLoaded(true)
+    const [fersRes, fingRes] = await Promise.all([
+      fetch(`/api/follow/list?userId=${profile.id}&type=followers`),
+      fetch(`/api/follow/list?userId=${profile.id}&type=following`),
+    ])
+    if (fersRes.ok) setFollowers(await fersRes.json())
+    if (fingRes.ok) setFollowing(await fingRes.json())
+  }
+
+  async function handleFollowClick() {
+    if (!user) {
+      signInWithGoogle()
+      return
+    }
+    if (!profile) return
+
+    if (followStats.following) {
+      if (!unfollowPending) {
+        setUnfollowPending(true)
+        return
+      }
+      // Confirmed unfollow
+      setFollowLoading(true)
+      setUnfollowPending(false)
+      setFollowStats((prev) => ({ ...prev, following: false, followerCount: prev.followerCount - 1 }))
+      const { data: { session } } = await supabase.auth.getSession()
+      await fetch('/api/follow', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ following_id: profile.id }),
+      })
+      setFollowLoading(false)
+    } else {
+      setFollowLoading(true)
+      setUnfollowPending(false)
+      setFollowStats((prev) => ({ ...prev, following: true, followerCount: prev.followerCount + 1 }))
+      const { data: { session } } = await supabase.auth.getSession()
+      await fetch('/api/follow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ following_id: profile.id }),
+      })
+      setFollowLoading(false)
     }
   }
 
@@ -136,7 +214,7 @@ export default function ProfilePage() {
         <>
           {/* Profile hero */}
           <div
-            className="relative py-12 px-4 overflow-hidden"
+            className="relative py-10 px-4 overflow-hidden"
             style={{ background: 'radial-gradient(ellipse 80% 100% at 50% -20%, rgba(232,197,71,0.07) 0%, transparent 70%)' }}
           >
             <div className="max-w-5xl mx-auto flex items-center gap-5">
@@ -151,119 +229,235 @@ export default function ProfilePage() {
                 </div>
               )}
               {profile && (
-                <div>
-                  <h1 className="text-2xl font-bold tracking-tight">
-                    {profile.display_name ?? profile.username}
-                  </h1>
-                  <p className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>@{profile.username}</p>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h1 className="text-2xl font-bold tracking-tight">
+                        {profile.display_name ?? profile.username}
+                      </h1>
+                      <p className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>@{profile.username}</p>
+                      <div className="flex items-center gap-4 mt-2">
+                        <button
+                          onClick={() => { setActiveTab('following'); loadFollowList() }}
+                          className="text-sm transition-opacity hover:opacity-80"
+                          style={{ color: 'var(--muted)' }}
+                        >
+                          <span className="font-semibold" style={{ color: 'var(--foreground)' }}>{followStats.followerCount}</span> followers
+                        </button>
+                        <button
+                          onClick={() => { setActiveTab('following'); loadFollowList() }}
+                          className="text-sm transition-opacity hover:opacity-80"
+                          style={{ color: 'var(--muted)' }}
+                        >
+                          <span className="font-semibold" style={{ color: 'var(--foreground)' }}>{followStats.followingCount}</span> following
+                        </button>
+                      </div>
+                    </div>
+                    {!isOwnProfile && !loading && (
+                      <button
+                        onClick={handleFollowClick}
+                        disabled={followLoading}
+                        onBlur={() => setUnfollowPending(false)}
+                        className="shrink-0 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all disabled:opacity-50"
+                        style={
+                          unfollowPending
+                            ? { background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' }
+                            : followStats.following
+                            ? { background: 'var(--surface)', color: 'var(--foreground)', border: '1px solid var(--border)' }
+                            : { background: 'var(--accent)', color: '#0a0a0f', border: 'none' }
+                        }
+                      >
+                        {unfollowPending ? 'Unfollow?' : followStats.following ? 'Following' : 'Follow'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="max-w-5xl mx-auto px-4 pb-20 flex gap-10 items-start">
-            {/* Sidebar */}
-            {!loading && (
-              <nav className="hidden lg:flex flex-col gap-1 w-36 shrink-0 sticky top-24 pt-8">
-                {themeLists.length > 0 && (
-                  <>
-                    <span className="text-[10px] tracking-[0.2em] uppercase font-semibold mb-1" style={{ color: 'var(--muted)' }}>
-                      All-Time
-                    </span>
-                    {themeLists.map((list) => (
-                      <a key={list.id} href={`/list/${list.id}`} className="text-sm py-0.5 transition-colors hover:text-white truncate" style={{ color: 'var(--muted)' }}>
-                        {list.title}
-                      </a>
-                    ))}
-                    <div className="my-3 h-px" style={{ background: 'var(--border)' }} />
-                  </>
-                )}
-                <span className="text-[10px] tracking-[0.2em] uppercase font-semibold mb-1" style={{ color: 'var(--muted)' }}>
-                  By Year
-                </span>
-                {annualGrouped.map(({ year }) => (
-                  <a key={year} href={`#year-${year}`} className="text-sm py-0.5 font-medium transition-colors hover:text-white" style={{ color: 'var(--muted)' }}>
-                    {year}
-                  </a>
+          {/* Tabs */}
+          {!loading && profile && (
+            <div className="max-w-5xl mx-auto px-4 pt-2">
+              <div className="flex gap-1 border-b" style={{ borderColor: 'var(--border)' }}>
+                {(['lists', 'following'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => { setActiveTab(tab); if (tab === 'following') loadFollowList() }}
+                    className="px-4 py-2.5 text-sm font-medium capitalize transition-colors"
+                    style={{
+                      color: activeTab === tab ? 'var(--foreground)' : 'var(--muted)',
+                      borderBottom: activeTab === tab ? '2px solid var(--accent)' : '2px solid transparent',
+                      marginBottom: -1,
+                    }}
+                  >
+                    {tab === 'following' ? `Following (${followStats.followingCount})` : 'Lists'}
+                  </button>
                 ))}
-              </nav>
-            )}
+              </div>
+            </div>
+          )}
 
-            <main className="flex-1 min-w-0 space-y-16 pt-8">
-              {loading && (
-                <div className="flex justify-center py-20">
-                  <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
-                </div>
+          {/* Tab content */}
+          {activeTab === 'lists' ? (
+            <div className="max-w-5xl mx-auto px-4 pb-20 flex gap-10 items-start">
+              {/* Sidebar */}
+              {!loading && (
+                <nav className="hidden lg:flex flex-col gap-1 w-36 shrink-0 sticky top-24 pt-8">
+                  {themeLists.length > 0 && (
+                    <>
+                      <span className="text-[10px] tracking-[0.2em] uppercase font-semibold mb-1" style={{ color: 'var(--muted)' }}>
+                        All-Time
+                      </span>
+                      {themeLists.map((list) => (
+                        <a key={list.id} href={`/list/${list.id}`} className="text-sm py-0.5 transition-colors hover:text-white truncate" style={{ color: 'var(--muted)' }}>
+                          {list.title}
+                        </a>
+                      ))}
+                      <div className="my-3 h-px" style={{ background: 'var(--border)' }} />
+                    </>
+                  )}
+                  <span className="text-[10px] tracking-[0.2em] uppercase font-semibold mb-1" style={{ color: 'var(--muted)' }}>
+                    By Year
+                  </span>
+                  {annualGrouped.map(({ year }) => (
+                    <a key={year} href={`#year-${year}`} className="text-sm py-0.5 font-medium transition-colors hover:text-white" style={{ color: 'var(--muted)' }}>
+                      {year}
+                    </a>
+                  ))}
+                </nav>
               )}
 
-              {!loading && themeLists.length === 0 && annualGrouped.length === 0 && (
-                <div className="text-center py-20" style={{ color: 'var(--muted)' }}>
-                  No lists yet.
-                </div>
-              )}
+              <main className="flex-1 min-w-0 space-y-16 pt-8">
+                {loading && (
+                  <div className="flex justify-center py-20">
+                    <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
+                  </div>
+                )}
 
-              {/* Theme Lists */}
-              {!loading && themeLists.length > 0 && (
-                <section id="all-time" style={{ scrollMarginTop: '80px' }}>
-                  <div className="flex items-center gap-4 mb-8">
-                    <h2 className="text-xl font-bold tracking-tight">All-Time Rankings</h2>
-                    <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+                {!loading && themeLists.length === 0 && annualGrouped.length === 0 && (
+                  <div className="text-center py-20" style={{ color: 'var(--muted)' }}>
+                    No lists yet.
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {themeLists.map((list) => (
-                      <ProfileListCard key={list.id} list={list} />
-                    ))}
-                  </div>
+                )}
+
+                {!loading && themeLists.length > 0 && (
+                  <section id="all-time" style={{ scrollMarginTop: '80px' }}>
+                    <div className="flex items-center gap-4 mb-8">
+                      <h2 className="text-xl font-bold tracking-tight">All-Time Rankings</h2>
+                      <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {themeLists.map((list) => (
+                        <ProfileListCard key={list.id} list={list} />
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {annualGrouped.map(({ year, movies, tv }) => (
+                  <section key={year} id={`year-${year}`} style={{ scrollMarginTop: '80px' }}>
+                    <div className="flex items-center gap-4 mb-8">
+                      <h2 className="text-3xl font-bold" style={{ color: 'var(--accent)' }}>{year}</h2>
+                      <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                      {(['movies', 'tv'] as const).map((cat) => {
+                        const catLists = cat === 'movies' ? movies : tv
+                        if (catLists.length === 0) return null
+                        return (
+                          <div key={cat} className="space-y-3">
+                            <span
+                              className="text-xs tracking-[0.25em] uppercase font-semibold px-2 py-1 rounded inline-block"
+                              style={{
+                                background: cat === 'movies' ? 'rgba(232,197,71,0.12)' : 'rgba(139,92,246,0.12)',
+                                color: cat === 'movies' ? 'var(--accent)' : '#a78bfa',
+                              }}
+                            >
+                              {cat === 'movies' ? 'Movies' : 'TV Shows'}
+                            </span>
+                            {catLists.map((list) => (
+                              <ProfileListCard key={list.id} list={list} />
+                            ))}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </section>
+                ))}
+
+                {!loading && isOwnProfile && (
+                  <Link
+                    href="/create"
+                    className="block w-full py-4 rounded-xl text-sm font-medium text-center transition-all hover:opacity-80"
+                    style={{ border: '1px dashed rgba(232,197,71,0.3)', color: 'var(--muted)' }}
+                  >
+                    + Create New List
+                  </Link>
+                )}
+              </main>
+            </div>
+          ) : (
+            /* Following tab */
+            <div className="max-w-5xl mx-auto px-4 pb-20 pt-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-10">
+                <section>
+                  <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--muted)' }}>
+                    Followers <span style={{ color: 'var(--foreground)' }}>({followStats.followerCount})</span>
+                  </h2>
+                  {followers.length === 0 ? (
+                    <p className="text-sm" style={{ color: 'var(--muted)' }}>No followers yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {followers.map((p) => <PersonCard key={p.id} person={p} />)}
+                    </div>
+                  )}
                 </section>
-              )}
 
-              {/* Annual Lists */}
-              {annualGrouped.map(({ year, movies, tv }) => (
-                <section key={year} id={`year-${year}`} style={{ scrollMarginTop: '80px' }}>
-                  <div className="flex items-center gap-4 mb-8">
-                    <h2 className="text-3xl font-bold" style={{ color: 'var(--accent)' }}>{year}</h2>
-                    <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    {(['movies', 'tv'] as const).map((cat) => {
-                      const catLists = cat === 'movies' ? movies : tv
-                      if (catLists.length === 0) return null
-                      return (
-                        <div key={cat} className="space-y-3">
-                          <span
-                            className="text-xs tracking-[0.25em] uppercase font-semibold px-2 py-1 rounded inline-block"
-                            style={{
-                              background: cat === 'movies' ? 'rgba(232,197,71,0.12)' : 'rgba(139,92,246,0.12)',
-                              color: cat === 'movies' ? 'var(--accent)' : '#a78bfa',
-                            }}
-                          >
-                            {cat === 'movies' ? 'Movies' : 'TV Shows'}
-                          </span>
-                          {catLists.map((list) => (
-                            <ProfileListCard key={list.id} list={list} />
-                          ))}
-                        </div>
-                      )
-                    })}
-                  </div>
+                <section>
+                  <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--muted)' }}>
+                    Following <span style={{ color: 'var(--foreground)' }}>({followStats.followingCount})</span>
+                  </h2>
+                  {following.length === 0 ? (
+                    <p className="text-sm" style={{ color: 'var(--muted)' }}>Not following anyone yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {following.map((p) => <PersonCard key={p.id} person={p} />)}
+                    </div>
+                  )}
                 </section>
-              ))}
-
-              {/* Add new list — own profile */}
-              {!loading && isOwnProfile && (
-                <Link
-                  href="/create"
-                  className="block w-full py-4 rounded-xl text-sm font-medium text-center transition-all hover:opacity-80"
-                  style={{ border: '1px dashed rgba(232,197,71,0.3)', color: 'var(--muted)' }}
-                >
-                  + Create New List
-                </Link>
-              )}
-            </main>
-          </div>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
+  )
+}
+
+function PersonCard({ person }: { person: ProfileBasic }) {
+  const initial = (person.display_name ?? person.username)[0].toUpperCase()
+  return (
+    <Link
+      href={`/${person.username}`}
+      className="flex items-center gap-3 p-3 rounded-xl transition-opacity hover:opacity-80"
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+    >
+      {person.avatar_url ? (
+        <img src={person.avatar_url} alt="" className="w-9 h-9 rounded-full shrink-0" loading="lazy" />
+      ) : (
+        <div
+          className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
+          style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+        >
+          {initial}
+        </div>
+      )}
+      <div className="min-w-0">
+        <p className="text-sm font-semibold truncate">{person.display_name ?? person.username}</p>
+        <p className="text-xs truncate" style={{ color: 'var(--muted)' }}>@{person.username}</p>
+      </div>
+    </Link>
   )
 }
 

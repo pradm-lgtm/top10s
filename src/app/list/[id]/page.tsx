@@ -597,18 +597,11 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       )
     )
 
-    if (hasReacted) {
-      await supabase
-        .from('reactions')
-        .delete()
-        .eq('list_id', id)
-        .eq('visitor_id', vid)
-        .eq('emoji', emoji)
-    } else {
-      await supabase
-        .from('reactions')
-        .insert({ list_id: id, visitor_id: vid, emoji })
-    }
+    await fetch('/api/reactions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ list_id: id, visitor_id: vid, emoji, action: hasReacted ? 'remove' : 'add' }),
+    })
   }
 
   async function submitComment(e: React.FormEvent) {
@@ -622,13 +615,13 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     }
 
     setSubmittingComment(true)
-    const { data, error } = await supabase
-      .from('comments')
-      .insert({ list_id: id, visitor_id: vid, content: newComment.trim() })
-      .select('*, visitors(name)')
-      .single()
-
-    if (!error && data) {
+    const res = await fetch('/api/comments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ list_id: id, visitor_id: vid, content: newComment.trim() }),
+    })
+    if (res.ok) {
+      const data = await res.json()
       setComments((prev) => [data as Comment, ...prev])
       setNewComment('')
     }

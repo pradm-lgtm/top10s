@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useRef, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   DndContext,
   closestCenter,
@@ -1629,9 +1629,10 @@ function Step3({
 }
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
-export default function CreatePage() {
+function CreatePageInner() {
   const { user, profile, loading } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [step, setStep] = useState(1)
   const [title, setTitle] = useState('')
@@ -1650,10 +1651,57 @@ export default function CreatePage() {
   const [prefetchTmdb, setPrefetchTmdb] = useState<CloudResult[]>([])
   const [prefetchClaude, setPrefetchClaude] = useState<CloudResult[]>([])
   const prefetchSeqRef = useRef(0)
+  const [promptWeek, setPromptWeek] = useState<number | null>(null)
 
   useEffect(() => {
     if (!loading && !user) router.replace('/')
   }, [loading, user, router])
+
+  // Pre-fill from weekly prompt if ?promptWeek= is set
+  useEffect(() => {
+    const weekParam = searchParams.get('promptWeek')
+    if (!weekParam) return
+    const weekNum = parseInt(weekParam, 10)
+    setPromptWeek(weekNum)
+
+    try {
+      const stored = sessionStorage.getItem('weekly_prompt_data')
+      if (stored) {
+        const data = JSON.parse(stored) as { week_number: number; prompt_text: string; suggestions: { title: string; poster_url: string | null }[] }
+        sessionStorage.removeItem('weekly_prompt_data')
+        if (data.week_number === weekNum) {
+          setTitle(data.prompt_text)
+          const detected = detectFromTitle(data.prompt_text)
+          if (detected.category) setCategory(detected.category)
+          if (data.suggestions.length > 0) {
+            setEntries(data.suggestions.map((s: { title: string; poster_url: string | null }) => ({
+              uid: crypto.randomUUID(),
+              tmdbId: null,
+              title: s.title,
+              notes: null,
+              posterUrl: s.poster_url,
+              notesOpen: false,
+              tierId: null,
+            })))
+          }
+          setStep(3)
+          return
+        }
+      }
+    } catch {}
+
+    // Fallback: fetch the prompt data from API (no pre-selected suggestions)
+    fetch(`/api/weekly-prompt?week=${weekNum}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setTitle(data.prompt_text ?? '')
+        const detected = detectFromTitle(data.prompt_text ?? '')
+        if (detected.category) setCategory(detected.category)
+        setStep(3)
+      })
+      .catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Pre-fire AI + TMDB suggestions as soon as list name is entered
   useEffect(() => {
@@ -1719,6 +1767,7 @@ export default function CreatePage() {
         year_to: resolvedYearTo,
         description: descriptionDoc ? JSON.stringify(descriptionDoc) : (description.trim() || null),
         owner_id: profile.id,
+        ...(promptWeek !== null ? { prompt_week: promptWeek } : {}),
       })
       .select()
       .single()
@@ -1805,6 +1854,17 @@ export default function CreatePage() {
       }
     }
 
+    // Notify followers about new list (fire and forget)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.access_token) {
+        fetch('/api/notifications/new-list', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ list_id: list.id }),
+        }).catch(() => {})
+      }
+    })
+
     router.push(`/list/${list.id}`)
   }
 
@@ -1866,5 +1926,17 @@ export default function CreatePage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function CreatePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--background)' }}>
+        <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
+      </div>
+    }>
+      <CreatePageInner />
+    </Suspense>
   )
 }
