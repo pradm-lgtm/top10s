@@ -57,7 +57,8 @@ export async function GET(req: NextRequest) {
     .eq('week_number', weekNumber)
     .single()
 
-  if (cached) {
+  // Don't serve a cached empty-suggestions row — retry Claude instead
+  if (cached && (cached.suggestions as unknown[]).length > 0) {
     return NextResponse.json({ week_number: weekNumber, prompt_text: cached.prompt_text, suggestions: cached.suggestions })
   }
 
@@ -76,7 +77,9 @@ export async function GET(req: NextRequest) {
         }],
       })
 
-      const text = message.content[0].type === 'text' ? message.content[0].text.trim() : '[]'
+      const raw = message.content[0].type === 'text' ? message.content[0].text.trim() : '[]'
+      // Strip markdown code fences if Claude wraps the response
+      const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
       const titles: string[] = JSON.parse(text)
 
       suggestions = await Promise.all(
@@ -86,19 +89,20 @@ export async function GET(req: NextRequest) {
         }))
       )
     } catch {
-      // Claude failed — card will show without thumbnails
       suggestions = []
     }
   }
 
-  // Cache in Supabase
-  try {
-    await supabase.from('weekly_prompt_cache').upsert(
-      { week_number: weekNumber, prompt_text: promptText, suggestions },
-      { onConflict: 'week_number' }
-    )
-  } catch {
-    // Cache failure is non-fatal
+  // Only cache if we got suggestions — otherwise let the next request retry
+  if (suggestions.length > 0) {
+    try {
+      await supabase.from('weekly_prompt_cache').upsert(
+        { week_number: weekNumber, prompt_text: promptText, suggestions },
+        { onConflict: 'week_number' }
+      )
+    } catch {
+      // Cache failure is non-fatal
+    }
   }
 
   return NextResponse.json({ week_number: weekNumber, prompt_text: promptText, suggestions })
