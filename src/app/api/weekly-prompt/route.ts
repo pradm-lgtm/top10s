@@ -57,13 +57,18 @@ export async function GET(req: NextRequest) {
     .eq('week_number', weekNumber)
     .single()
 
-  // Don't serve a cached empty-suggestions row — retry Claude instead
-  if (cached && (cached.suggestions as unknown[]).length > 0) {
-    return NextResponse.json({ week_number: weekNumber, prompt_text: cached.prompt_text, suggestions: cached.suggestions })
+  // Serve cached data if it has suggestions; auto-delete stale empty rows
+  if (cached) {
+    if ((cached.suggestions as unknown[]).length > 0) {
+      return NextResponse.json({ week_number: weekNumber, prompt_text: cached.prompt_text, suggestions: cached.suggestions })
+    }
+    // Stale empty row — delete it so the upsert below can write a clean row
+    await supabase.from('weekly_prompt_cache').delete().eq('week_number', weekNumber)
   }
 
   // Generate suggestions via Claude Haiku
   let suggestions: { title: string; poster_url: string | null }[] = []
+  let claudeError: string | null = null
 
   if (process.env.ANTHROPIC_API_KEY) {
     try {
@@ -88,9 +93,12 @@ export async function GET(req: NextRequest) {
           poster_url: await fetchPosterForTitle(title),
         }))
       )
-    } catch {
+    } catch (err) {
+      claudeError = err instanceof Error ? err.message : String(err)
       suggestions = []
     }
+  } else {
+    claudeError = 'ANTHROPIC_API_KEY not set'
   }
 
   // Only cache if we got suggestions — otherwise let the next request retry
@@ -105,5 +113,5 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ week_number: weekNumber, prompt_text: promptText, suggestions })
+  return NextResponse.json({ week_number: weekNumber, prompt_text: promptText, suggestions, ...(claudeError ? { error: claudeError } : {}) })
 }
