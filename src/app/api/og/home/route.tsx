@@ -38,27 +38,39 @@ async function fetchAsBase64(url: string): Promise<string | null> {
 export async function GET() {
   const supabase = getAdminSupabase()
 
-  // Get 6 diverse posters from recent entries that have images
-  const { data: entries } = await supabase
-    .from('list_entries')
-    .select('list_id, image_url')
-    .not('image_url', 'is', null)
-    .order('created_at', { ascending: false })
-    .limit(40)
+  // Get top 6 most-reacted list_ids
+  const { data: reactions } = await supabase
+    .from('reactions')
+    .select('list_id')
+    .limit(500)
 
-  const seen = new Set<string>()
+  // Count reactions per list and pick top 6
+  const counts = new Map<string, number>()
+  for (const r of reactions ?? []) {
+    counts.set(r.list_id, (counts.get(r.list_id) ?? 0) + 1)
+  }
+  const topListIds = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([id]) => id)
+
+  // Fetch the first entry with an image for each list
   const posterUrls: string[] = []
-  for (const e of entries ?? []) {
-    if (e.image_url && !seen.has(e.list_id) && posterUrls.length < 6) {
-      seen.add(e.list_id)
-      posterUrls.push(e.image_url)
-    }
+  for (const listId of topListIds) {
+    const { data: entry } = await supabase
+      .from('list_entries')
+      .select('image_url')
+      .eq('list_id', listId)
+      .not('image_url', 'is', null)
+      .order('rank', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    if (entry?.image_url) posterUrls.push(entry.image_url)
+    if (posterUrls.length === 6) break
   }
 
-  // Tile if fewer than 6
-  const filled: string[] = Array.from({ length: 6 }, (_, i) =>
-    posterUrls.length > 0 ? posterUrls[i % posterUrls.length] : ''
-  )
+  // Fill remaining slots with '' (no tiling — leave as dark solid)
+  const filled: string[] = Array.from({ length: 6 }, (_, i) => posterUrls[i] ?? '')
 
   // Fetch all 6 as base64 with a 4s budget
   const posterSrcs = await Promise.race([
@@ -168,18 +180,6 @@ export async function GET() {
             RANKED
           </div>
 
-          {/* Tagline */}
-          <div
-            style={{
-              color: accent,
-              fontSize: 26,
-              fontWeight: 500,
-              letterSpacing: 4,
-              display: 'flex',
-            }}
-          >
-            Your take. Ranked.
-          </div>
         </div>
       </div>
     ),
