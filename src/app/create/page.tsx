@@ -309,8 +309,8 @@ function Step1({
 function Step2({
   listFormat, setListFormat, tiers, setTiers, onNext, onBack,
 }: {
-  listFormat: 'ranked' | 'tiered' | 'tiered-ranked'
-  setListFormat: (v: 'ranked' | 'tiered' | 'tiered-ranked') => void
+  listFormat: 'ranked' | 'tiered' | 'tier-ranked'
+  setListFormat: (v: 'ranked' | 'tiered' | 'tier-ranked') => void
   tiers: TierDef[]
   setTiers: (v: TierDef[]) => void
   onNext: () => void
@@ -318,7 +318,7 @@ function Step2({
 }) {
   const [tierMode, setTierMode] = useState<'standard' | 'custom'>('standard')
 
-  const isTiered = listFormat === 'tiered' || listFormat === 'tiered-ranked'
+  const isTiered = listFormat === 'tiered' || listFormat === 'tier-ranked'
 
   function cycleColor(idx: number) {
     setTiers(tiers.map((t, i) => {
@@ -364,7 +364,7 @@ function Step2({
       preview: null,
     },
     {
-      value: 'tiered-ranked' as const,
+      value: 'tier-ranked' as const,
       label: 'Tiered + Ranked',
       desc: 'Rank entries within each tier',
       preview: null,
@@ -604,7 +604,7 @@ type ParsedEntry = {
 }
 
 type ParsedList = {
-  format: 'ranked' | 'tiered' | 'tiered-ranked' | 'plain'
+  format: 'ranked' | 'tiered' | 'tier-ranked' | 'plain'
   tiers: string[]
   entries: ParsedEntry[]
 }
@@ -612,14 +612,14 @@ type ParsedList = {
 type ImportResult = {
   entries: Entry[]
   missed: number
-  newFormat?: 'ranked' | 'tiered' | 'tiered-ranked'
+  newFormat?: 'ranked' | 'tiered' | 'tier-ranked'
   newTiers?: TierDef[]
 }
 
 const FORMAT_LABELS: Record<string, string> = {
   ranked: 'Ranked',
   tiered: 'Tiered',
-  'tiered-ranked': 'Tiered + Ranked',
+  'tier-ranked': 'Tiered + Ranked',
   plain: 'Plain',
 }
 
@@ -783,7 +783,7 @@ function DroppableTier({
 }: {
   tier: TierDef
   entries: Entry[]
-  listFormat: 'tiered' | 'tiered-ranked'
+  listFormat: 'tiered' | 'tier-ranked'
   onRemove: (uid: string) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: tier.tempId })
@@ -808,7 +808,7 @@ function DroppableTier({
         ) : (
           entries.map((entry, i) => (
             <TierEntryCard key={entry.uid} entry={entry} color={tier.color}
-              rank={listFormat === 'tiered-ranked' ? i + 1 : undefined} onRemove={onRemove} />
+              rank={listFormat === 'tier-ranked' ? i + 1 : undefined} onRemove={onRemove} />
           ))
         )}
       </div>
@@ -829,7 +829,7 @@ function AddEntrySheet({
 }: {
   sheet: SheetState | null
   tiers: TierDef[]
-  listFormat: 'ranked' | 'tiered' | 'tiered-ranked'
+  listFormat: 'ranked' | 'tiered' | 'tier-ranked'
   onAddRanked: (result: import('@/components/ThoughtCloud').CloudResult, notes: TiptapDoc | null) => void
   onAddToTier: (result: import('@/components/ThoughtCloud').CloudResult, tierId: string, notes: TiptapDoc | null) => void
   onRemove: (result: import('@/components/ThoughtCloud').CloudResult) => void
@@ -837,7 +837,7 @@ function AddEntrySheet({
   onClose: () => void
 }) {
   const isOpen = sheet !== null
-  const isTiered = listFormat === 'tiered' || listFormat === 'tiered-ranked'
+  const isTiered = listFormat === 'tiered' || listFormat === 'tier-ranked'
   const [notes, setNotes] = useState<TiptapDoc | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -1024,7 +1024,7 @@ function ImportModal({
 }: {
   open: boolean
   onClose: () => void
-  listFormat: 'ranked' | 'tiered' | 'tiered-ranked'
+  listFormat: 'ranked' | 'tiered' | 'tier-ranked'
   tiers: TierDef[]
   category: 'movies' | 'tv'
   yearFrom: number | null
@@ -1047,14 +1047,14 @@ function ImportModal({
     return () => { document.body.style.overflow = '' }
   }, [open])
 
-  async function resolveAndImport(p: ParsedList, targetFormat: 'ranked' | 'tiered' | 'tiered-ranked', targetTiers: TierDef[], rawText: string) {
+  async function resolveAndImport(p: ParsedList, targetFormat: 'ranked' | 'tiered' | 'tier-ranked', targetTiers: TierDef[], rawText: string) {
     setPhase('resolving')
 
     // For tiered imports: always derive TierDefs from the parsed tier labels so the
     // user never needs to pre-create matching tiers in Step 2.
     let effectiveTiers = targetTiers
     let autoTiers: TierDef[] | undefined
-    if ((targetFormat === 'tiered' || targetFormat === 'tiered-ranked') && p.tiers.length > 0) {
+    if ((targetFormat === 'tiered' || targetFormat === 'tier-ranked') && p.tiers.length > 0) {
       autoTiers = p.tiers.map((label, i) => ({
         tempId: crypto.randomUUID(),
         label,
@@ -1084,7 +1084,7 @@ function ImportModal({
       if (!tmdb) { missed++; continue }
 
       let tierId: string | null = null
-      if (parsedEntry.tier && (targetFormat === 'tiered' || targetFormat === 'tiered-ranked')) {
+      if (parsedEntry.tier && (targetFormat === 'tiered' || targetFormat === 'tier-ranked')) {
         const matched = effectiveTiers.find((t) => t.label.toLowerCase() === parsedEntry.tier!.toLowerCase())
         tierId = matched?.tempId ?? null
       }
@@ -1151,7 +1151,7 @@ function ImportModal({
       label,
       color: TIER_COLOR_PRESETS[i % TIER_COLOR_PRESETS.length],
     }))
-    const targetFormat = (parsed.format === 'plain' ? listFormat : parsed.format) as 'ranked' | 'tiered' | 'tiered-ranked'
+    const targetFormat = (parsed.format === 'plain' ? listFormat : parsed.format) as 'ranked' | 'tiered' | 'tier-ranked'
     await resolveAndImport(parsed, targetFormat, newTiers, text)
   }
 
@@ -1297,8 +1297,8 @@ function Step3({
   yearFrom: number | null
   yearTo: number | null
   description: string
-  listFormat: 'ranked' | 'tiered' | 'tiered-ranked'
-  setListFormat: (v: 'ranked' | 'tiered' | 'tiered-ranked') => void
+  listFormat: 'ranked' | 'tiered' | 'tier-ranked'
+  setListFormat: (v: 'ranked' | 'tiered' | 'tier-ranked') => void
   tiers: TierDef[]
   setTiers: (v: TierDef[]) => void
   entries: Entry[]
@@ -1336,7 +1336,7 @@ function Step3({
     setImportResult({ imported: newEntries.length, missed })
   }
 
-  const isTiered = listFormat === 'tiered' || listFormat === 'tiered-ranked'
+  const isTiered = listFormat === 'tiered' || listFormat === 'tier-ranked'
   const addedTmdbIds = new Set(entries.map((e) => e.tmdbId).filter(Boolean) as number[])
   const catLabel = category === 'movies' ? 'movies' : 'shows'
 
@@ -1536,7 +1536,7 @@ function Step3({
                     key={tier.tempId}
                     tier={tier}
                     entries={entries.filter((e) => e.tierId === tier.tempId)}
-                    listFormat={listFormat as 'tiered' | 'tiered-ranked'}
+                    listFormat={listFormat as 'tiered' | 'tier-ranked'}
                     onRemove={removeEntry}
                   />
                 ))}
@@ -1655,7 +1655,7 @@ function CreatePageInner() {
   const [yearTo, setYearTo] = useState<number | null>(null)
   const [descriptionDoc, setDescriptionDoc] = useState<TiptapDoc | null>(null)
   const description = notesToPlainText(descriptionDoc ? JSON.stringify(descriptionDoc) : null) ?? ''
-  const [listFormat, setListFormat] = useState<'ranked' | 'tiered' | 'tiered-ranked'>('ranked')
+  const [listFormat, setListFormat] = useState<'ranked' | 'tiered' | 'tier-ranked'>('ranked')
   const [tiers, setTiers] = useState<TierDef[]>(DEFAULT_TIERS)
   const [entries, setEntries] = useState<Entry[]>([])
   const [publishing, setPublishing] = useState(false)
@@ -1673,13 +1673,13 @@ function CreatePageInner() {
   // Pre-fill from "Make your own version" URL params
   useEffect(() => {
     const titleParam = searchParams.get('title')
-    const formatParam = searchParams.get('format') as 'ranked' | 'tiered' | 'tiered-ranked' | null
+    const formatParam = searchParams.get('format') as 'ranked' | 'tiered' | 'tier-ranked' | null
     const categoryParam = searchParams.get('category') as 'movies' | 'tv' | null
     const yearParam = searchParams.get('year')
     const origId = searchParams.get('originalListId')
     if (!origId) return
     if (titleParam) setTitle(titleParam)
-    if (formatParam && ['ranked', 'tiered', 'tiered-ranked'].includes(formatParam)) setListFormat(formatParam)
+    if (formatParam && ['ranked', 'tiered', 'tier-ranked'].includes(formatParam)) setListFormat(formatParam)
     if (categoryParam && ['movies', 'tv'].includes(categoryParam)) setCategory(categoryParam)
     if (yearParam) { setTimeScope('year'); setYear(parseInt(yearParam, 10)) }
     setOriginalListId(origId)
@@ -1825,11 +1825,11 @@ function CreatePageInner() {
       // Map tempId → real DB tier id
       const tierIdMap = new Map(tiers.map((t, i) => [t.tempId, insertedTiers[i].id]))
 
-      // Calculate rank within tier for tiered-ranked
+      // Calculate rank within tier for tier-ranked
       const tierRankCounters = new Map<string, number>()
       const entriesToInsert = entries.map((e) => {
         let rank: number | null = null
-        if (listFormat === 'tiered-ranked' && e.tierId) {
+        if (listFormat === 'tier-ranked' && e.tierId) {
           const prev = tierRankCounters.get(e.tierId) ?? 0
           rank = prev + 1
           tierRankCounters.set(e.tierId, rank)
