@@ -12,6 +12,15 @@ import type { List, ListEntry } from '@/types'
 type OwnerInfo = { id: string; username: string; display_name: string | null; avatar_url: string | null }
 type RichList = List & { entries: ListEntry[]; profiles: OwnerInfo | null; reactionCount: number; commentCount: number; reactionEmojis: string[] }
 type WeeklyPrompt = { week_number: number; prompt_text: string; suggestions: { title: string; poster_url: string | null }[] }
+type NavPill = 'all' | 'prompt' | 'editorial' | 'recent' | 'by-year'
+
+const NAV_PILLS: { id: NavPill; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'prompt', label: "This Week's Prompt" },
+  { id: 'editorial', label: 'Editorial' },
+  { id: 'recent', label: 'Recently Added' },
+  { id: 'by-year', label: 'By Year' },
+]
 
 // ── Owner chip ─────────────────────────────────────────────────────────────
 
@@ -126,26 +135,99 @@ function PosterStack({
   )
 }
 
-// ── All-time card ───────────────────────────────────────────────────────────
+// ── Stats row ──────────────────────────────────────────────────────────────
 
-function AllTimeCard({ list, posters, followingIds, onFollowToggle }: { list: RichList; posters: Record<string, string | null>; followingIds?: Set<string>; onFollowToggle?: (userId: string, e: React.MouseEvent) => void }) {
+function StatsRow({ reactionCount, commentCount, reactionEmojis = ['🔥'] }: { reactionCount: number; commentCount: number; reactionEmojis?: string[] }) {
+  if (reactionCount === 0 && commentCount === 0) return null
+  return (
+    <div className="flex items-center gap-3 mt-auto pt-2">
+      {reactionCount > 0 && (
+        <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}>
+          <span style={{ fontSize: 13 }}>{reactionEmojis.join('')}</span>{reactionCount}
+        </span>
+      )}
+      {commentCount > 0 && (
+        <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}>
+          <span style={{ fontSize: 13 }}>💬</span>{commentCount}
+        </span>
+      )}
+    </div>
+  )
+}
+
+// ── Category badge icon ─────────────────────────────────────────────────────
+
+function CategoryBadge({ category }: { category: 'movies' | 'tv' }) {
+  const isMovie = category === 'movies'
+  return (
+    <div title={isMovie ? 'Movies' : 'TV Shows'} style={{ opacity: 0.45 }}>
+      {isMovie ? (
+        // Film reel icon
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ color: 'var(--accent)' }}>
+          <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
+          <circle cx="6.5" cy="6.5" r="2" stroke="currentColor" strokeWidth="1.2"/>
+          <circle cx="6.5" cy="2" r="0.8" fill="currentColor"/>
+          <circle cx="6.5" cy="11" r="0.8" fill="currentColor"/>
+          <circle cx="2" cy="6.5" r="0.8" fill="currentColor"/>
+          <circle cx="11" cy="6.5" r="0.8" fill="currentColor"/>
+        </svg>
+      ) : (
+        // TV screen icon
+        <svg width="14" height="13" viewBox="0 0 14 13" fill="none" style={{ color: '#a78bfa' }}>
+          <rect x="1" y="1" width="12" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
+          <path d="M5 9.5v2M9 9.5v2M3.5 11.5h7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+        </svg>
+      )}
+    </div>
+  )
+}
+
+// ── Feed card (unified — all list types) ────────────────────────────────────
+
+function FeedCard({ list, posters, followingIds, onFollowToggle }: { list: RichList; posters: Record<string, string | null>; followingIds?: Set<string>; onFollowToggle?: (userId: string, e: React.MouseEvent) => void }) {
   const router = useRouter()
   const isMovie = list.category === 'movies'
   const accent = isMovie ? 'var(--accent)' : '#a78bfa'
   const hoverBorder = isMovie ? 'rgba(232,197,71,0.4)' : 'rgba(139,92,246,0.4)'
   const hoverShadow = isMovie ? '0 4px 24px rgba(232,197,71,0.07)' : '0 4px 24px rgba(139,92,246,0.07)'
+  const isFeatured = list.featured
 
   return (
     <div
-      className="cursor-pointer rounded-xl p-4 flex flex-col gap-3 h-full transition-all duration-200 hover:translate-y-[-2px]"
-      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+      className="cursor-pointer rounded-xl p-4 flex flex-col gap-3 h-full transition-all duration-200 hover:translate-y-[-2px] relative"
+      style={{
+        background: 'var(--surface)',
+        border: `1px solid ${isFeatured ? 'rgba(232,197,71,0.25)' : 'var(--border)'}`,
+      }}
       onClick={() => router.push(`/list/${list.id}`)}
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = hoverBorder; e.currentTarget.style.boxShadow = hoverShadow }}
-      onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = '' }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = isFeatured ? 'rgba(232,197,71,0.25)' : 'var(--border)'; e.currentTarget.style.boxShadow = '' }}
     >
-      {list.profiles && <OwnerChip owner={list.profiles} onClick={(e) => e.stopPropagation()} followingIds={followingIds} onFollowToggle={onFollowToggle} />}
+      {/* Category badge — top right */}
+      <div className="absolute top-3 right-3">
+        <CategoryBadge category={list.category} />
+      </div>
 
-      <h3 className="font-semibold text-base leading-tight">{list.title}</h3>
+      {/* Featured badge */}
+      {isFeatured && (
+        <div
+          className="text-[10px] font-bold tracking-[0.2em] uppercase px-2 py-0.5 rounded w-fit"
+          style={{ background: 'rgba(232,197,71,0.12)', color: 'var(--accent)', border: '1px solid rgba(232,197,71,0.2)' }}
+        >
+          {list.source_label ?? 'Featured'}
+        </div>
+      )}
+
+      {list.profiles && (
+        <OwnerChip
+          owner={list.profiles}
+          onClick={(e) => e.stopPropagation()}
+          followingIds={followingIds}
+          onFollowToggle={onFollowToggle}
+        />
+      )}
+
+      <h3 className="font-semibold text-base leading-tight pr-5">{list.title}</h3>
 
       <div className="flex items-start gap-4">
         <PosterStack entries={list.entries} size="md" posters={posters} />
@@ -169,30 +251,15 @@ function AllTimeCard({ list, posters, followingIds, onFollowToggle }: { list: Ri
   )
 }
 
-// ── Recent card (horizontal strip) ─────────────────────────────────────────
+// ── Category label ─────────────────────────────────────────────────────────
 
-function RecentCard({ list, posters }: { list: RichList; posters: Record<string, string | null> }) {
-  const router = useRouter()
-  const isMovie = list.category === 'movies'
-  const accent = isMovie ? 'var(--accent)' : '#a78bfa'
-
+function CategoryLabel({ category }: { category: 'movies' | 'tv' }) {
+  const isMovie = category === 'movies'
   return (
-    <div
-      className="cursor-pointer rounded-xl p-3 flex flex-col gap-2.5 shrink-0 transition-all duration-200 hover:translate-y-[-2px]"
-      style={{ width: 156, background: 'var(--surface)', border: '1px solid var(--border)' }}
-      onClick={() => router.push(`/list/${list.id}`)}
-    >
-      <PosterStack entries={list.entries} size="sm" posters={posters} />
-      <div className="min-w-0">
-        <p className="text-xs font-semibold leading-snug line-clamp-2">{list.title}</p>
-        {list.profiles && (
-          <p className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--muted)' }}>
-            {list.profiles.display_name ?? list.profiles.username}
-          </p>
-        )}
-      </div>
-      <span className="text-[10px] font-medium" style={{ color: accent }}>
-        {isMovie ? '🎬' : '📺'} {list.year ?? 'All time'}
+    <div className="flex items-center gap-1.5 mb-3">
+      <span className="text-sm">{isMovie ? '🎬' : '📺'}</span>
+      <span className="text-xs font-semibold tracking-[0.15em] uppercase" style={{ color: isMovie ? 'var(--accent)' : '#a78bfa' }}>
+        {isMovie ? 'Movies' : 'TV Shows'}
       </span>
     </div>
   )
@@ -233,92 +300,7 @@ function YearCard({ list, posters, followingIds, onFollowToggle }: { list: RichL
           )}
         </ol>
       </div>
-
       <StatsRow reactionCount={list.reactionCount} commentCount={list.commentCount} reactionEmojis={list.reactionEmojis} />
-    </div>
-  )
-}
-
-// ── Featured card ───────────────────────────────────────────────────────────
-
-function FeaturedCard({ list, posters }: { list: RichList; posters: Record<string, string | null> }) {
-  const router = useRouter()
-  const isMovie = list.category === 'movies'
-  const accent = isMovie ? 'var(--accent)' : '#a78bfa'
-
-  return (
-    <div
-      className="cursor-pointer rounded-xl p-4 flex flex-col gap-3 h-full transition-all duration-200 hover:translate-y-[-2px]"
-      style={{ background: 'var(--surface)', border: '1px solid rgba(232,197,71,0.25)', boxShadow: '0 0 24px rgba(232,197,71,0.04)' }}
-      onClick={() => router.push(`/list/${list.id}`)}
-    >
-      {/* Source badge instead of owner chip */}
-      <div className="flex items-center gap-2">
-        <div
-          className="text-[10px] font-bold tracking-[0.2em] uppercase px-2 py-0.5 rounded"
-          style={{ background: 'rgba(232,197,71,0.12)', color: 'var(--accent)', border: '1px solid rgba(232,197,71,0.2)' }}
-        >
-          {list.source_label ?? 'Featured'}
-        </div>
-        <span className="text-[10px]" style={{ color: 'var(--muted)' }}>
-          {isMovie ? '🎬 Movies' : '📺 TV Shows'}
-        </span>
-      </div>
-
-      <h3 className="font-semibold text-base leading-tight">{list.title}</h3>
-
-      <div className="flex items-start gap-4">
-        <PosterStack entries={list.entries} size="md" posters={posters} />
-        <ol className="flex-1 min-w-0 space-y-1.5 pt-1">
-          {list.entries.slice(0, 3).map((entry) => (
-            <li key={entry.id} className="flex items-center gap-2 text-xs min-w-0">
-              {entry.rank != null && entry.rank > 0 && (
-                <span className="font-bold w-4 shrink-0 text-right" style={{ color: accent }}>{entry.rank}</span>
-              )}
-              <span className="truncate" style={{ color: 'var(--muted)' }}>{entry.title}</span>
-            </li>
-          ))}
-          {list.entries.length === 0 && (
-            <li className="text-xs italic" style={{ color: 'var(--muted)' }}>Coming soon…</li>
-          )}
-        </ol>
-      </div>
-
-      <StatsRow reactionCount={list.reactionCount} commentCount={list.commentCount} reactionEmojis={list.reactionEmojis} />
-    </div>
-  )
-}
-
-// ── Category label ─────────────────────────────────────────────────────────
-
-function CategoryLabel({ category }: { category: 'movies' | 'tv' }) {
-  const isMovie = category === 'movies'
-  return (
-    <div className="flex items-center gap-1.5 mb-3">
-      <span className="text-sm">{isMovie ? '🎬' : '📺'}</span>
-      <span className="text-xs font-semibold tracking-[0.15em] uppercase" style={{ color: isMovie ? 'var(--accent)' : '#a78bfa' }}>
-        {isMovie ? 'Movies' : 'TV Shows'}
-      </span>
-    </div>
-  )
-}
-
-// ── Stats row ──────────────────────────────────────────────────────────────
-
-function StatsRow({ reactionCount, commentCount, reactionEmojis = ['🔥'] }: { reactionCount: number; commentCount: number; reactionEmojis?: string[] }) {
-  if (reactionCount === 0 && commentCount === 0) return null
-  return (
-    <div className="flex items-center gap-3 mt-auto pt-2">
-      {reactionCount > 0 && (
-        <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}>
-          <span style={{ fontSize: 13 }}>{reactionEmojis.join('')}</span>{reactionCount}
-        </span>
-      )}
-      {commentCount > 0 && (
-        <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}>
-          <span style={{ fontSize: 13 }}>💬</span>{commentCount}
-        </span>
-      )}
     </div>
   )
 }
@@ -367,26 +349,23 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set())
-  const [byYearOpen, setByYearOpen] = useState(false)
   const didInitExpand = useRef(false)
 
-  // Following feed
-  const [feedFilter, setFeedFilter] = useState<'everyone' | 'following'>(() => {
+  const [navPill, setNavPill] = useState<NavPill>(() => {
     if (typeof window !== 'undefined') {
-      return (localStorage.getItem('home_feed_filter') as 'everyone' | 'following') ?? 'everyone'
+      return (localStorage.getItem('home_nav_pill') as NavPill) ?? 'all'
     }
-    return 'everyone'
+    return 'all'
   })
-  const [followingIds, setFollowingIds] = useState<Set<string>>(new Set())
+  const [displayCount, setDisplayCount] = useState(12)
+  const sentinelRef = useRef<HTMLDivElement>(null)
 
-  // Weekly prompt
+  const [followingIds, setFollowingIds] = useState<Set<string>>(new Set())
   const [weeklyPrompt, setWeeklyPrompt] = useState<WeeklyPrompt | null>(null)
   const [promptDismissed, setPromptDismissed] = useState(false)
-  const promptListsSectionRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { fetchLists() }, [])
 
-  // Show prompt to everyone — visitors included
   useEffect(() => {
     const weekNumber = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000))
     const visitorKey = `prompt_dismissed_${weekNumber}`
@@ -397,13 +376,10 @@ export default function HomePage() {
   useEffect(() => {
     if (!user || !profile) return
     fetchFollowingIds()
-    // Re-check dismissal with user-specific key so accounts don't bleed into each other
     const weekNumber = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000))
     const userKey = `prompt_dismissed_${weekNumber}_${user.id}`
     setPromptDismissed(localStorage.getItem(userKey) === '1')
-    // Re-fetch with alternate-prompt check now that we have a profile
     fetchWeeklyPrompt()
-    // Redirect if user just signed in with a pending prompt selection
     const pending = localStorage.getItem('pending_prompt')
     if (pending) {
       localStorage.removeItem('pending_prompt')
@@ -414,6 +390,21 @@ export default function HomePage() {
       } catch {}
     }
   }, [user, profile])
+
+  // Reset infinite scroll count when switching tabs
+  useEffect(() => { setDisplayCount(12) }, [navPill])
+
+  // IntersectionObserver for infinite scroll
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setDisplayCount((c) => c + 12) },
+      { rootMargin: '200px' }
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [navPill, displayCount])
 
   async function fetchFollowingIds() {
     if (!profile) return
@@ -435,7 +426,6 @@ export default function HomePage() {
     try {
       const weekNumber = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000))
       let week = weekNumber
-      // If logged in, skip to next week's prompt if they already made one this week
       if (profile) {
         const { data: existing } = await supabase
           .from('lists')
@@ -487,9 +477,9 @@ export default function HomePage() {
     setPromptDismissed(true)
   }
 
-  function saveFeedFilter(f: 'everyone' | 'following') {
-    setFeedFilter(f)
-    localStorage.setItem('home_feed_filter', f)
+  function saveNavPill(pill: NavPill) {
+    setNavPill(pill)
+    localStorage.setItem('home_nav_pill', pill)
   }
 
   async function fetchLists() {
@@ -503,7 +493,6 @@ export default function HomePage() {
 
     const listIds = raw.map((l) => l.id)
 
-    // Fetch top-3 entries + list-level engagement only (no entry-level IN queries)
     const [{ data: topEntries }, { data: listReactions }, { data: listComments }] = await Promise.all([
       supabase.from('list_entries').select('id, list_id, title, rank, image_url').in('list_id', listIds).not('rank', 'is', null).lte('rank', 3).order('rank', { ascending: true }),
       supabase.from('reactions').select('list_id, emoji').in('list_id', listIds),
@@ -564,7 +553,6 @@ export default function HomePage() {
     setLists(richLists)
     setLoading(false)
 
-    // Fetch TMDB posters in a macrotask so the page renders before any requests fire
     const needPosters = richLists.flatMap((l) =>
       l.entries.filter((e) => !e.image_url).map((e) => ({
         id: e.id,
@@ -601,33 +589,19 @@ export default function HomePage() {
     })
   }
 
-  const featuredLists = lists.filter((l) => l.featured)
-  const allLists      = lists.filter((l) => !l.featured)
-
-  // Following feed filter
-  const nonFeatured = feedFilter === 'following' && user
-    ? allLists.filter((l) => l.owner_id && followingIds.has(l.owner_id))
-    : allLists
-
-  const allTimeLists  = nonFeatured.filter((l) => l.year === null)
-  const allTimeMovies = allTimeLists.filter((l) => l.category === 'movies')
-  const allTimeTV     = allTimeLists.filter((l) => l.category === 'tv')
-
-  const recentLists = [...nonFeatured].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5)
-
-  const annualLists = nonFeatured.filter((l) => l.year !== null)
+  // Computed feeds
+  const feedLists = lists  // sorted by score in fetchLists
+  const promptFeedLists = weeklyPrompt ? lists.filter((l) => l.prompt_week === weeklyPrompt.week_number) : []
+  const editorialLists = lists.filter((l) => l.featured)
+  const recentFeedLists = [...lists].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  const annualLists = lists.filter((l) => l.year !== null)
   const years = [...new Set(annualLists.map((l) => l.year as number))].sort((a, b) => b - a)
 
-  // Active user suggestions for Following empty state
-  const activeProfiles = [...new Map(
-    allLists.filter((l) => l.profiles && l.owner_id && !followingIds.has(l.owner_id) && l.owner_id !== profile?.id)
-      .map((l) => [l.owner_id!, l.profiles!])
-  ).values()].slice(0, 4)
-
   const showWeeklyPrompt = !!weeklyPrompt && !promptDismissed
-  const promptListsForWeek = weeklyPrompt
-    ? allLists.filter((l) => l.prompt_week === weeklyPrompt.week_number)
-    : []
+
+  // Which list to paginate based on pill
+  const activeFeed = navPill === 'recent' ? recentFeedLists : feedLists
+  const hasMore = (navPill === 'all' || navPill === 'recent') && displayCount < activeFeed.length
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
@@ -659,188 +633,127 @@ export default function HomePage() {
         )}
 
         {!loading && !fetchError && lists.length > 0 && (
-          <div className="space-y-16">
+          <div className="space-y-6">
 
-            {/* ── Weekly Prompt Card ── */}
+            {/* Weekly Prompt Card */}
             {showWeeklyPrompt && weeklyPrompt && (
               <WeeklyPromptCard
                 prompt={weeklyPrompt}
                 onDismiss={dismissPrompt}
                 user={user}
                 onSignIn={signInWithGoogle}
-                onSeeOthers={promptListsForWeek.length >= 2 ? () => {
-                  promptListsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                } : undefined}
+                onSeeOthers={promptFeedLists.length >= 2 ? () => saveNavPill('prompt') : undefined}
               />
             )}
 
-            {/* ── Feed filter tabs (logged-in users only) ── */}
-            {user && (
-              <div className="flex gap-1 -mt-8 mb-2">
-                {(['everyone', 'following'] as const).map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => saveFeedFilter(f)}
-                    className="px-4 py-1.5 rounded-full text-sm font-medium transition-all capitalize"
-                    style={
-                      feedFilter === f
-                        ? { background: 'var(--accent)', color: '#0a0a0f' }
-                        : { background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }
-                    }
-                  >
-                    {f.charAt(0).toUpperCase() + f.slice(1)}
-                  </button>
-                ))}
+            {/* Nav Pills */}
+            <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+              {NAV_PILLS.map((pill) => (
+                <button
+                  key={pill.id}
+                  onClick={() => saveNavPill(pill.id)}
+                  className="shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap"
+                  style={
+                    navPill === pill.id
+                      ? { background: 'var(--accent)', color: '#0a0a0f' }
+                      : { background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }
+                  }
+                >
+                  {pill.label}
+                </button>
+              ))}
+            </div>
+
+            {/* All tab — unified infinite scroll */}
+            {navPill === 'all' && (
+              <div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {feedLists.slice(0, displayCount).map((l) => (
+                    <FeedCard key={l.id} list={l} posters={posters} followingIds={followingIds} onFollowToggle={handleFollowToggle} />
+                  ))}
+                </div>
+                {hasMore && (
+                  <div ref={sentinelRef} className="py-8 flex justify-center">
+                    <div className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
+                  </div>
+                )}
               </div>
             )}
 
-            {/* ── Following empty state ── */}
-            {feedFilter === 'following' && user && nonFeatured.length === 0 && (
-              <section>
-                <div className="py-10 text-center">
-                  <p className="text-base font-semibold mb-2">Follow people to see their lists here</p>
-                  <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>Here are some people with great taste:</p>
-                  <div className="flex flex-wrap justify-center gap-3">
-                    {activeProfiles.map((p) => (
-                      <Link
-                        key={p.username}
-                        href={`/${p.username}`}
-                        className="flex items-center gap-2 px-3 py-2 rounded-xl transition-opacity hover:opacity-80"
-                        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+            {/* This Week's Prompt tab */}
+            {navPill === 'prompt' && (
+              <div>
+                {weeklyPrompt && (
+                  <p className="text-sm mb-4" style={{ color: 'var(--muted)' }}>{weeklyPrompt.prompt_text}</p>
+                )}
+                {promptFeedLists.length === 0 ? (
+                  <div className="text-center py-16">
+                    <p className="text-sm mb-4" style={{ color: 'var(--muted)' }}>No lists for this week&apos;s prompt yet.</p>
+                    {weeklyPrompt && (
+                      <button
+                        onClick={() => {
+                          sessionStorage.setItem('weekly_prompt_data', JSON.stringify(weeklyPrompt))
+                          router.push(`/create?promptWeek=${weeklyPrompt.week_number}`)
+                        }}
+                        className="text-sm font-semibold transition-opacity hover:opacity-70"
+                        style={{ color: 'var(--accent)' }}
                       >
-                        {p.avatar_url ? (
-                          <img src={p.avatar_url} alt="" className="w-6 h-6 rounded-full" loading="lazy" />
-                        ) : (
-                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ background: 'var(--accent)', color: '#0a0a0f' }}>
-                            {(p.display_name ?? p.username)[0].toUpperCase()}
-                          </div>
-                        )}
-                        <span className="text-sm font-medium">{p.display_name ?? p.username}</span>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              </section>
-            )}
-
-            {/* ── Section 1: All Time ── */}
-            {allTimeLists.length > 0 && (
-              <section>
-                <div className="mb-6">
-                  <h2 className="text-2xl font-bold tracking-tight">All Time</h2>
-                  <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>The definitive lists — no year limits.</p>
-                </div>
-
-                {allTimeMovies.length > 0 && allTimeTV.length > 0 ? (
-                  /* Both categories */
-                  <div>
-                    {/* Mobile: grouped by category */}
-                    <div className="sm:hidden space-y-6">
-                      <div>
-                        <CategoryLabel category="tv" />
-                        <div className="space-y-4">
-                          {allTimeTV.map((l) => <AllTimeCard key={l.id} list={l} posters={posters} followingIds={followingIds} onFollowToggle={handleFollowToggle} />)}
-                        </div>
-                      </div>
-                      <div>
-                        <CategoryLabel category="movies" />
-                        <div className="space-y-4">
-                          {allTimeMovies.map((l) => <AllTimeCard key={l.id} list={l} posters={posters} followingIds={followingIds} onFollowToggle={handleFollowToggle} />)}
-                        </div>
-                      </div>
-                    </div>
-                    {/* Desktop: side-by-side paired rows */}
-                    <div className="hidden sm:block">
-                      <div className="grid grid-cols-2 gap-8 mb-1">
-                        <CategoryLabel category="tv" />
-                        <CategoryLabel category="movies" />
-                      </div>
-                      <PairedCardGrid
-                        leftList={allTimeTV}
-                        rightList={allTimeMovies}
-                        posters={posters}
-                        Card={AllTimeCard}
-                        followingIds={followingIds}
-                        onFollowToggle={handleFollowToggle}
-                      />
-                    </div>
+                        Be the first →
+                      </button>
+                    )}
                   </div>
                 ) : (
-                  /* Single category */
-                  <div className="max-w-xl">
-                    {allTimeLists.length > 0 && <CategoryLabel category={allTimeLists[0].category} />}
-                    <div className="space-y-4">
-                      {allTimeLists.map((l) => <AllTimeCard key={l.id} list={l} posters={posters} followingIds={followingIds} onFollowToggle={handleFollowToggle} />)}
-                    </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {promptFeedLists.map((l) => (
+                      <FeedCard key={l.id} list={l} posters={posters} followingIds={followingIds} onFollowToggle={handleFollowToggle} />
+                    ))}
                   </div>
                 )}
-              </section>
+              </div>
             )}
 
-            {/* ── This Week's Prompt Lists ── */}
-            {promptListsForWeek.length >= 2 && weeklyPrompt && (
-              <section ref={promptListsSectionRef}>
-                <div className="mb-4">
-                  <h2 className="text-2xl font-bold tracking-tight">From This Week&apos;s Prompt</h2>
-                  <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>{weeklyPrompt.prompt_text}</p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {promptListsForWeek.map((l) => <AllTimeCard key={l.id} list={l} posters={posters} followingIds={followingIds} onFollowToggle={handleFollowToggle} />)}
-                </div>
-              </section>
-            )}
-
-            {/* ── Section 2: Recently Added ── */}
-            {recentLists.length > 0 && (
-              <section>
-                <div className="mb-4">
-                  <h2 className="text-2xl font-bold tracking-tight">Recently Added</h2>
-                </div>
-                <div
-                  className="flex gap-3 overflow-x-auto pb-2"
-                  style={{ scrollbarWidth: 'none' }}
-                >
-                  {recentLists.map((l) => <RecentCard key={l.id} list={l} posters={posters} />)}
-                </div>
-              </section>
-            )}
-
-            {/* ── Section 3: Editorial Lists ── */}
-            {featuredLists.length > 0 && (
-              <section>
-                <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-bold tracking-[0.25em] uppercase px-2 py-0.5 rounded" style={{ background: 'rgba(232,197,71,0.12)', color: 'var(--accent)', border: '1px solid rgba(232,197,71,0.2)' }}>Editorial</span>
+            {/* Editorial tab */}
+            {navPill === 'editorial' && (
+              <div>
+                {editorialLists.length === 0 ? (
+                  <div className="text-center py-16">
+                    <p className="text-sm" style={{ color: 'var(--muted)' }}>No editorial lists yet.</p>
                   </div>
-                  <h2 className="text-2xl font-bold tracking-tight">Editorial Lists</h2>
-                  <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>IMDB, Obama, AFI — compare your taste.</p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {featuredLists.map((l) => <FeaturedCard key={l.id} list={l} posters={posters} />)}
-                </div>
-              </section>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {editorialLists.map((l) => (
+                      <FeedCard key={l.id} list={l} posters={posters} />
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
-            {/* ── Section 4: By Year (collapsed by default) ── */}
-            {years.length > 0 && (
-              <section>
-                <button
-                  onClick={() => setByYearOpen((o) => !o)}
-                  className="w-full flex items-center justify-between mb-6 text-left group"
-                >
-                  <div>
-                    <h2 className="text-2xl font-bold tracking-tight">By Year</h2>
-                    <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>Year-by-year, side by side.</p>
+            {/* Recently Added tab */}
+            {navPill === 'recent' && (
+              <div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {recentFeedLists.slice(0, displayCount).map((l) => (
+                    <FeedCard key={l.id} list={l} posters={posters} followingIds={followingIds} onFollowToggle={handleFollowToggle} />
+                  ))}
+                </div>
+                {hasMore && (
+                  <div ref={sentinelRef} className="py-8 flex justify-center">
+                    <div className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
                   </div>
-                  <span
-                    className="text-sm transition-transform duration-200 ml-4 shrink-0"
-                    style={{ color: 'var(--muted)', display: 'inline-block', transform: byYearOpen ? 'rotate(180deg)' : 'none' }}
-                  >▼</span>
-                </button>
+                )}
+              </div>
+            )}
 
-                {byYearOpen && (
-                <div className="space-y-3">
-                  {years.map((year) => {
+            {/* By Year tab */}
+            {navPill === 'by-year' && (
+              <div className="space-y-3">
+                {years.length === 0 ? (
+                  <div className="text-center py-16">
+                    <p className="text-sm" style={{ color: 'var(--muted)' }}>No year-based lists yet.</p>
+                  </div>
+                ) : (
+                  years.map((year) => {
                     const yearMovies = annualLists.filter((l) => l.year === year && l.category === 'movies')
                     const yearTV     = annualLists.filter((l) => l.year === year && l.category === 'tv')
                     const isOpen     = expandedYears.has(year)
@@ -863,7 +776,6 @@ export default function HomePage() {
                           >
                             {yearMovies.length > 0 && yearTV.length > 0 ? (
                               <div>
-                                {/* Mobile: grouped by category */}
                                 <div className="sm:hidden space-y-6">
                                   <div>
                                     <CategoryLabel category="tv" />
@@ -878,7 +790,6 @@ export default function HomePage() {
                                     </div>
                                   </div>
                                 </div>
-                                {/* Desktop: side-by-side paired rows */}
                                 <div className="hidden sm:block">
                                   <div className="grid grid-cols-2 gap-6 mb-1">
                                     <CategoryLabel category="tv" />
@@ -907,10 +818,9 @@ export default function HomePage() {
                         )}
                       </div>
                     )
-                  })}
-                </div>
+                  })
                 )}
-              </section>
+              </div>
             )}
 
           </div>
@@ -955,7 +865,6 @@ function WeeklyPromptCard({
     const selectedSuggestions = prompt.suggestions.filter((_, i) => selected.has(i))
     const payload = { ...prompt, suggestions: selectedSuggestions }
     if (!user) {
-      // Persist selections to localStorage so they survive the OAuth redirect
       localStorage.setItem('pending_prompt', JSON.stringify(payload))
       onSignIn()
       return
@@ -969,7 +878,6 @@ function WeeklyPromptCard({
       className="relative rounded-2xl p-5 sm:p-6 overflow-hidden"
       style={{ background: 'var(--surface)', border: '1px solid rgba(232,197,71,0.3)', boxShadow: '0 0 40px rgba(232,197,71,0.06)' }}
     >
-      {/* Dismiss button */}
       <button
         onClick={onDismiss}
         className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-full transition-opacity hover:opacity-60 text-xs"
@@ -979,12 +887,10 @@ function WeeklyPromptCard({
         ×
       </button>
 
-      {/* Prompt text */}
       <p className="text-xl sm:text-2xl font-bold leading-tight mb-2" style={{ maxWidth: 520 }}>
         {prompt.prompt_text}
       </p>
 
-      {/* Poster thumbnails */}
       {hasSuggestions && (
         <>
           <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
@@ -1022,11 +928,8 @@ function WeeklyPromptCard({
                       {s.title}
                     </div>
                   )}
-                  {/* Checkmark overlay */}
                   {isSelected && (
-                    <div
-                      className="absolute inset-0 flex items-end justify-end p-1"
-                    >
+                    <div className="absolute inset-0 flex items-end justify-end p-1">
                       <span
                         className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
                         style={{ background: 'var(--accent)', color: '#0a0a0f' }}
@@ -1042,7 +945,6 @@ function WeeklyPromptCard({
         </>
       )}
 
-      {/* CTAs */}
       <div className="flex items-center gap-4 flex-wrap">
         <button
           onClick={startList}

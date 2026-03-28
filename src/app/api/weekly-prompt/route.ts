@@ -63,17 +63,19 @@ export async function GET(req: NextRequest) {
     .eq('week_number', weekNumber)
     .single()
 
-  // Serve cached data if it has suggestions; auto-delete stale empty rows
+  // Serve 5 random from cached pool; auto-delete stale empty rows
   if (cached) {
-    if ((cached.suggestions as unknown[]).length > 0) {
-      return NextResponse.json({ week_number: weekNumber, prompt_text: cached.prompt_text, suggestions: cached.suggestions })
+    const pool = cached.suggestions as { title: string; poster_url: string | null }[]
+    if (pool.length > 0) {
+      const suggestions = pool.length <= 5 ? pool : [...pool].sort(() => Math.random() - 0.5).slice(0, 5)
+      return NextResponse.json({ week_number: weekNumber, prompt_text: cached.prompt_text, suggestions })
     }
     // Stale empty row — delete it so the upsert below can write a clean row
     await supabase.from('weekly_prompt_cache').delete().eq('week_number', weekNumber)
   }
 
-  // Generate suggestions via Claude Haiku
-  let suggestions: { title: string; poster_url: string | null }[] = []
+  // Generate 30-suggestion pool via Claude Haiku
+  let pool: { title: string; poster_url: string | null }[] = []
   let claudeError: string | null = null
 
   if (process.env.ANTHROPIC_API_KEY) {
@@ -81,37 +83,36 @@ export async function GET(req: NextRequest) {
       const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
       const message = await client.messages.create({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 200,
+        max_tokens: 800,
         messages: [{
           role: 'user',
-          content: `Given the prompt "${promptText}", suggest exactly 5 well-known film or TV titles that would be great answers. Return ONLY a JSON array of strings, no explanation, no markdown. Example: ["The Wire", "Breaking Bad", "The Sopranos", "Succession", "Better Call Saul"]`,
+          content: `Given the prompt "${promptText}", suggest exactly 30 diverse and well-known film or TV titles that would be great answers. Include a mix of classics and recent titles. Return ONLY a JSON array of strings, no explanation, no markdown. Example: ["The Wire", "Breaking Bad", "The Sopranos", "Succession", "Better Call Saul", ...]`,
         }],
       })
 
       const raw = message.content[0].type === 'text' ? message.content[0].text.trim() : '[]'
-      // Strip markdown code fences if Claude wraps the response
       const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
       const titles: string[] = JSON.parse(text)
 
-      suggestions = await Promise.all(
-        titles.slice(0, 5).map(async (title) => ({
+      pool = await Promise.all(
+        titles.slice(0, 30).map(async (title) => ({
           title,
           poster_url: await fetchPosterForTitle(title),
         }))
       )
     } catch (err) {
       claudeError = err instanceof Error ? err.message : String(err)
-      suggestions = []
+      pool = []
     }
   } else {
     claudeError = 'ANTHROPIC_API_KEY not set'
   }
 
   // Only cache if we got suggestions — otherwise let the next request retry
-  if (suggestions.length > 0) {
+  if (pool.length > 0) {
     try {
       await supabase.from('weekly_prompt_cache').upsert(
-        { week_number: weekNumber, prompt_text: promptText, suggestions },
+        { week_number: weekNumber, prompt_text: promptText, suggestions: pool },
         { onConflict: 'week_number' }
       )
     } catch {
@@ -119,5 +120,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const suggestions = pool.length <= 5 ? pool : [...pool].sort(() => Math.random() - 0.5).slice(0, 5)
   return NextResponse.json({ week_number: weekNumber, prompt_text: promptText, suggestions, ...(claudeError ? { error: claudeError } : {}) })
 }

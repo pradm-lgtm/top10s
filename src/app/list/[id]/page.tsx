@@ -908,53 +908,50 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                 </Link>
               )
             )}
-            <button
-              onClick={() => setShowCompare(true)}
-              title="Compare"
-              className="flex items-center gap-1.5 px-2.5 h-7 rounded-lg text-xs font-medium transition-all"
-              style={{
-                background: 'var(--surface)',
-                color: 'var(--muted)',
-                border: '1px solid var(--border)',
-              }}
-            >
-              <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M1 6.5h11M5 2.5 1 6.5l4 4M8 2.5l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Compare
-            </button>
-            <button
-              onClick={() => setShowShare(true)}
-              title="Share"
-              className="w-7 h-7 flex items-center justify-center rounded-lg transition-all"
-              style={{
-                background: 'var(--surface)',
-                color: 'var(--muted)',
-                border: '1px solid var(--border)',
-              }}
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 4l3-3 3 3M2 10v2.5h10V10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </button>
+            {/* Icon-only action buttons */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setShowCompare(true)}
+                title="Compare"
+                className="w-11 h-11 flex items-center justify-center rounded-lg transition-all hover:opacity-70"
+                style={{ background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+                aria-label="Compare"
+              >
+                {/* Split-screen / compare icon */}
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="6" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/><rect x="9" y="2" width="6" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/></svg>
+              </button>
+              <button
+                onClick={() => setShowShare(true)}
+                title="Share"
+                className="w-11 h-11 flex items-center justify-center rounded-lg transition-all hover:opacity-70"
+                style={{ background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+                aria-label="Share"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 4l3-3 3 3M2 10v2.5h10V10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+              {user && !isOwner && (
+                <button
+                  onClick={() => {
+                    const params = new URLSearchParams({
+                      title: list.title,
+                      format: list.list_format,
+                      category: list.category,
+                      ...(list.year ? { year: String(list.year) } : {}),
+                      originalListId: list.id,
+                    })
+                    router.push(`/create?${params.toString()}`)
+                  }}
+                  title="Make your own version"
+                  className="w-11 h-11 flex items-center justify-center rounded-lg transition-all hover:opacity-70"
+                  style={{ background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+                  aria-label="Make your own version"
+                >
+                  {/* Fork / two overlapping squares icon */}
+                  <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="5" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.5"/><path d="M5 4V3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                </button>
+              )}
+            </div>
           </div>
-
-          {/* Make your own version */}
-          {user && !isOwner && (
-            <button
-              onClick={() => {
-                const params = new URLSearchParams({
-                  title: list.title,
-                  format: list.list_format,
-                  category: list.category,
-                  ...(list.year ? { year: String(list.year) } : {}),
-                  originalListId: list.id,
-                })
-                router.push(`/create?${params.toString()}`)
-              }}
-              className="mt-3 mb-4 inline-flex items-center gap-1.5 text-xs font-medium transition-opacity hover:opacity-60"
-              style={{ color: 'var(--muted)' }}
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6h8M6 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Make your own version
-            </button>
-          )}
 
           <div className="text-base max-w-xl mt-1">
             {(isAdmin || isOwner) && editMode ? (

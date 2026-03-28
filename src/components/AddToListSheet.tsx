@@ -3,6 +3,22 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 type UserList = {
   id: string
@@ -13,24 +29,72 @@ type UserList = {
   tiers: { id: string; label: string; color: string | null; position: number }[]
 }
 
+type EntryItem = { id: string; title: string; rank: number | null; image_url: string | null }
+
 type Props = {
   entry: { title: string; image_url: string | null }
   onClose: () => void
   onSuccess: (listTitle: string) => void
 }
 
+function SortableEntryRow({ item, isNew }: { item: EntryItem; isNew: boolean }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id })
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        background: isNew ? 'rgba(232,197,71,0.08)' : 'transparent',
+        borderLeft: isNew ? '2px solid var(--accent)' : '2px solid transparent',
+      }}
+      className="flex items-center gap-3 px-4 py-2.5"
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="touch-none cursor-grab active:cursor-grabbing shrink-0"
+        style={{ color: 'var(--muted)', lineHeight: 1 }}
+        aria-label="Drag to reorder"
+      >
+        ⠿
+      </button>
+      {item.image_url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={item.image_url} alt="" className="w-7 h-10 object-cover rounded shrink-0" />
+      )}
+      <span className="text-sm truncate flex-1">{item.title}</span>
+      {isNew && (
+        <span className="text-[10px] font-semibold shrink-0 px-1.5 py-0.5 rounded" style={{ background: 'rgba(232,197,71,0.15)', color: 'var(--accent)' }}>
+          NEW
+        </span>
+      )}
+    </div>
+  )
+}
+
 export function AddToListSheet({ entry, onClose, onSuccess }: Props) {
   const [lists, setLists] = useState<UserList[]>([])
   const [loading, setLoading] = useState(true)
-  const [step, setStep] = useState<'list' | 'tier'>('list')
+  const [step, setStep] = useState<'list' | 'tier' | 'reorder'>('list')
   const [selectedList, setSelectedList] = useState<UserList | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // Reorder state
+  const [reorderEntries, setReorderEntries] = useState<EntryItem[]>([])
+  const [newEntryId, setNewEntryId] = useState<string | null>(null)
+  const [savingOrder, setSavingOrder] = useState(false)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
+  )
 
   useEffect(() => {
     loadLists()
   }, [])
 
-  // Close on backdrop click
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', onKey)
@@ -90,21 +154,97 @@ export function AddToListSheet({ entry, onClose, onSuccess }: Props) {
     })
 
     if (res.ok) {
+      const newEntry = await res.json()
+
+      // For ranked or tier-ranked (after tier selection), show reorder view
+      if (list.list_format === 'ranked' || list.list_format === 'tier-ranked') {
+        setNewEntryId(newEntry.id)
+        await loadEntriesForReorder(list, newEntry.id, tierId)
+        setSaving(false)
+        return
+      }
+
       onSuccess(list.title)
     }
     setSaving(false)
   }
 
+  async function loadEntriesForReorder(list: UserList, newId: string, tierId?: string) {
+    let query = supabase
+      .from('list_entries')
+      .select('id, title, rank, image_url')
+      .eq('list_id', list.id)
+      .not('rank', 'is', null)
+      .order('rank', { ascending: true })
+
+    if (tierId) {
+      query = query.eq('tier_id', tierId)
+    }
+
+    const { data } = await query
+    setReorderEntries((data ?? []) as EntryItem[])
+    setStep('reorder')
+  }
+
+  async function saveOrder() {
+    if (!selectedList) return
+    setSavingOrder(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) { setSavingOrder(false); return }
+
+    await fetch('/api/list-entries/reorder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({
+        list_id: selectedList.id,
+        ordered_entry_ids: reorderEntries.map((e) => e.id),
+      }),
+    })
+
+    setSavingOrder(false)
+    onSuccess(selectedList.title)
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (over && active.id !== over.id) {
+      setReorderEntries((items) => {
+        const oldIndex = items.findIndex((i) => i.id === active.id)
+        const newIndex = items.findIndex((i) => i.id === over.id)
+        return arrayMove(items, oldIndex, newIndex)
+      })
+    }
+  }
+
   function handleListSelect(list: UserList) {
+    setSelectedList(list)
     if (list.list_format === 'tiered' || list.list_format === 'tier-ranked') {
       if (list.tiers.length > 0) {
-        setSelectedList(list)
         setStep('tier')
         return
       }
     }
     addToList(list)
   }
+
+  function handleTierSelect(tier: UserList['tiers'][0]) {
+    if (!selectedList) return
+    if (selectedList.list_format === 'tier-ranked') {
+      // Add entry then show reorder within that tier
+      addToList(selectedList, tier.id)
+    } else {
+      // Pure tiered: just add and close
+      addToList(selectedList, tier.id)
+    }
+  }
+
+  const stepTitle = step === 'list' ? 'Add to list'
+    : step === 'tier' ? 'Choose a tier'
+    : 'Drag to reorder'
+
+  const stepSubtitle = step === 'list' ? entry.title
+    : step === 'tier' ? null
+    : null
 
   return (
     <div
@@ -119,22 +259,20 @@ export function AddToListSheet({ entry, onClose, onSuccess }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
           <div>
-            {step === 'list' ? (
-              <>
-                <p className="text-xs font-semibold tracking-wide uppercase mb-0.5" style={{ color: 'var(--accent)' }}>Add to list</p>
-                <p className="text-sm font-semibold truncate" style={{ maxWidth: 260 }}>{entry.title}</p>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => setStep('list')}
-                  className="text-xs mb-1 transition-opacity hover:opacity-60"
-                  style={{ color: 'var(--muted)' }}
-                >
-                  ← Back
-                </button>
-                <p className="text-sm font-semibold">Choose a tier</p>
-              </>
+            {step !== 'list' && (
+              <button
+                onClick={() => setStep(step === 'reorder' && selectedList?.list_format === 'tier-ranked' ? 'tier' : 'list')}
+                className="text-xs mb-1 transition-opacity hover:opacity-60"
+                style={{ color: 'var(--muted)' }}
+              >
+                ← Back
+              </button>
+            )}
+            <p className="text-xs font-semibold tracking-wide uppercase mb-0.5" style={{ color: 'var(--accent)' }}>
+              {stepTitle}
+            </p>
+            {stepSubtitle && (
+              <p className="text-sm font-semibold truncate" style={{ maxWidth: 260 }}>{stepSubtitle}</p>
             )}
           </div>
           <button
@@ -186,11 +324,11 @@ export function AddToListSheet({ entry, onClose, onSuccess }: Props) {
                 + Create a new list
               </Link>
             </>
-          ) : selectedList ? (
+          ) : step === 'tier' && selectedList ? (
             selectedList.tiers.map((tier) => (
               <button
                 key={tier.id}
-                onClick={() => addToList(selectedList, tier.id)}
+                onClick={() => handleTierSelect(tier)}
                 disabled={saving}
                 className="w-full text-left px-5 py-4 flex items-center gap-3 transition-opacity hover:opacity-70 disabled:opacity-40"
                 style={{ borderBottom: '1px solid var(--border)' }}
@@ -202,8 +340,35 @@ export function AddToListSheet({ entry, onClose, onSuccess }: Props) {
                 {saving && <div className="ml-auto w-4 h-4 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />}
               </button>
             ))
+          ) : step === 'reorder' ? (
+            <div>
+              <p className="px-5 py-3 text-xs" style={{ color: 'var(--muted)', borderBottom: '1px solid var(--border)' }}>
+                Drag to set the order, then tap Done.
+              </p>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={reorderEntries.map((e) => e.id)} strategy={verticalListSortingStrategy}>
+                  {reorderEntries.map((item) => (
+                    <SortableEntryRow key={item.id} item={item} isNew={item.id === newEntryId} />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            </div>
           ) : null}
         </div>
+
+        {/* Footer: Done button for reorder step */}
+        {step === 'reorder' && (
+          <div className="px-5 py-4" style={{ borderTop: '1px solid var(--border)' }}>
+            <button
+              onClick={saveOrder}
+              disabled={savingOrder}
+              className="w-full py-3 rounded-xl font-semibold text-sm transition-opacity hover:opacity-80 disabled:opacity-40"
+              style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+            >
+              {savingOrder ? 'Saving…' : 'Done'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

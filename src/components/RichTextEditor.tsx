@@ -27,10 +27,17 @@ export function RichTextEditor({
   const onChangeRef = useRef(onChange)
   useEffect(() => { onChangeRef.current = onChange }, [onChange])
 
-  const initialContent: TiptapDoc =
-    value && typeof value === 'object' && value.type === 'doc'
-      ? value
-      : { type: 'doc', content: [{ type: 'paragraph', content: typeof value === 'string' && value ? [{ type: 'text', text: value }] : [] }] }
+  const initialContent: TiptapDoc = (() => {
+    if (value && typeof value === 'object' && value.type === 'doc') return value
+    if (typeof value === 'string' && value) {
+      try {
+        const parsed = JSON.parse(value)
+        if (parsed?.type === 'doc') return parsed as TiptapDoc
+      } catch {}
+      return { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: value }] }] }
+    }
+    return { type: 'doc', content: [{ type: 'paragraph', content: [] }] }
+  })()
 
   const editor = useEditor({
     extensions: [StarterKit],
@@ -74,11 +81,19 @@ export function RichTextEditor({
       editor.commands.clearContent()
       return
     }
+    let doc: TiptapDoc | null = null
     if (typeof value === 'object' && value.type === 'doc') {
+      doc = value
+    } else if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value)
+        if (parsed?.type === 'doc') doc = parsed as TiptapDoc
+      } catch {}
+    }
+    if (doc) {
       const current = JSON.stringify(editor.getJSON())
-      const next = JSON.stringify(value)
-      if (current !== next) {
-        editor.commands.setContent(value)
+      if (current !== JSON.stringify(doc)) {
+        editor.commands.setContent(doc)
       }
     }
   }, [editor, value])
