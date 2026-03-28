@@ -382,6 +382,7 @@ export default function HomePage() {
   // Weekly prompt
   const [weeklyPrompt, setWeeklyPrompt] = useState<WeeklyPrompt | null>(null)
   const [promptDismissed, setPromptDismissed] = useState(false)
+  const promptListsSectionRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { fetchLists() }, [])
 
@@ -542,13 +543,16 @@ export default function HomePage() {
       reactionEmojis: reactionEmojisMap[list.id] ?? ['🔥'],
     }))
 
-    // Sort by engagement score (reactions + comments weighted), recency as tiebreak
-    const engagementScore = (l: RichList) => l.reactionCount * 2 + l.commentCount * 3
-    richLists.sort((a, b) => {
-      const scoreDiff = engagementScore(b) - engagementScore(a)
-      if (scoreDiff !== 0) return scoreDiff
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    })
+    // Sort by recency boost + engagement score
+    const now = Date.now()
+    const DAY = 24 * 60 * 60 * 1000
+    const listScore = (l: RichList) => {
+      const age = now - new Date(l.created_at).getTime()
+      const recency = age < DAY ? 100 : age < 7 * DAY ? 40 : 0
+      const engagement = l.reactionCount * 2 + l.commentCount * 3
+      return recency + engagement
+    }
+    richLists.sort((a, b) => listScore(b) - listScore(a))
 
     // Auto-expand most recent year
     if (!didInitExpand.current) {
@@ -621,6 +625,9 @@ export default function HomePage() {
   ).values()].slice(0, 4)
 
   const showWeeklyPrompt = !!weeklyPrompt && !promptDismissed
+  const promptListsForWeek = weeklyPrompt
+    ? allLists.filter((l) => l.prompt_week === weeklyPrompt.week_number)
+    : []
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
@@ -661,6 +668,9 @@ export default function HomePage() {
                 onDismiss={dismissPrompt}
                 user={user}
                 onSignIn={signInWithGoogle}
+                onSeeOthers={promptListsForWeek.length >= 2 ? () => {
+                  promptListsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                } : undefined}
               />
             )}
 
@@ -764,6 +774,19 @@ export default function HomePage() {
                     </div>
                   </div>
                 )}
+              </section>
+            )}
+
+            {/* ── This Week's Prompt Lists ── */}
+            {promptListsForWeek.length >= 2 && weeklyPrompt && (
+              <section ref={promptListsSectionRef}>
+                <div className="mb-4">
+                  <h2 className="text-2xl font-bold tracking-tight">From This Week&apos;s Prompt</h2>
+                  <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>{weeklyPrompt.prompt_text}</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {promptListsForWeek.map((l) => <AllTimeCard key={l.id} list={l} posters={posters} followingIds={followingIds} onFollowToggle={handleFollowToggle} />)}
+                </div>
               </section>
             )}
 
@@ -908,11 +931,13 @@ function WeeklyPromptCard({
   onDismiss,
   user,
   onSignIn,
+  onSeeOthers,
 }: {
   prompt: WeeklyPrompt
   onDismiss: () => void
   user: ReturnType<typeof useAuth>['user']
   onSignIn: () => void
+  onSeeOthers?: () => void
 }) {
   const router = useRouter()
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -953,16 +978,6 @@ function WeeklyPromptCard({
       >
         ×
       </button>
-
-      {/* Label */}
-      <div className="flex items-center gap-2 mb-3">
-        <span
-          className="text-[10px] font-bold tracking-[0.2em] uppercase px-2 py-0.5 rounded"
-          style={{ background: 'rgba(232,197,71,0.12)', color: 'var(--accent)', border: '1px solid rgba(232,197,71,0.2)' }}
-        >
-          This Week
-        </span>
-      </div>
 
       {/* Prompt text */}
       <p className="text-xl sm:text-2xl font-bold leading-tight mb-2" style={{ maxWidth: 520 }}>
@@ -1027,14 +1042,25 @@ function WeeklyPromptCard({
         </>
       )}
 
-      {/* CTA */}
-      <button
-        onClick={startList}
-        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-opacity hover:opacity-80"
-        style={{ background: 'var(--accent)', color: '#0a0a0f' }}
-      >
-        Start your list →
-      </button>
+      {/* CTAs */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <button
+          onClick={startList}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-opacity hover:opacity-80"
+          style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+        >
+          Start your list →
+        </button>
+        {onSeeOthers && (
+          <button
+            onClick={onSeeOthers}
+            className="text-sm transition-opacity hover:opacity-60"
+            style={{ color: 'var(--muted)' }}
+          >
+            See what others ranked →
+          </button>
+        )}
+      </div>
     </div>
   )
 }

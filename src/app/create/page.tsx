@@ -1664,10 +1664,28 @@ function CreatePageInner() {
   const [prefetchClaude, setPrefetchClaude] = useState<CloudResult[]>([])
   const prefetchSeqRef = useRef(0)
   const [promptWeek, setPromptWeek] = useState<number | null>(null)
+  const [originalListId, setOriginalListId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!loading && !user) router.replace('/')
   }, [loading, user, router])
+
+  // Pre-fill from "Make your own version" URL params
+  useEffect(() => {
+    const titleParam = searchParams.get('title')
+    const formatParam = searchParams.get('format') as 'ranked' | 'tiered' | 'tiered-ranked' | null
+    const categoryParam = searchParams.get('category') as 'movies' | 'tv' | null
+    const yearParam = searchParams.get('year')
+    const origId = searchParams.get('originalListId')
+    if (!origId) return
+    if (titleParam) setTitle(titleParam)
+    if (formatParam && ['ranked', 'tiered', 'tiered-ranked'].includes(formatParam)) setListFormat(formatParam)
+    if (categoryParam && ['movies', 'tv'].includes(categoryParam)) setCategory(categoryParam)
+    if (yearParam) { setTimeScope('year'); setYear(parseInt(yearParam, 10)) }
+    setOriginalListId(origId)
+    setStep(3)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Pre-fill from weekly prompt if ?promptWeek= is set
   useEffect(() => {
@@ -1780,6 +1798,7 @@ function CreatePageInner() {
         description: descriptionDoc ? JSON.stringify(descriptionDoc) : (description.trim() || null),
         owner_id: profile.id,
         ...(promptWeek !== null ? { prompt_week: promptWeek } : {}),
+        ...(originalListId ? { original_list_id: originalListId } : {}),
       })
       .select()
       .single()

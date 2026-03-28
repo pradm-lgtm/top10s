@@ -26,6 +26,7 @@ export type List = {
   source_label: string | null
   source_url: string | null
   prompt_week: number | null
+  original_list_id: string | null
   created_at: string
   profiles?: { username: string; display_name: string | null; avatar_url: string | null } | null
 }

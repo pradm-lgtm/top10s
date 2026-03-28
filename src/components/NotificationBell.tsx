@@ -164,6 +164,14 @@ export function NotificationBell() {
               </Link>
             ))
           )}
+          <Link
+            href="/notifications"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-3 text-center text-xs font-medium transition-opacity hover:opacity-60 sticky bottom-0"
+            style={{ color: 'var(--accent)', borderTop: '1px solid var(--border)', background: 'var(--surface)' }}
+          >
+            See all notifications →
+          </Link>
         </div>
       )}
     </div>

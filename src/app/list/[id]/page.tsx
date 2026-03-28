@@ -12,6 +12,7 @@ import { EntryDrawer } from '@/components/EntryDrawer'
 import ShareSheet from '@/components/ShareSheet'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { parseNotes, tiptapToHtml, notesToPlainText } from '@/lib/notes'
+import { AddToListSheet } from '@/components/AddToListSheet'
 import type { TiptapDoc } from '@/lib/notes'
 import type { PosterInfo } from '@/lib/tmdb'
 import type { List, ListEntry, Tier, Comment, ReactionCount, HonorableMention, AlsoWatched } from '@/types'
@@ -85,6 +86,9 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [savingDescription, setSavingDescription] = useState(false)
   const [showShare, setShowShare] = useState(false)
   const [showCompare, setShowCompare] = useState(false)
+  const [addToListEntry, setAddToListEntry] = useState<{ title: string; image_url: string | null } | null>(null)
+  const [addToListToast, setAddToListToast] = useState<string | null>(null)
+  const [similarLists, setSimilarLists] = useState<{ id: string; title: string; overlap: number; is_version: boolean; owner: { username: string; display_name: string | null; avatar_url: string | null } | null }[]>([])
   const router = useRouter()
   const searchParams = useSearchParams()
   const fromCompare = searchParams.get('from')
@@ -210,6 +214,14 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     if (tiersRes.data) setTiers(tiersRes.data)
 
     setLoading(false)
+
+    // Fetch similar lists lazily after main content renders
+    setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/lists/similar?listId=${id}`)
+        if (res.ok) setSimilarLists(await res.json())
+      } catch { /* non-fatal */ }
+    }, 500)
   }
 
   async function saveListField(field: string, value: string | boolean) {
@@ -272,7 +284,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     e.preventDefault()
     if (!newEntryTitle.trim()) return
     setSavingEntry(true)
-    const rank = newEntryRank ? Number(newEntryRank) : (Math.max(0, ...entries.map(e => e.rank ?? 0)) + 1)
+    const rank = Math.max(0, ...entries.map(e => e.rank ?? 0)) + 1
     const session = await getSession()
     const res = await fetch(`/api/lists/${id}/entries`, {
       method: 'POST',
@@ -923,6 +935,27 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
             </button>
           </div>
 
+          {/* Make your own version */}
+          {user && !isOwner && (
+            <button
+              onClick={() => {
+                const params = new URLSearchParams({
+                  title: list.title,
+                  format: list.list_format,
+                  category: list.category,
+                  ...(list.year ? { year: String(list.year) } : {}),
+                  originalListId: list.id,
+                })
+                router.push(`/create?${params.toString()}`)
+              }}
+              className="mt-3 mb-4 inline-flex items-center gap-1.5 text-xs font-medium transition-opacity hover:opacity-60"
+              style={{ color: 'var(--muted)' }}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6h8M6 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Make your own version
+            </button>
+          )}
+
           <div className="text-base max-w-xl mt-1">
             {(isAdmin || isOwner) && editMode ? (
               <div className="space-y-2">
@@ -1067,6 +1100,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               entryReactions={entryReactions}
               commentCounts={commentCounts}
               onEntryClick={handleEntryClick}
+              onAddToList={user && !isOwner ? (e) => setAddToListEntry({ title: e.title, image_url: e.image_url ?? null }) : undefined}
             />
           )}
 
@@ -1089,21 +1123,10 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                     onSelect={(title, posterUrl) => { setNewEntryTitle(title); setNewEntryPosterUrl(posterUrl) }}
                     placeholder={list.category === 'movies' ? 'Search movies…' : 'Search TV shows…'}
                   />
-                  <div className="flex items-center gap-3">
-                    {newEntryPosterUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={newEntryPosterUrl} alt="" className="w-8 h-12 object-cover rounded shrink-0" loading="lazy" />
-                    )}
-                    <input
-                      type="number"
-                      value={newEntryRank}
-                      onChange={(e) => setNewEntryRank(e.target.value)}
-                      placeholder={`Rank (optional, default: ${Math.max(0, ...entries.map(e => e.rank ?? 0)) + 1})`}
-                      min={1}
-                      className="flex-1 px-3 py-2 rounded text-sm outline-none"
-                      style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
-                    />
-                  </div>
+                  {newEntryPosterUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={newEntryPosterUrl} alt="" className="w-8 h-12 object-cover rounded shrink-0" loading="lazy" />
+                  )}
                   <RichTextEditor
                     value={newEntryNotes}
                     onChange={setNewEntryNotes}
@@ -1365,6 +1388,46 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
             </div>
           )}
         </section>
+
+        {/* Similar Lists */}
+        {similarLists.length > 0 && (
+          <section>
+            <h2 className="text-xs tracking-[0.3em] uppercase font-semibold mb-4" style={{ color: 'var(--muted)' }}>
+              Similar Lists
+            </h2>
+            <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
+              {similarLists.map((s) => (
+                <div
+                  key={s.id}
+                  className="shrink-0 rounded-xl p-4 flex flex-col gap-2"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--border)', width: 220 }}
+                >
+                  <p className="text-sm font-semibold leading-tight line-clamp-2">{s.title}</p>
+                  {s.owner && (
+                    <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                      {s.owner.display_name ?? s.owner.username}
+                    </p>
+                  )}
+                  {s.overlap > 0 && (
+                    <p className="text-xs" style={{ color: 'var(--accent)' }}>
+                      {s.overlap} {s.overlap === 1 ? 'title' : 'titles'} in common
+                    </p>
+                  )}
+                  {s.is_version && (
+                    <p className="text-xs" style={{ color: 'var(--accent)' }}>Version of this list</p>
+                  )}
+                  <Link
+                    href={`/compare/${list.id}/${s.id}`}
+                    className="mt-auto text-xs font-semibold px-3 py-1.5 rounded-lg text-center transition-opacity hover:opacity-80"
+                    style={{ background: 'var(--surface-2)', color: 'var(--foreground)', border: '1px solid var(--border)' }}
+                  >
+                    Compare →
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
 
       <EntryDrawer
@@ -1393,6 +1456,27 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
           category={list.category}
           onClose={() => setShowCompare(false)}
         />
+      )}
+
+      {addToListEntry && (
+        <AddToListSheet
+          entry={addToListEntry}
+          onClose={() => setAddToListEntry(null)}
+          onSuccess={(listTitle) => {
+            setAddToListEntry(null)
+            setAddToListToast(`Added to ${listTitle} ✓`)
+            setTimeout(() => setAddToListToast(null), 3000)
+          }}
+        />
+      )}
+
+      {addToListToast && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl text-sm font-medium shadow-lg"
+          style={{ background: 'var(--surface)', border: '1px solid var(--accent)', color: 'var(--accent)', whiteSpace: 'nowrap' }}
+        >
+          {addToListToast}
+        </div>
       )}
     </div>
   )
@@ -1649,12 +1733,14 @@ function RankedRowList({
   entryReactions,
   commentCounts,
   onEntryClick,
+  onAddToList,
 }: {
   entries: ListEntry[]
   posters: Record<string, PosterInfo>
   entryReactions: Record<string, Record<string, number>>
   commentCounts: Record<string, number>
   onEntryClick: (e: ListEntry) => void
+  onAddToList?: (e: ListEntry) => void
 }) {
   const [isDesktop, setIsDesktop] = useState(false)
   useEffect(() => {
@@ -1696,6 +1782,7 @@ function RankedRowList({
           <div key={entry.id}>
             {i > 0 && <div style={{ height: '0.5px', background: '#1a1a1a', margin: '0 16px' }} />}
             <div
+              className="group"
               style={{ display: 'flex', gap: 10, padding: '14px 16px', cursor: 'pointer' }}
               onClick={() => onEntryClick(entry)}
             >
@@ -1803,6 +1890,18 @@ function RankedRowList({
                   </div>
                 )}
               </div>
+
+              {/* + Add to list button — desktop: hover only, mobile: always visible */}
+              {onAddToList && (
+                <button
+                  onClick={(ev) => { ev.stopPropagation(); onAddToList(entry) }}
+                  className="shrink-0 self-center w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
+                  style={{ background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+                  title="Add to my list"
+                >
+                  +
+                </button>
+              )}
             </div>
           </div>
         )

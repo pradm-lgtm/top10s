@@ -26,10 +26,12 @@ the result. "I agreed with Obama on 4/10" is inherently shareable.
       - Overlap score shown at top with matched title chips
 - [x] Mobile: stacked with tab toggle to switch between lists
 - [x] Desktop: true side by side columns
-- [ ] Show tier labels on entries for tiered/tier-ranked lists
+- [x] Show tier labels on entries for tiered/tier-ranked lists
       (replace rank "0" with the tier name for tiered-only lists)
-- [ ] Swap control: "× Remove" button on each list header in compare view
+- [x] Swap control: "× Remove" button on each list header in compare view
       allows replacing that list with a different one via the picker sheet
+- [x] Unified table view for ranked/tier-ranked lists: 3-column table
+      (title | rank1 | rank2) with In Common / Only on X / Only on Y sections
 
 ### Shareable comparison card
 - [ ] OG image for /compare/[id1]/[id2] route showing:

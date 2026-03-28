@@ -16,12 +16,16 @@ export async function GET(req: NextRequest) {
 
   const supabase = getAdminSupabase()
 
+  const { searchParams } = new URL(req.url)
+  const limit = Math.min(parseInt(searchParams.get('limit') ?? '50', 10), 100)
+  const offset = parseInt(searchParams.get('offset') ?? '0', 10)
+
   const { data: notifs } = await supabase
     .from('notifications')
     .select('*')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
-    .limit(50)
+    .range(offset, offset + limit - 1)
 
   if (!notifs || notifs.length === 0) return NextResponse.json([])
 
