@@ -38,6 +38,20 @@ import { CSS } from '@dnd-kit/utilities'
 
 const EMOJIS = ['🔥', '❤️', '😮', '😂', '👏']
 
+function IconTooltip({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="relative group">
+      {children}
+      <span
+        className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded text-xs whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity hidden sm:block z-10"
+        style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+      >
+        {label}
+      </span>
+    </div>
+  )
+}
+
 export default function ListDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [list, setList] = useState<List | null>(null)
@@ -911,59 +925,59 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
             )}
             {/* Icon-only action buttons */}
             <div className="flex items-center gap-1">
-              <button
-                onClick={() => setShowCompare(true)}
-                title="Compare"
-                className="w-11 h-11 flex items-center justify-center rounded-lg transition-all hover:opacity-70"
-                style={{ background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}
-                aria-label="Compare"
-              >
-                {/* Split-screen / compare icon */}
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="6" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/><rect x="9" y="2" width="6" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/></svg>
-              </button>
-              <button
-                onClick={() => setShowShare(true)}
-                title="Share"
-                className="w-11 h-11 flex items-center justify-center rounded-lg transition-all hover:opacity-70"
-                style={{ background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}
-                aria-label="Share"
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 4l3-3 3 3M2 10v2.5h10V10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              </button>
-              {user && !isOwner && (
+              <IconTooltip label="Compare lists">
                 <button
-                  onClick={() => {
-                    const params = new URLSearchParams({
-                      title: list.title,
-                      format: list.list_format,
-                      category: list.category,
-                      ...(list.year ? { year: String(list.year) } : {}),
-                      originalListId: list.id,
-                    })
-                    router.push(`/create?${params.toString()}`)
-                  }}
-                  title="Make your own version"
+                  onClick={() => setShowCompare(true)}
                   className="w-11 h-11 flex items-center justify-center rounded-lg transition-all hover:opacity-70"
                   style={{ background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}
-                  aria-label="Make your own version"
+                  aria-label="Compare lists"
                 >
-                  {/* Fork / two overlapping squares icon */}
-                  <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="5" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.5"/><path d="M5 4V3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="6" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/><rect x="9" y="2" width="6" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/></svg>
                 </button>
+              </IconTooltip>
+              <IconTooltip label="Share">
+                <button
+                  onClick={() => setShowShare(true)}
+                  className="w-11 h-11 flex items-center justify-center rounded-lg transition-all hover:opacity-70"
+                  style={{ background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+                  aria-label="Share"
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 4l3-3 3 3M2 10v2.5h10V10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </button>
+              </IconTooltip>
+              {user && !list.featured && (
+                <IconTooltip label="Challenge a friend">
+                  <ChallengeButton
+                    topicId={(list as List & { topic_id?: string }).topic_id ?? null}
+                    topicTitle={list.title}
+                    senderListId={isOwner ? list.id : null}
+                    icon
+                  />
+                </IconTooltip>
+              )}
+              {user && !isOwner && (
+                <IconTooltip label="Make your own version">
+                  <button
+                    onClick={() => {
+                      const params = new URLSearchParams({
+                        title: list.title,
+                        format: list.list_format,
+                        category: list.category,
+                        ...(list.year ? { year: String(list.year) } : {}),
+                        originalListId: list.id,
+                      })
+                      router.push(`/create?${params.toString()}`)
+                    }}
+                    className="w-11 h-11 flex items-center justify-center rounded-lg transition-all hover:opacity-70"
+                    style={{ background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+                    aria-label="Make your own version"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="5" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.5"/><path d="M5 4V3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                  </button>
+                </IconTooltip>
               )}
             </div>
           </div>
-
-          {/* Challenge button — shown for all logged-in users */}
-          {user && !list.featured && (
-            <div className="mt-3 mb-1">
-              <ChallengeButton
-                topicId={(list as List & { topic_id?: string }).topic_id ?? null}
-                topicTitle={list.title}
-                senderListId={isOwner ? list.id : null}
-              />
-            </div>
-          )}
 
           <div className="text-base max-w-xl mt-1">
             {(isAdmin || isOwner) && editMode ? (

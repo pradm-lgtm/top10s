@@ -7,19 +7,22 @@ type Props = {
   topicId?: string | null  // if null/empty, will be resolved via find-or-create
   topicTitle: string
   senderListId?: string | null
+  icon?: boolean  // render as w-11 h-11 icon button (for icon rows)
 }
 
-export function ChallengeButton({ topicId, topicTitle, senderListId }: Props) {
+export function ChallengeButton({ topicId, topicTitle, senderListId, icon = false }: Props) {
   const { user, signInWithGoogle } = useAuth()
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState('')
   const [creating, setCreating] = useState(false)
   const [link, setLink] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function createChallenge() {
     if (!user) { signInWithGoogle(); return }
     setCreating(true)
+    setError(null)
 
     const { data: { session } } = await (await import('@/lib/supabase')).supabase.auth.getSession()
     const token = session?.access_token
@@ -36,6 +39,11 @@ export function ChallengeButton({ topicId, topicTitle, senderListId }: Props) {
       if (topicRes.ok) {
         const t = await topicRes.json()
         resolvedTopicId = t.id
+      } else {
+        const err = await topicRes.json().catch(() => ({}))
+        setError(err.error ?? 'Could not resolve topic')
+        setCreating(false)
+        return
       }
     }
 
@@ -50,6 +58,9 @@ export function ChallengeButton({ topicId, topicTitle, senderListId }: Props) {
     if (res.ok) {
       const data = await res.json()
       setLink(data.url)
+    } else {
+      const err = await res.json().catch(() => ({}))
+      setError(err.error ?? 'Failed to generate link')
     }
     setCreating(false)
   }
@@ -68,27 +79,54 @@ export function ChallengeButton({ topicId, topicTitle, senderListId }: Props) {
     } catch {}
   }
 
+  function handleClose() {
+    setOpen(false)
+    setLink(null)
+    setMessage('')
+    setError(null)
+  }
+
+  const triggerButton = icon ? (
+    <button
+      onClick={() => setOpen(true)}
+      title="Challenge a friend"
+      aria-label="Challenge a friend"
+      className="w-11 h-11 flex items-center justify-center rounded-lg transition-all hover:opacity-70"
+      style={{ background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+    >
+      <svg width="15" height="15" viewBox="0 0 12 12" fill="none">
+        <circle cx="2" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
+        <circle cx="10" cy="2" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
+        <circle cx="10" cy="10" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
+        <line x1="3.3" y1="5.3" x2="8.7" y2="2.7" stroke="currentColor" strokeWidth="1.2"/>
+        <line x1="3.3" y1="6.7" x2="8.7" y2="9.3" stroke="currentColor" strokeWidth="1.2"/>
+      </svg>
+    </button>
+  ) : (
+    <button
+      onClick={() => setOpen(true)}
+      className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-80"
+      style={{ background: 'rgba(232,197,71,0.12)', color: 'var(--accent)', border: '1px solid rgba(232,197,71,0.25)' }}
+    >
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <circle cx="2" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
+        <circle cx="10" cy="2" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
+        <circle cx="10" cy="10" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
+        <line x1="3.3" y1="5.3" x2="8.7" y2="2.7" stroke="currentColor" strokeWidth="1.2"/>
+        <line x1="3.3" y1="6.7" x2="8.7" y2="9.3" stroke="currentColor" strokeWidth="1.2"/>
+      </svg>
+      Challenge
+    </button>
+  )
+
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-80"
-        style={{ background: 'rgba(232,197,71,0.12)', color: 'var(--accent)', border: '1px solid rgba(232,197,71,0.25)' }}
-      >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <circle cx="2" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
-          <circle cx="10" cy="2" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
-          <circle cx="10" cy="10" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
-          <line x1="3.3" y1="5.3" x2="8.7" y2="2.7" stroke="currentColor" strokeWidth="1.2"/>
-          <line x1="3.3" y1="6.7" x2="8.7" y2="9.3" stroke="currentColor" strokeWidth="1.2"/>
-        </svg>
-        Challenge
-      </button>
+      {triggerButton}
 
       {open && (
         <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
-          onClick={(e) => { if (e.target === e.currentTarget) { setOpen(false); setLink(null); setMessage('') } }}
+          onClick={(e) => { if (e.target === e.currentTarget) handleClose() }}
           style={{ background: 'rgba(0,0,0,0.6)' }}
         >
           <div
@@ -103,7 +141,7 @@ export function ChallengeButton({ topicId, topicTitle, senderListId }: Props) {
                 <p className="text-sm font-semibold mt-0.5 truncate" style={{ maxWidth: 260 }}>{topicTitle}</p>
               </div>
               <button
-                onClick={() => { setOpen(false); setLink(null); setMessage('') }}
+                onClick={handleClose}
                 className="w-7 h-7 flex items-center justify-center rounded-full text-lg transition-opacity hover:opacity-60"
                 style={{ color: 'var(--muted)', background: 'var(--surface-2)' }}
               >
@@ -118,9 +156,14 @@ export function ChallengeButton({ topicId, topicTitle, senderListId }: Props) {
                   onChange={(e) => setMessage(e.target.value)}
                   placeholder="Add a message… (optional)"
                   rows={2}
-                  className="w-full text-sm px-3 py-2 rounded-lg resize-none outline-none mb-4"
+                  className="w-full text-sm px-3 py-2 rounded-lg resize-none outline-none mb-3"
                   style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
                 />
+                {error && (
+                  <p className="text-xs mb-3 px-3 py-2 rounded-lg" style={{ background: 'rgba(248,113,113,0.1)', color: '#f87171', border: '1px solid rgba(248,113,113,0.25)' }}>
+                    {error}
+                  </p>
+                )}
                 <button
                   onClick={createChallenge}
                   disabled={creating}
