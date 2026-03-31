@@ -1642,7 +1642,7 @@ function promptToListTitle(promptText: string): string {
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
 function CreatePageInner() {
-  const { user, profile, loading, isAnonymous, linkWithGoogle } = useAuth()
+  const { user, profile, loading, isAnonymous, linkWithGoogle, signInAnonymously: signInAnonCreate } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -1669,25 +1669,42 @@ function CreatePageInner() {
   const [inviteTopicId, setInviteTopicId] = useState<string | null>(null)
 
   // Allow anonymous users — only redirect fully unauthenticated (no session at all)
+  // Don't redirect if arriving from an invite link (sign in anonymously instead)
   useEffect(() => {
-    if (!loading && !user) router.replace('/')
-  }, [loading, user, router])
+    if (loading || user) return
+    const hasInviteUrl = !!searchParams.get('inviteToken')
+    let hasInviteStorage = false
+    try { hasInviteStorage = !!sessionStorage.getItem('invite_token') } catch {}
+    if (hasInviteUrl || hasInviteStorage) {
+      signInAnonCreate()
+    } else {
+      router.replace('/')
+    }
+  }, [loading, user, router, searchParams, signInAnonCreate])
 
-  // Read invite context from URL params or sessionStorage
+  // Read invite context from URL params or sessionStorage; jump to step 3
   useEffect(() => {
     const tokenParam = searchParams.get('inviteToken')
     const topicParam = searchParams.get('inviteTopicId')
+    const titleParam = searchParams.get('title')
+    const categoryParam = searchParams.get('category') as 'movies' | 'tv' | null
     if (tokenParam) {
       setInviteToken(tokenParam)
       if (topicParam) setInviteTopicId(topicParam)
+      if (titleParam) setTitle(titleParam)
+      if (categoryParam && ['movies', 'tv'].includes(categoryParam)) setCategory(categoryParam)
+      setStep(3)
       return
     }
     try {
       const storedToken = sessionStorage.getItem('invite_token')
       const storedTopic = sessionStorage.getItem('invite_topic_id')
+      const storedTitle = sessionStorage.getItem('invite_topic_title')
       if (storedToken) {
         setInviteToken(storedToken)
         sessionStorage.removeItem('invite_token')
+        if (storedTitle) { setTitle(storedTitle); setStep(3) }
+        sessionStorage.removeItem('invite_topic_title')
       }
       if (storedTopic) {
         setInviteTopicId(storedTopic)

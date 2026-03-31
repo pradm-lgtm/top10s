@@ -4,18 +4,16 @@ import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/context/auth'
 import { useNavigation } from '@/context/navigation'
-import type { NavPill } from '@/context/navigation'
 
 export function BottomNav() {
-  const { user, profile, isAnonymous } = useAuth()
+  const { profile } = useAuth()
   const { setNavPill } = useNavigation()
   const pathname = usePathname()
   const router = useRouter()
 
   const isHome = pathname === '/home'
   const isSearch = pathname === '/search'
-  const isProfile = profile && pathname === `/${profile.username}`
-  const isThisWeek = isHome // "This Week" is a home sub-tab, not a separate page
+  const isMyLists = profile ? pathname === `/${profile.username}` : false
 
   function goHome() {
     if (isHome) {
@@ -26,34 +24,16 @@ export function BottomNav() {
     }
   }
 
-  function goThisWeek() {
-    setNavPill('prompt' as NavPill)
-    if (!isHome) router.push('/home')
-  }
-
   const tabs = [
     {
       id: 'home',
       label: 'Home',
-      active: isHome && true,
+      active: isHome,
       onClick: goHome,
       icon: (
         <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
           <path d="M3 10.5L11 3l8 7.5V19a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-4.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
           <path d="M8.5 20V14h5v6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      ),
-    },
-    {
-      id: 'week',
-      label: 'This Week',
-      active: isThisWeek,
-      onClick: goThisWeek,
-      icon: (
-        <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-          <rect x="3" y="5" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/>
-          <path d="M7 3v4M15 3v4M3 9h16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-          <circle cx="11" cy="14" r="2" fill="currentColor"/>
         </svg>
       ),
     },
@@ -72,7 +52,7 @@ export function BottomNav() {
     {
       id: 'mylists',
       label: 'My Lists',
-      active: !!isProfile,
+      active: isMyLists,
       href: profile ? `/${profile.username}` : null,
       onClick: !profile ? () => router.push('/') : undefined,
       icon: (
@@ -81,19 +61,6 @@ export function BottomNav() {
           <rect x="12" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6"/>
           <rect x="3" y="12" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6"/>
           <rect x="12" y="12" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6"/>
-        </svg>
-      ),
-    },
-    {
-      id: 'profile',
-      label: 'Profile',
-      active: !!isProfile,
-      href: profile ? `/${profile.username}` : null,
-      onClick: !profile && !isAnonymous ? () => router.push('/') : undefined,
-      icon: (
-        <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-          <circle cx="11" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.6"/>
-          <path d="M4 19c0-3.314 3.134-6 7-6s7 2.686 7 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
         </svg>
       ),
     },

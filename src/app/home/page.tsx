@@ -163,14 +163,12 @@ function CategoryBadge({ category }: { category: 'movies' | 'tv' }) {
   return (
     <div title={isMovie ? 'Movies' : 'TV Shows'} style={{ opacity: 0.45 }}>
       {isMovie ? (
-        // Film reel icon
-        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ color: 'var(--accent)' }}>
-          <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
-          <circle cx="6.5" cy="6.5" r="2" stroke="currentColor" strokeWidth="1.2"/>
-          <circle cx="6.5" cy="2" r="0.8" fill="currentColor"/>
-          <circle cx="6.5" cy="11" r="0.8" fill="currentColor"/>
-          <circle cx="2" cy="6.5" r="0.8" fill="currentColor"/>
-          <circle cx="11" cy="6.5" r="0.8" fill="currentColor"/>
+        // Clapperboard icon
+        <svg width="14" height="13" viewBox="0 0 14 13" fill="none" style={{ color: 'var(--accent)' }}>
+          <rect x="1" y="4" width="12" height="8" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+          <path d="M1 4h12v1.5H1z" fill="currentColor" opacity="0.25"/>
+          <path d="M1 5.5h12" stroke="currentColor" strokeWidth="1.2"/>
+          <path d="M4 2l1 3.5M7.5 2l1 3.5M11 2l1 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
         </svg>
       ) : (
         // TV screen icon
@@ -637,7 +635,11 @@ export default function HomePage() {
               />
             )}
 
-            {/* Nav Pills */}
+            {/* Nav Pills — sticky on mobile so they stay visible when scrolling */}
+            <div
+              className="sticky z-30 -mx-4 px-4 py-2 sm:relative sm:mx-0 sm:px-0 sm:py-0"
+              style={{ top: 83, background: 'var(--background)' }}
+            >
             <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
               {NAV_PILLS.map((pill) => (
                 <button
@@ -653,6 +655,7 @@ export default function HomePage() {
                   {pill.label}
                 </button>
               ))}
+            </div>
             </div>
 
             {/* All tab — unified infinite scroll */}

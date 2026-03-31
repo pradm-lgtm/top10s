@@ -291,7 +291,10 @@ export default function ProfilePage() {
                       marginBottom: -1,
                     }}
                   >
-                    {tab === 'following' ? `Following (${followStats.followingCount})` : 'Lists'}
+                    {tab === 'following'
+                      ? `Following (${followStats.followingCount})`
+                      : `Lists (${themeLists.length + annualGrouped.reduce((s, g) => s + g.movies.length + g.tv.length, 0)})`
+                    }
                   </button>
                 ))}
               </div>

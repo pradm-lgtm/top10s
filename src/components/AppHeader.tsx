@@ -29,8 +29,8 @@ export function AppHeader() {
           Ranked
         </Link>
 
-        {/* Nav links */}
-        <nav className="flex items-center gap-0.5 sm:gap-1">
+        {/* Nav links — hidden on mobile (use bottom nav instead) */}
+        <nav className="hidden sm:flex items-center gap-0.5 sm:gap-1">
           <Link
             href="/home"
             className="px-2 sm:px-3 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap"
