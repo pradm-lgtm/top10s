@@ -8,7 +8,7 @@ async function getAuthedUser(req: NextRequest) {
   return user ?? null
 }
 
-// POST /api/challenges/create
+// POST /api/invites/create
 // Body: { topic_id: string, message?: string, sender_list_id?: string }
 // Returns: { token, url }
 export async function POST(req: NextRequest) {
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   const supabase = getAdminSupabase()
 
   const { data: invite, error } = await supabase
-    .from('challenge_invites')
+    .from('invites')
     .insert({
       topic_id,
       sender_id: user?.id ?? null,
@@ -30,11 +30,11 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error || !invite) {
-    return NextResponse.json({ error: error?.message ?? 'Failed to create challenge' }, { status: 500 })
+    return NextResponse.json({ error: error?.message ?? 'Failed to create invite' }, { status: 500 })
   }
 
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://rankedhq.app'
-  const url = `${base.startsWith('http') ? base : `https://${base}`}/challenge/${invite.token}`
+  const url = `${base.startsWith('http') ? base : `https://${base}`}/invite/${invite.token}`
 
   return NextResponse.json({ token: invite.token, url })
 }

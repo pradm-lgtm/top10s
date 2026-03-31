@@ -13,7 +13,7 @@ import ShareSheet from '@/components/ShareSheet'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { parseNotes, tiptapToHtml, notesToPlainText } from '@/lib/notes'
 import { AddToListSheet } from '@/components/AddToListSheet'
-import { ChallengeButton } from '@/components/ChallengeButton'
+import { InviteButton } from '@/components/InviteButton'
 import type { TiptapDoc } from '@/lib/notes'
 import type { PosterInfo } from '@/lib/tmdb'
 import type { List, ListEntry, Tier, Comment, ReactionCount, HonorableMention, AlsoWatched, Topic } from '@/types'
@@ -946,8 +946,8 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                 </button>
               </IconTooltip>
               {user && !list.featured && (
-                <IconTooltip label="Challenge a friend">
-                  <ChallengeButton
+                <IconTooltip label="Invite a friend">
+                  <InviteButton
                     topicId={(list as List & { topic_id?: string }).topic_id ?? null}
                     topicTitle={list.title}
                     senderListId={isOwner ? list.id : null}

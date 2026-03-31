@@ -10,7 +10,7 @@ type Props = {
   icon?: boolean  // render as w-11 h-11 icon button (for icon rows)
 }
 
-export function ChallengeButton({ topicId, topicTitle, senderListId, icon = false }: Props) {
+export function InviteButton({ topicId, topicTitle, senderListId, icon = false }: Props) {
   const { user, signInWithGoogle } = useAuth()
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState('')
@@ -19,7 +19,7 @@ export function ChallengeButton({ topicId, topicTitle, senderListId, icon = fals
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function createChallenge() {
+  async function createInvite() {
     if (!user) { signInWithGoogle(); return }
     setCreating(true)
     setError(null)
@@ -49,7 +49,7 @@ export function ChallengeButton({ topicId, topicTitle, senderListId, icon = fals
 
     if (!resolvedTopicId) { setCreating(false); return }
 
-    const res = await fetch('/api/challenges/create', {
+    const res = await fetch('/api/invites/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader },
       body: JSON.stringify({ topic_id: resolvedTopicId, message: message.trim() || null, sender_list_id: senderListId ?? null }),
@@ -75,7 +75,7 @@ export function ChallengeButton({ topicId, topicTitle, senderListId, icon = fals
   async function nativeShare() {
     if (!link) return
     try {
-      await navigator.share({ title: `Rank: ${topicTitle}`, url: link })
+      await navigator.share({ title: `Share your take: ${topicTitle}`, url: link })
     } catch {}
   }
 
@@ -89,8 +89,8 @@ export function ChallengeButton({ topicId, topicTitle, senderListId, icon = fals
   const triggerButton = icon ? (
     <button
       onClick={() => setOpen(true)}
-      title="Challenge a friend"
-      aria-label="Challenge a friend"
+      title="Invite a friend"
+      aria-label="Invite a friend"
       className="w-11 h-11 flex items-center justify-center rounded-lg transition-all hover:opacity-70"
       style={{ background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}
     >
@@ -115,7 +115,7 @@ export function ChallengeButton({ topicId, topicTitle, senderListId, icon = fals
         <line x1="3.3" y1="5.3" x2="8.7" y2="2.7" stroke="currentColor" strokeWidth="1.2"/>
         <line x1="3.3" y1="6.7" x2="8.7" y2="9.3" stroke="currentColor" strokeWidth="1.2"/>
       </svg>
-      Challenge
+      Invite
     </button>
   )
 
@@ -136,7 +136,7 @@ export function ChallengeButton({ topicId, topicTitle, senderListId, icon = fals
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--accent)' }}>
-                  Challenge a friend
+                  Invite a friend
                 </p>
                 <p className="text-sm font-semibold mt-0.5 truncate" style={{ maxWidth: 260 }}>{topicTitle}</p>
               </div>
@@ -165,12 +165,12 @@ export function ChallengeButton({ topicId, topicTitle, senderListId, icon = fals
                   </p>
                 )}
                 <button
-                  onClick={createChallenge}
+                  onClick={createInvite}
                   disabled={creating}
                   className="w-full py-3 rounded-xl font-semibold text-sm transition-opacity hover:opacity-80 disabled:opacity-50"
                   style={{ background: 'var(--accent)', color: '#0a0a0f' }}
                 >
-                  {creating ? 'Generating link…' : 'Get challenge link →'}
+                  {creating ? 'Generating link…' : 'Get invite link →'}
                 </button>
               </>
             ) : (

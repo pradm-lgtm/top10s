@@ -1665,33 +1665,33 @@ function CreatePageInner() {
   const prefetchSeqRef = useRef(0)
   const [promptWeek, setPromptWeek] = useState<number | null>(null)
   const [originalListId, setOriginalListId] = useState<string | null>(null)
-  const [challengeToken, setChallengeToken] = useState<string | null>(null)
-  const [challengeTopicId, setChallengeTopicId] = useState<string | null>(null)
+  const [inviteToken, setInviteToken] = useState<string | null>(null)
+  const [inviteTopicId, setInviteTopicId] = useState<string | null>(null)
 
   // Allow anonymous users — only redirect fully unauthenticated (no session at all)
   useEffect(() => {
     if (!loading && !user) router.replace('/')
   }, [loading, user, router])
 
-  // Read challenge context from URL params or sessionStorage
+  // Read invite context from URL params or sessionStorage
   useEffect(() => {
-    const tokenParam = searchParams.get('challengeToken')
-    const topicParam = searchParams.get('challengeTopicId')
+    const tokenParam = searchParams.get('inviteToken')
+    const topicParam = searchParams.get('inviteTopicId')
     if (tokenParam) {
-      setChallengeToken(tokenParam)
-      if (topicParam) setChallengeTopicId(topicParam)
+      setInviteToken(tokenParam)
+      if (topicParam) setInviteTopicId(topicParam)
       return
     }
     try {
-      const storedToken = sessionStorage.getItem('challenge_token')
-      const storedTopic = sessionStorage.getItem('challenge_topic_id')
+      const storedToken = sessionStorage.getItem('invite_token')
+      const storedTopic = sessionStorage.getItem('invite_topic_id')
       if (storedToken) {
-        setChallengeToken(storedToken)
-        sessionStorage.removeItem('challenge_token')
+        setInviteToken(storedToken)
+        sessionStorage.removeItem('invite_token')
       }
       if (storedTopic) {
-        setChallengeTopicId(storedTopic)
-        sessionStorage.removeItem('challenge_topic_id')
+        setInviteTopicId(storedTopic)
+        sessionStorage.removeItem('invite_topic_id')
       }
     } catch {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1826,7 +1826,7 @@ function CreatePageInner() {
         owner_id: profile?.id ?? user.id,
         ...(promptWeek !== null ? { prompt_week: promptWeek } : {}),
         ...(originalListId ? { original_list_id: originalListId } : {}),
-        ...(challengeTopicId ? { topic_id: challengeTopicId } : {}),
+        ...(inviteTopicId ? { topic_id: inviteTopicId } : {}),
       })
       .select()
       .single()
@@ -1913,10 +1913,10 @@ function CreatePageInner() {
       }
     }
 
-    // Mark challenge accepted (fire and forget)
-    if (challengeToken) {
+    // Mark invite accepted (fire and forget)
+    if (inviteToken) {
       supabase.auth.getSession().then(({ data: { session } }) => {
-        fetch(`/api/challenges/${challengeToken}`, {
+        fetch(`/api/invites/${inviteToken}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
           body: JSON.stringify({ list_id: list.id }),

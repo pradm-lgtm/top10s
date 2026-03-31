@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useAuth } from '@/context/auth'
 import { AppHeader } from '@/components/AppHeader'
 
-type ChallengeData = {
+type InviteData = {
   id: string
   topic: { id: string; slug: string; title: string; category: string }
   sender: { username: string; display_name: string | null; avatar_url: string | null } | null
@@ -15,11 +15,11 @@ type ChallengeData = {
   accepted: boolean
 }
 
-export function ChallengeClient({ challenge, token }: { challenge: ChallengeData; token: string }) {
+export function InviteClient({ invite, token }: { invite: InviteData; token: string }) {
   const { user, signInAnonymously } = useAuth()
   const router = useRouter()
 
-  // Sign in anonymously when a guest lands on a challenge page
+  // Sign in anonymously when a guest lands on an invite page
   useEffect(() => {
     if (!user) {
       signInAnonymously()
@@ -27,39 +27,39 @@ export function ChallengeClient({ challenge, token }: { challenge: ChallengeData
   }, [user, signInAnonymously])
 
   function startList() {
-    // Store challenge context for the create flow
-    sessionStorage.setItem('challenge_token', token)
-    sessionStorage.setItem('challenge_topic_id', challenge.topic.id)
-    sessionStorage.setItem('challenge_topic_title', challenge.topic.title)
+    // Store invite context for the create flow
+    sessionStorage.setItem('invite_token', token)
+    sessionStorage.setItem('invite_topic_id', invite.topic.id)
+    sessionStorage.setItem('invite_topic_title', invite.topic.title)
 
     const params = new URLSearchParams({
-      title: challenge.topic.title,
-      challengeToken: token,
-      ...(challenge.topic.category !== 'any' ? { category: challenge.topic.category } : {}),
+      title: invite.topic.title,
+      inviteToken: token,
+      ...(invite.topic.category !== 'any' ? { category: invite.topic.category } : {}),
     })
     router.push(`/create?${params.toString()}`)
   }
 
-  const senderName = challenge.sender?.display_name ?? challenge.sender?.username ?? 'Someone'
-  const hasSenderList = challenge.senderList && challenge.senderList.entries.length > 0
+  const senderName = invite.sender?.display_name ?? invite.sender?.username ?? 'Someone'
+  const hasSenderList = invite.senderList && invite.senderList.entries.length > 0
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
       <AppHeader />
 
       <div className="max-w-2xl mx-auto px-4 pt-10 pb-24">
-        {/* Challenge card */}
+        {/* Invite card */}
         <div
           className="rounded-2xl overflow-hidden"
           style={{ border: '1px solid rgba(232,197,71,0.25)', boxShadow: '0 0 60px rgba(232,197,71,0.06)' }}
         >
           {/* Header */}
           <div className="px-6 pt-8 pb-6" style={{ background: 'var(--surface)' }}>
-            {challenge.sender && (
+            {invite.sender && (
               <div className="flex items-center gap-2.5 mb-5">
-                {challenge.sender.avatar_url ? (
+                {invite.sender.avatar_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={challenge.sender.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
+                  <img src={invite.sender.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
                 ) : (
                   <div
                     className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
@@ -70,18 +70,21 @@ export function ChallengeClient({ challenge, token }: { challenge: ChallengeData
                 )}
                 <div>
                   <span className="text-sm font-semibold">{senderName}</span>
-                  <span className="text-sm" style={{ color: 'var(--muted)' }}> challenged you to rank:</span>
+                  <span className="text-sm" style={{ color: 'var(--muted)' }}> wants to know your take on:</span>
                 </div>
               </div>
             )}
 
+            <p className="text-xs font-semibold tracking-wide uppercase mb-1" style={{ color: 'var(--accent)' }}>
+              {senderName} wants to know your take
+            </p>
             <h1 className="text-3xl font-bold tracking-tight leading-tight mb-3">
-              {challenge.topic.title}
+              Rank your {invite.topic.title}
             </h1>
 
-            {challenge.message && (
+            {invite.message && (
               <p className="text-sm italic mb-5" style={{ color: 'var(--muted)' }}>
-                &ldquo;{challenge.message}&rdquo;
+                &ldquo;{invite.message}&rdquo;
               </p>
             )}
 
@@ -90,7 +93,7 @@ export function ChallengeClient({ challenge, token }: { challenge: ChallengeData
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-base transition-opacity hover:opacity-80"
               style={{ background: 'var(--accent)', color: '#0a0a0f' }}
             >
-              Make your {challenge.topic.title} list →
+              Share your take →
             </button>
           </div>
 
@@ -99,10 +102,10 @@ export function ChallengeClient({ challenge, token }: { challenge: ChallengeData
             <div style={{ borderTop: '1px solid var(--border)', background: 'var(--background)' }}>
               <div className="px-6 py-4">
                 <p className="text-xs font-semibold tracking-wide uppercase mb-3" style={{ color: 'var(--muted)' }}>
-                  {senderName}&apos;s list — make yours first to see it
+                  {senderName}&apos;s list — share your take first to see it
                 </p>
                 <div className="flex gap-3 relative">
-                  {challenge.senderList!.entries.map((entry, i) => (
+                  {invite.senderList!.entries.map((entry, i) => (
                     <div key={i} className="relative shrink-0" style={{ width: 72, height: 108 }}>
                       {entry.image_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -142,7 +145,7 @@ export function ChallengeClient({ challenge, token }: { challenge: ChallengeData
         {/* Topic page link */}
         <div className="mt-6 text-center">
           <Link
-            href={`/topic/${challenge.topic.slug}`}
+            href={`/topic/${invite.topic.slug}`}
             className="text-sm transition-opacity hover:opacity-70"
             style={{ color: 'var(--muted)' }}
           >

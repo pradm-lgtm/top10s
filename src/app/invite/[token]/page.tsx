@@ -1,9 +1,9 @@
 import { notFound } from 'next/navigation'
 import { getAdminSupabase } from '@/lib/supabase-admin'
 import type { Metadata } from 'next'
-import { ChallengeClient } from './ChallengeClient'
+import { InviteClient } from './InviteClient'
 
-type ChallengeData = {
+type InviteData = {
   id: string
   topic: { id: string; slug: string; title: string; category: string }
   sender: { username: string; display_name: string | null; avatar_url: string | null } | null
@@ -12,11 +12,11 @@ type ChallengeData = {
   accepted: boolean
 }
 
-async function getChallenge(token: string): Promise<ChallengeData | null> {
+async function getInvite(token: string): Promise<InviteData | null> {
   const supabase = getAdminSupabase()
 
   const { data: invite } = await supabase
-    .from('challenge_invites')
+    .from('invites')
     .select('id, topic_id, sender_id, sender_list_id, message, accepted_at')
     .eq('token', token)
     .single()
@@ -31,7 +31,7 @@ async function getChallenge(token: string): Promise<ChallengeData | null> {
 
   if (!topic) return null
 
-  let sender: ChallengeData['sender'] = null
+  let sender: InviteData['sender'] = null
   if (invite.sender_id) {
     const { data: p } = await supabase
       .from('profiles')
@@ -41,7 +41,7 @@ async function getChallenge(token: string): Promise<ChallengeData | null> {
     sender = p ?? null
   }
 
-  let senderList: ChallengeData['senderList'] = null
+  let senderList: InviteData['senderList'] = null
   if (invite.sender_list_id) {
     const { data: list } = await supabase.from('lists').select('id, title').eq('id', invite.sender_list_id).single()
     if (list) {
@@ -61,34 +61,34 @@ async function getChallenge(token: string): Promise<ChallengeData | null> {
 
 export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
   const { token } = await params
-  const challenge = await getChallenge(token)
-  if (!challenge) return { title: 'Challenge — Ranked' }
+  const invite = await getInvite(token)
+  if (!invite) return { title: 'Invite — Ranked' }
 
-  const senderName = challenge.sender?.display_name ?? challenge.sender?.username ?? 'Someone'
+  const senderName = invite.sender?.display_name ?? invite.sender?.username ?? 'Someone'
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://rankedhq.app'
   const siteUrl = base.startsWith('http') ? base : `https://${base}`
 
   return {
-    title: `${senderName} challenged you — Ranked`,
-    description: `Can you rank ${challenge.topic.title}? ${senderName} wants to see your list.`,
+    title: `${senderName} wants your take — Ranked`,
+    description: `${senderName} wants to know your take on ${invite.topic.title}.`,
     openGraph: {
-      title: `${senderName} challenged you to rank: ${challenge.topic.title}`,
-      description: challenge.message ?? `Can you beat ${senderName}'s list?`,
-      images: [`${siteUrl}/api/og/challenge?token=${token}`],
+      title: `${senderName} wants your take on ${invite.topic.title}`,
+      description: invite.message ?? 'Share your take →',
+      images: [`${siteUrl}/api/og/invite?token=${token}`],
     },
     twitter: {
       card: 'summary_large_image',
-      title: `${senderName} challenged you to rank: ${challenge.topic.title}`,
-      description: challenge.message ?? `Can you beat ${senderName}'s list?`,
-      images: [`${siteUrl}/api/og/challenge?token=${token}`],
+      title: `${senderName} wants your take on ${invite.topic.title}`,
+      description: invite.message ?? 'Share your take →',
+      images: [`${siteUrl}/api/og/invite?token=${token}`],
     },
   }
 }
 
-export default async function ChallengePage({ params }: { params: Promise<{ token: string }> }) {
+export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
-  const challenge = await getChallenge(token)
-  if (!challenge) notFound()
+  const invite = await getInvite(token)
+  if (!invite) notFound()
 
-  return <ChallengeClient challenge={challenge} token={token} />
+  return <InviteClient invite={invite} token={token} />
 }

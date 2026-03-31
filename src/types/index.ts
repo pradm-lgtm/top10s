@@ -115,7 +115,7 @@ export type Topic = {
   created_at: string
 }
 
-export type ChallengeInvite = {
+export type Invite = {
   id: string
   topic_id: string
   sender_id: string | null

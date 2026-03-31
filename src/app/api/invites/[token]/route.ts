@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAdminSupabase } from '@/lib/supabase-admin'
 
-// GET /api/challenges/[token]
-// Returns challenge details: topic, sender info, sender's list teaser (top 3)
+// GET /api/invites/[token]
+// Returns invite details: topic, sender info, sender's list teaser (top 3)
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ token: string }> }
@@ -11,12 +11,12 @@ export async function GET(
   const supabase = getAdminSupabase()
 
   const { data: invite } = await supabase
-    .from('challenge_invites')
+    .from('invites')
     .select('id, topic_id, sender_id, sender_list_id, message, accepted_at')
     .eq('token', token)
     .single()
 
-  if (!invite) return NextResponse.json({ error: 'Challenge not found' }, { status: 404 })
+  if (!invite) return NextResponse.json({ error: 'Invite not found' }, { status: 404 })
 
   // Fetch topic
   const { data: topic } = await supabase
@@ -68,7 +68,7 @@ export async function GET(
   })
 }
 
-// PATCH /api/challenges/[token] — mark as accepted
+// PATCH /api/invites/[token] — mark as accepted
 export async function PATCH(
   _req: NextRequest,
   { params }: { params: Promise<{ token: string }> }
@@ -77,7 +77,7 @@ export async function PATCH(
   const supabase = getAdminSupabase()
 
   await supabase
-    .from('challenge_invites')
+    .from('invites')
     .update({ accepted_at: new Date().toISOString() })
     .eq('token', token)
     .is('accepted_at', null)

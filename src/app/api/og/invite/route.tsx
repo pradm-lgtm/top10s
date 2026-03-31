@@ -22,7 +22,7 @@ async function fetchAsBase64(url: string): Promise<string | null> {
   }
 }
 
-// GET /api/og/challenge?token=[token]
+// GET /api/og/invite?token=[token]
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const token = searchParams.get('token')
@@ -31,7 +31,7 @@ export async function GET(req: Request) {
   const supabase = getAdminSupabase()
 
   const { data: invite } = await supabase
-    .from('challenge_invites')
+    .from('invites')
     .select('topic_id, sender_id, sender_list_id, message')
     .eq('token', token)
     .single()
@@ -131,7 +131,7 @@ export async function GET(req: Request) {
         {/* Content */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 640, position: 'relative' }}>
           <div style={{ display: 'flex', fontSize: 22, color: 'rgba(255,255,255,0.55)', fontWeight: 400 }}>
-            {senderName} challenged you to rank:
+            {senderName} wants your take on
           </div>
           <div style={{
             display: 'flex', fontSize: 52, fontWeight: 800, color: '#fff',
@@ -145,7 +145,7 @@ export async function GET(req: Request) {
             </div>
           )}
           <div style={{ display: 'flex', fontSize: 22, fontWeight: 700, color: accent, marginTop: 8 }}>
-            Can you beat them? →
+            Share your take →
           </div>
         </div>
       </div>

@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { AppHeader } from '@/components/AppHeader'
-import { ChallengeButton } from '@/components/ChallengeButton'
+import { InviteButton } from '@/components/InviteButton'
 
 type TopicEntry = { id: string; list_id: string; title: string; rank: number | null; image_url: string | null }
 type TopicList = {
@@ -325,10 +325,10 @@ export function TopicClient({ data }: { data: TopicData }) {
             <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>
               {lists.length === 0
                 ? 'No lists yet — be the first'
-                : `${lists.length} ${lists.length === 1 ? 'person has' : 'people have'} ranked this`}
+                : `${lists.length} ${lists.length === 1 ? 'person has' : 'people have'} shared their take`}
             </p>
           </div>
-          <ChallengeButton topicId={topic.id} topicTitle={topic.title} senderListId={userList?.id ?? null} />
+          <InviteButton topicId={topic.id} topicTitle={topic.title} senderListId={userList?.id ?? null} />
         </div>
 
         {/* Sort pills */}
