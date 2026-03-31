@@ -104,3 +104,24 @@ export type AlsoWatched = {
   title: string
   created_at: string
 }
+
+export type Topic = {
+  id: string
+  slug: string
+  title: string
+  category: 'movies' | 'tv' | 'any'
+  created_by: string | null
+  cluster_id: string | null
+  created_at: string
+}
+
+export type ChallengeInvite = {
+  id: string
+  topic_id: string
+  sender_id: string | null
+  sender_list_id: string | null
+  message: string | null
+  token: string
+  accepted_at: string | null
+  created_at: string
+}

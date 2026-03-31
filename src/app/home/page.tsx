@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { fetchPoster } from '@/lib/tmdb'
 import { AppHeader } from '@/components/AppHeader'
 import { useAuth } from '@/context/auth'
+import { useNavigation } from '@/context/navigation'
 import type { List, ListEntry } from '@/types'
 
 type OwnerInfo = { id: string; username: string; display_name: string | null; avatar_url: string | null }
@@ -343,6 +344,7 @@ function PairedCardGrid<T extends RichList>({
 
 export default function HomePage() {
   const { user, profile, signInWithGoogle } = useAuth()
+  const { navPill, setNavPill } = useNavigation()
   const router = useRouter()
   const [lists, setLists] = useState<RichList[]>([])
   const [posters, setPosters] = useState<Record<string, string | null>>({})
@@ -351,12 +353,6 @@ export default function HomePage() {
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set())
   const didInitExpand = useRef(false)
 
-  const [navPill, setNavPill] = useState<NavPill>(() => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('home_nav_pill') as NavPill) ?? 'all'
-    }
-    return 'all'
-  })
   const [displayCount, setDisplayCount] = useState(12)
   const sentinelRef = useRef<HTMLDivElement>(null)
 
@@ -475,11 +471,6 @@ export default function HomePage() {
       : `prompt_dismissed_${weekNumber}`
     localStorage.setItem(key, '1')
     setPromptDismissed(true)
-  }
-
-  function saveNavPill(pill: NavPill) {
-    setNavPill(pill)
-    localStorage.setItem('home_nav_pill', pill)
   }
 
   async function fetchLists() {
@@ -607,7 +598,7 @@ export default function HomePage() {
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
       <AppHeader />
 
-      <div className="max-w-5xl mx-auto px-4 pt-8 pb-24">
+      <div className="max-w-5xl mx-auto px-4 pt-8 pb-24 sm:pb-24" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
 
         {loading && (
           <div className="flex justify-center py-20">
@@ -642,7 +633,7 @@ export default function HomePage() {
                 onDismiss={dismissPrompt}
                 user={user}
                 onSignIn={signInWithGoogle}
-                onSeeOthers={promptFeedLists.length >= 2 ? () => saveNavPill('prompt') : undefined}
+                onSeeOthers={promptFeedLists.length >= 2 ? () => setNavPill('prompt') : undefined}
               />
             )}
 
@@ -651,7 +642,7 @@ export default function HomePage() {
               {NAV_PILLS.map((pill) => (
                 <button
                   key={pill.id}
-                  onClick={() => saveNavPill(pill.id)}
+                  onClick={() => setNavPill(pill.id)}
                   className="shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap"
                   style={
                     navPill === pill.id

@@ -1642,7 +1642,7 @@ function promptToListTitle(promptText: string): string {
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
 function CreatePageInner() {
-  const { user, profile, loading } = useAuth()
+  const { user, profile, loading, isAnonymous, linkWithGoogle } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -1665,10 +1665,37 @@ function CreatePageInner() {
   const prefetchSeqRef = useRef(0)
   const [promptWeek, setPromptWeek] = useState<number | null>(null)
   const [originalListId, setOriginalListId] = useState<string | null>(null)
+  const [challengeToken, setChallengeToken] = useState<string | null>(null)
+  const [challengeTopicId, setChallengeTopicId] = useState<string | null>(null)
 
+  // Allow anonymous users — only redirect fully unauthenticated (no session at all)
   useEffect(() => {
     if (!loading && !user) router.replace('/')
   }, [loading, user, router])
+
+  // Read challenge context from URL params or sessionStorage
+  useEffect(() => {
+    const tokenParam = searchParams.get('challengeToken')
+    const topicParam = searchParams.get('challengeTopicId')
+    if (tokenParam) {
+      setChallengeToken(tokenParam)
+      if (topicParam) setChallengeTopicId(topicParam)
+      return
+    }
+    try {
+      const storedToken = sessionStorage.getItem('challenge_token')
+      const storedTopic = sessionStorage.getItem('challenge_topic_id')
+      if (storedToken) {
+        setChallengeToken(storedToken)
+        sessionStorage.removeItem('challenge_token')
+      }
+      if (storedTopic) {
+        setChallengeTopicId(storedTopic)
+        sessionStorage.removeItem('challenge_topic_id')
+      }
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Pre-fill from "Make your own version" URL params
   useEffect(() => {
@@ -1777,7 +1804,7 @@ function CreatePageInner() {
   }, [title, entries])
 
   async function publish() {
-    if (!profile) return
+    if (!user) return
     setPublishing(true)
     setPublishError(null)
 
@@ -1796,9 +1823,10 @@ function CreatePageInner() {
         year_from: resolvedYearFrom,
         year_to: resolvedYearTo,
         description: descriptionDoc ? JSON.stringify(descriptionDoc) : (description.trim() || null),
-        owner_id: profile.id,
+        owner_id: profile?.id ?? user.id,
         ...(promptWeek !== null ? { prompt_week: promptWeek } : {}),
         ...(originalListId ? { original_list_id: originalListId } : {}),
+        ...(challengeTopicId ? { topic_id: challengeTopicId } : {}),
       })
       .select()
       .single()
@@ -1885,6 +1913,17 @@ function CreatePageInner() {
       }
     }
 
+    // Mark challenge accepted (fire and forget)
+    if (challengeToken) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        fetch(`/api/challenges/${challengeToken}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+          body: JSON.stringify({ list_id: list.id }),
+        }).catch(() => {})
+      })
+    }
+
     // Notify followers about new list (fire and forget)
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.access_token) {
@@ -1910,6 +1949,23 @@ function CreatePageInner() {
   return (
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
       <AppHeader />
+      {isAnonymous && (
+        <div
+          className="sticky top-0 z-40 px-4 py-2.5 flex items-center justify-between gap-3"
+          style={{ background: 'rgba(232,197,71,0.12)', borderBottom: '1px solid rgba(232,197,71,0.25)' }}
+        >
+          <p className="text-xs font-medium" style={{ color: 'var(--accent)' }}>
+            Sign in to save your list to your profile
+          </p>
+          <button
+            onClick={linkWithGoogle}
+            className="shrink-0 px-3 py-1 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80"
+            style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+          >
+            Sign in
+          </button>
+        </div>
+      )}
       <div className="max-w-xl mx-auto px-4 py-10">
         <StepIndicator step={step} />
         {step === 1 && (

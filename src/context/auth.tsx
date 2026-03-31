@@ -15,7 +15,10 @@ type AuthContextType = {
   user: User | null
   profile: Profile | null
   loading: boolean
+  isAnonymous: boolean
   signInWithGoogle: () => Promise<void>
+  signInAnonymously: () => Promise<void>
+  linkWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -23,19 +26,30 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
   loading: true,
+  isAnonymous: false,
   signInWithGoogle: async () => {},
+  signInAnonymously: async () => {},
+  linkWithGoogle: async () => {},
   signOut: async () => {},
 })
+
+function getBaseUrl() {
+  const isLocalhost = typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  if (isLocalhost) return window.location.origin
+  const raw = process.env.NEXT_PUBLIC_SITE_URL ?? (typeof window !== 'undefined' ? window.location.origin : '')
+  return raw.startsWith('http') ? raw : `https://${raw}`
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const isAnonymous = !!user?.is_anonymous
+
   useEffect(() => {
     async function init() {
-      // Handle OAuth tokens in the URL — works regardless of which page
-      // Supabase redirects to (handles both PKCE ?code= and implicit #access_token=)
       const hash = new URLSearchParams(window.location.hash.slice(1))
       const code = new URLSearchParams(window.location.search).get('code')
       const accessToken = hash.get('access_token')
@@ -49,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const { data: { session } } = await supabase.auth.getSession()
       setUser(session?.user ?? null)
-      if (session?.user) {
+      if (session?.user && !session.user.is_anonymous) {
         fetchProfile(session.user.id)
       } else {
         setLoading(false)
@@ -60,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
-      if (session?.user) {
+      if (session?.user && !session.user.is_anonymous) {
         fetchProfile(session.user.id)
       } else {
         setProfile(null)
@@ -78,12 +92,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function signInWithGoogle() {
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    const raw = isLocalhost ? window.location.origin : (process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin)
-    const base = raw.startsWith('http') ? raw : `https://${raw}`
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${base}/home` },
+      options: { redirectTo: `${getBaseUrl()}/home` },
+    })
+  }
+
+  async function signInAnonymously() {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.user) return // already signed in (anon or real)
+    await supabase.auth.signInAnonymously()
+  }
+
+  async function linkWithGoogle() {
+    // Upgrade an anonymous session to a real Google account.
+    // After linking, the user's id stays the same — all their data persists.
+    await supabase.auth.linkIdentity({
+      provider: 'google',
+      options: { redirectTo: `${getBaseUrl()}/home` },
     })
   }
 
@@ -92,7 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ user, profile, loading, isAnonymous, signInWithGoogle, signInAnonymously, linkWithGoogle, signOut }}>
       {children}
     </AuthContext.Provider>
   )
