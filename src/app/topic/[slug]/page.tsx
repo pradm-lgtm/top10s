@@ -16,9 +16,11 @@ type TopicList = {
   reactionCount: number
   profiles: { id: string; username: string; display_name: string | null; avatar_url: string | null } | null
 }
+type RelatedTopic = { id: string; slug: string; title: string }
 type TopicData = {
   topic: { id: string; slug: string; title: string; category: string }
   lists: TopicList[]
+  relatedTopics: RelatedTopic[]
 }
 
 async function getTopicData(slug: string): Promise<TopicData | null> {
@@ -26,7 +28,7 @@ async function getTopicData(slug: string): Promise<TopicData | null> {
 
   const { data: topic } = await supabase
     .from('topics')
-    .select('id, slug, title, category')
+    .select('id, slug, title, category, cluster_id')
     .eq('slug', slug)
     .single()
 
@@ -38,10 +40,10 @@ async function getTopicData(slug: string): Promise<TopicData | null> {
     .eq('topic_id', topic.id)
     .order('created_at', { ascending: false })
 
-  if (!lists) return { topic, lists: [] }
+  if (!lists) return { topic, lists: [], relatedTopics: [] }
 
   const listIds = lists.map((l) => l.id)
-  if (listIds.length === 0) return { topic, lists: [] }
+  if (listIds.length === 0) return { topic, lists: [], relatedTopics: [] }
 
   const [{ data: topEntries }, { data: reactions }] = await Promise.all([
     supabase
@@ -71,7 +73,19 @@ async function getTopicData(slug: string): Promise<TopicData | null> {
     profiles: (Array.isArray(l.profiles) ? l.profiles[0] : l.profiles) ?? null,
   }))
 
-  return { topic, lists: enriched }
+  // Related topics — same cluster
+  let relatedTopics: RelatedTopic[] = []
+  if (topic.cluster_id) {
+    const { data: related } = await supabase
+      .from('topics')
+      .select('id, slug, title')
+      .eq('cluster_id', topic.cluster_id)
+      .neq('id', topic.id)
+      .limit(6)
+    relatedTopics = related ?? []
+  }
+
+  return { topic, lists: enriched, relatedTopics }
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {

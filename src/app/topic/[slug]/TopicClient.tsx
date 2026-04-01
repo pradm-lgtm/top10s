@@ -21,9 +21,11 @@ type TopicList = {
   reactionCount: number
   profiles: { id: string; username: string; display_name: string | null; avatar_url: string | null } | null
 }
+type RelatedTopic = { id: string; slug: string; title: string }
 type TopicData = {
   topic: { id: string; slug: string; title: string; category: string }
   lists: TopicList[]
+  relatedTopics: RelatedTopic[]
 }
 
 type Comment = { id: string; content: string; created_at: string; visitors?: { name: string } | null }
@@ -279,7 +281,7 @@ function TopicListCard({
 }
 
 export function TopicClient({ data }: { data: TopicData }) {
-  const { topic, lists: initialLists } = data
+  const { topic, lists: initialLists, relatedTopics } = data
   const { user, profile } = useAuth()
   const router = useRouter()
   const [sort, setSort] = useState<'recent' | 'reactions'>('recent')
@@ -330,6 +332,23 @@ export function TopicClient({ data }: { data: TopicData }) {
           </div>
           <InviteButton topicId={topic.id} topicTitle={topic.title} senderListId={userList?.id ?? null} />
         </div>
+
+        {/* Related topics */}
+        {relatedTopics.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-5">
+            <span className="text-xs self-center" style={{ color: 'var(--muted)' }}>Related:</span>
+            {relatedTopics.map((t) => (
+              <Link
+                key={t.id}
+                href={`/topic/${t.slug}`}
+                className="px-3 py-1 rounded-full text-xs font-medium transition-opacity hover:opacity-70"
+                style={{ background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+              >
+                {t.title}
+              </Link>
+            ))}
+          </div>
+        )}
 
         {/* Sort pills */}
         {lists.length > 1 && (
