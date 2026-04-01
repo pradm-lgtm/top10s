@@ -624,6 +624,11 @@ export default function HomePage() {
         {!loading && !fetchError && lists.length > 0 && (
           <div className="space-y-6">
 
+            {/* Tagline — scrolls away */}
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>
+              The best in film &amp; TV, ranked by people who care too much.
+            </p>
+
             {/* Weekly Prompt Card */}
             {showWeeklyPrompt && weeklyPrompt && (
               <WeeklyPromptCard
@@ -634,11 +639,6 @@ export default function HomePage() {
                 onSeeOthers={promptFeedLists.length >= 2 ? () => setNavPill('prompt') : undefined}
               />
             )}
-
-            {/* Tagline — scrolls away */}
-            <p className="text-sm" style={{ color: 'var(--muted)' }}>
-              The best in film &amp; TV, ranked by people who care too much.
-            </p>
 
             {/* Nav Pills — sticky on mobile so they stay visible when scrolling */}
             <div
