@@ -34,16 +34,23 @@ async function getTopicData(slug: string): Promise<TopicData | null> {
 
   if (!topic) return null
 
-  const { data: lists } = await supabase
-    .from('lists')
-    .select('id, title, list_format, category, year, created_at, owner_id, profiles(id, username, display_name, avatar_url)')
-    .eq('topic_id', topic.id)
-    .order('created_at', { ascending: false })
+  // Fetch lists by topic_id (exact) AND by title match (fallback for pre-topic lists).
+  // Title query only grabs unassigned lists (topic_id IS NULL) to avoid overlap.
+  const SELECT = 'id, title, list_format, category, year, created_at, owner_id, profiles(id, username, display_name, avatar_url)'
+  const [exactRes, titleRes] = await Promise.all([
+    supabase.from('lists').select(SELECT).eq('topic_id', topic.id).order('created_at', { ascending: false }),
+    supabase.from('lists').select(SELECT).ilike('title', `${topic.title}%`).is('topic_id', null)
+      .order('created_at', { ascending: false }).limit(50),
+  ])
 
-  if (!lists) return { topic, lists: [], relatedTopics: [] }
+  const lists = [
+    ...(exactRes.data ?? []),
+    ...(titleRes.data ?? []),
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+  if (!lists.length) return { topic, lists: [], relatedTopics: [] }
 
   const listIds = lists.map((l) => l.id)
-  if (listIds.length === 0) return { topic, lists: [], relatedTopics: [] }
 
   const [{ data: topEntries }, { data: reactions }] = await Promise.all([
     supabase

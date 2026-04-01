@@ -18,21 +18,24 @@ export async function GET(
 
   if (!topic) return NextResponse.json({ error: 'Topic not found' }, { status: 404 })
 
-  // Fetch all lists for this topic (and same cluster if cluster_id exists)
-  let listQuery = supabase
-    .from('lists')
-    .select('id, title, list_format, category, year, created_at, owner_id, profiles(id, username, display_name, avatar_url)')
-    .eq('topic_id', topic.id)
+  // Fetch lists by topic_id (exact) AND by title match (fallback for pre-topic lists)
+  const SELECT = 'id, title, list_format, category, year, created_at, owner_id, profiles(id, username, display_name, avatar_url)'
+  const [exactRes, titleRes] = await Promise.all([
+    supabase.from('lists').select(SELECT).eq('topic_id', topic.id).order('created_at', { ascending: false }),
+    supabase.from('lists').select(SELECT).ilike('title', `${topic.title}%`).is('topic_id', null)
+      .order('created_at', { ascending: false }).limit(50),
+  ])
 
-  if (sort === 'recent') {
-    listQuery = listQuery.order('created_at', { ascending: false })
-  }
+  const combined = [
+    ...(exactRes.data ?? []),
+    ...(titleRes.data ?? []),
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
-  const { data: lists } = await listQuery
-
-  if (!lists || lists.length === 0) {
+  if (combined.length === 0) {
     return NextResponse.json({ topic, lists: [] })
   }
+
+  let lists = combined
 
   const listIds = lists.map((l) => l.id)
 

@@ -76,15 +76,19 @@ export async function GET(req: NextRequest) {
   const profiles = profilesRes.data ?? []
 
   // Enrich topics: list count + top 3 poster images
+  // Use both topic_id (exact) and title keyword match (fallback for pre-topic lists)
   const topics = await Promise.all(
     topicsRaw.map(async (topic) => {
-      const { data: topicLists } = await supabase
-        .from('lists')
-        .select('id')
-        .eq('topic_id', topic.id)
-        .limit(100)
+      const [{ data: exactLists }, { data: titleLists }] = await Promise.all([
+        supabase.from('lists').select('id').eq('topic_id', topic.id).limit(100),
+        supabase.from('lists').select('id').ilike('title', `${topic.title}%`).is('topic_id', null).limit(50),
+      ])
 
-      const allIds = (topicLists ?? []).map((l) => l.id)
+      const allIdSet = new Set([
+        ...(exactLists ?? []).map((l) => l.id),
+        ...(titleLists ?? []).map((l) => l.id),
+      ])
+      const allIds = [...allIdSet]
       const posters = await getPostersForListIds(supabase, allIds.slice(0, 5))
 
       return {
