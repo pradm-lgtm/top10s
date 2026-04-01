@@ -637,8 +637,8 @@ export default function HomePage() {
 
             {/* Nav Pills — sticky on mobile so they stay visible when scrolling */}
             <div
-              className="sticky z-30 -mx-4 px-4 py-2 sm:relative sm:mx-0 sm:px-0 sm:py-0"
-              style={{ top: 83, background: 'var(--background)' }}
+              className="sticky top-[83px] z-30 -mx-4 px-4 py-2 sm:relative sm:top-auto sm:mx-0 sm:px-0 sm:py-0"
+              style={{ background: 'var(--background)' }}
             >
             <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
               {NAV_PILLS.map((pill) => (
