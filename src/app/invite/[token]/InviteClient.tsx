@@ -10,7 +10,12 @@ type InviteData = {
   id: string
   topic: { id: string; slug: string; title: string; category: string }
   sender: { username: string; display_name: string | null; avatar_url: string | null } | null
-  senderList: { id: string; title: string; entries: { title: string; image_url: string | null }[] } | null
+  senderList: {
+    id: string; title: string
+    list_format: string; category: string
+    year: number | null; year_from: number | null; year_to: number | null
+    entries: { title: string; image_url: string | null }[]
+  } | null
   message: string | null
   accepted: boolean
 }
@@ -32,10 +37,21 @@ export function InviteClient({ invite, token }: { invite: InviteData; token: str
     sessionStorage.setItem('invite_topic_id', invite.topic.id)
     sessionStorage.setItem('invite_topic_title', invite.topic.title)
 
+    // Derive category and format from sender's list if available, else from topic
+    const effectiveCategory = invite.senderList?.category ?? (invite.topic.category !== 'any' ? invite.topic.category : null)
+    const format = invite.senderList?.list_format
+    const year = invite.senderList?.year
+    const yearFrom = invite.senderList?.year_from
+    const yearTo = invite.senderList?.year_to
+
     const params = new URLSearchParams({
       title: invite.topic.title,
       inviteToken: token,
-      ...(invite.topic.category !== 'any' ? { category: invite.topic.category } : {}),
+      ...(effectiveCategory && ['movies', 'tv'].includes(effectiveCategory) ? { category: effectiveCategory } : {}),
+      ...(format && ['ranked', 'tiered', 'tier-ranked'].includes(format) ? { format } : {}),
+      ...(year ? { year: String(year) } : {}),
+      ...(yearFrom ? { yearFrom: String(yearFrom) } : {}),
+      ...(yearTo ? { yearTo: String(yearTo) } : {}),
     })
     router.push(`/create?${params.toString()}`)
   }

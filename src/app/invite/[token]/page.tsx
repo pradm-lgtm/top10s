@@ -7,7 +7,12 @@ type InviteData = {
   id: string
   topic: { id: string; slug: string; title: string; category: string }
   sender: { username: string; display_name: string | null; avatar_url: string | null } | null
-  senderList: { id: string; title: string; entries: { title: string; image_url: string | null }[] } | null
+  senderList: {
+    id: string; title: string
+    list_format: string; category: string
+    year: number | null; year_from: number | null; year_to: number | null
+    entries: { title: string; image_url: string | null }[]
+  } | null
   message: string | null
   accepted: boolean
 }
@@ -43,7 +48,7 @@ async function getInvite(token: string): Promise<InviteData | null> {
 
   let senderList: InviteData['senderList'] = null
   if (invite.sender_list_id) {
-    const { data: list } = await supabase.from('lists').select('id, title').eq('id', invite.sender_list_id).single()
+    const { data: list } = await supabase.from('lists').select('id, title, list_format, category, year, year_from, year_to').eq('id', invite.sender_list_id).single()
     if (list) {
       const { data: entries } = await supabase
         .from('list_entries')

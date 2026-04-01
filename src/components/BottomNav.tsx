@@ -7,7 +7,7 @@ import { useNavigation } from '@/context/navigation'
 
 export function BottomNav() {
   const { profile } = useAuth()
-  const { setNavPill } = useNavigation()
+  const { setNavPill, setShowSearch } = useNavigation()
   const pathname = usePathname()
   const router = useRouter()
 
@@ -41,7 +41,7 @@ export function BottomNav() {
       id: 'search',
       label: 'Search',
       active: isSearch,
-      href: '/search',
+      onClick: () => setShowSearch(true),
       icon: (
         <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
           <circle cx="10" cy="10" r="6.5" stroke="currentColor" strokeWidth="1.6"/>

@@ -1668,34 +1668,55 @@ function CreatePageInner() {
   const [inviteToken, setInviteToken] = useState<string | null>(null)
   const [inviteTopicId, setInviteTopicId] = useState<string | null>(null)
 
-  // Allow anonymous users — only redirect fully unauthenticated (no session at all)
-  // Don't redirect if arriving from an invite link (sign in anonymously instead)
-  useEffect(() => {
-    if (loading || user) return
-    const hasInviteUrl = !!searchParams.get('inviteToken')
-    let hasInviteStorage = false
-    try { hasInviteStorage = !!sessionStorage.getItem('invite_token') } catch {}
-    if (hasInviteUrl || hasInviteStorage) {
-      signInAnonCreate()
-    } else {
-      router.replace('/')
-    }
-  }, [loading, user, router, searchParams, signInAnonCreate])
+  // Synchronous check — avoids useEffect timing races with anonymous auth
+  // true when arriving from an invite link (URL param or sessionStorage)
+  const [inviteFlowActive] = useState(() => {
+    if (typeof window === 'undefined') return false
+    if (new URLSearchParams(window.location.search).has('inviteToken')) return true
+    try { return !!sessionStorage.getItem('invite_token') } catch { return false }
+  })
 
-  // Read invite context from URL params or sessionStorage; jump to step 3
+  // Redirect unauthenticated users — but not invite flow (anonymous session handles auth)
+  useEffect(() => {
+    if (loading || user || inviteFlowActive) return
+    router.replace('/')
+  }, [loading, user, router, inviteFlowActive])
+
+  // When in invite flow with no session yet, trigger anonymous sign-in
+  useEffect(() => {
+    if (inviteFlowActive && !loading && !user) {
+      signInAnonCreate()
+    }
+  }, [inviteFlowActive, loading, user, signInAnonCreate])
+
+  // Read invite context from URL params or sessionStorage; pre-fill and jump to step 3
   useEffect(() => {
     const tokenParam = searchParams.get('inviteToken')
-    const topicParam = searchParams.get('inviteTopicId')
     const titleParam = searchParams.get('title')
     const categoryParam = searchParams.get('category') as 'movies' | 'tv' | null
+    const formatParam = searchParams.get('format') as 'ranked' | 'tiered' | 'tier-ranked' | null
+    const yearParam = searchParams.get('year')
+    const yearFromParam = searchParams.get('yearFrom')
+    const yearToParam = searchParams.get('yearTo')
+
     if (tokenParam) {
       setInviteToken(tokenParam)
+      const topicParam = searchParams.get('inviteTopicId')
       if (topicParam) setInviteTopicId(topicParam)
       if (titleParam) setTitle(titleParam)
       if (categoryParam && ['movies', 'tv'].includes(categoryParam)) setCategory(categoryParam)
+      if (formatParam && ['ranked', 'tiered', 'tier-ranked'].includes(formatParam)) setListFormat(formatParam)
+      if (yearParam) { setTimeScope('year'); setYear(parseInt(yearParam, 10)) }
+      else if (yearFromParam && yearToParam) {
+        setTimeScope('range')
+        setYearFrom(parseInt(yearFromParam, 10))
+        setYearTo(parseInt(yearToParam, 10))
+      }
       setStep(3)
       return
     }
+
+    // Fallback: read from sessionStorage (if URL params were lost on redirect)
     try {
       const storedToken = sessionStorage.getItem('invite_token')
       const storedTopic = sessionStorage.getItem('invite_topic_id')
@@ -1955,7 +1976,7 @@ function CreatePageInner() {
     router.push(`/list/${list.id}`)
   }
 
-  if (loading || !user) {
+  if (loading || (!user && !inviteFlowActive)) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--background)' }}>
         <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />

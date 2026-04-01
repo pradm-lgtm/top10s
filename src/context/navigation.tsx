@@ -7,11 +7,15 @@ export type NavPill = 'all' | 'prompt' | 'editorial' | 'recent' | 'by-year'
 type NavigationContextType = {
   navPill: NavPill
   setNavPill: (pill: NavPill) => void
+  showSearch: boolean
+  setShowSearch: (v: boolean) => void
 }
 
 const NavigationContext = createContext<NavigationContextType>({
   navPill: 'all',
   setNavPill: () => {},
+  showSearch: false,
+  setShowSearch: () => {},
 })
 
 export function NavigationProvider({ children }: { children: React.ReactNode }) {
@@ -21,6 +25,7 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
     }
     return 'all'
   })
+  const [showSearch, setShowSearch] = useState(false)
 
   function setNavPill(pill: NavPill) {
     setNavPillState(pill)
@@ -28,7 +33,7 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   }
 
   return (
-    <NavigationContext.Provider value={{ navPill, setNavPill }}>
+    <NavigationContext.Provider value={{ navPill, setNavPill, showSearch, setShowSearch }}>
       {children}
     </NavigationContext.Provider>
   )
