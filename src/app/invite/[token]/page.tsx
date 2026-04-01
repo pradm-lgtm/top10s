@@ -78,13 +78,13 @@ export async function generateMetadata({ params }: { params: Promise<{ token: st
     description: `${senderName} wants to know your take on ${invite.topic.title}.`,
     openGraph: {
       title: `${senderName} wants your take on ${invite.topic.title}`,
-      description: invite.message ?? 'Share your take →',
+      description: 'Share your ranked list on Ranked',
       images: [`${siteUrl}/api/og/invite?token=${token}`],
     },
     twitter: {
       card: 'summary_large_image',
       title: `${senderName} wants your take on ${invite.topic.title}`,
-      description: invite.message ?? 'Share your take →',
+      description: 'Share your ranked list on Ranked',
       images: [`${siteUrl}/api/og/invite?token=${token}`],
     },
   }

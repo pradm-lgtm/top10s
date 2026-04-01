@@ -17,7 +17,7 @@ type NavPill = 'all' | 'prompt' | 'editorial' | 'recent' | 'by-year'
 
 const NAV_PILLS: { id: NavPill; label: string }[] = [
   { id: 'all', label: 'All' },
-  { id: 'prompt', label: "This Week's Prompt" },
+  { id: 'prompt', label: 'Featured Topic' },
   { id: 'editorial', label: 'Editorial' },
   { id: 'recent', label: 'Recently Added' },
   { id: 'by-year', label: 'By Year' },
@@ -687,7 +687,7 @@ export default function HomePage() {
                 )}
                 {promptFeedLists.length === 0 ? (
                   <div className="text-center py-16">
-                    <p className="text-sm mb-4" style={{ color: 'var(--muted)' }}>No lists for this week&apos;s prompt yet.</p>
+                    <p className="text-sm mb-4" style={{ color: 'var(--muted)' }}>No lists for this featured topic yet.</p>
                     {weeklyPrompt && (
                       <button
                         onClick={() => {

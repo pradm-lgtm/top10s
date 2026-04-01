@@ -63,10 +63,10 @@ export function AppHeader() {
 
           {/* Actions */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-            {/* Search icon — mobile only */}
+            {/* Search icon */}
             <button
               onClick={() => setShowSearch(true)}
-              className="sm:hidden w-9 h-9 flex items-center justify-center rounded-lg transition-opacity hover:opacity-70"
+              className="w-9 h-9 flex items-center justify-center rounded-lg transition-opacity hover:opacity-70"
               style={{ color: 'var(--muted)' }}
               aria-label="Search"
             >
