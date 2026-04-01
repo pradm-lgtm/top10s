@@ -635,9 +635,14 @@ export default function HomePage() {
               />
             )}
 
+            {/* Tagline — scrolls away */}
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>
+              The best in film &amp; TV, ranked by people who care too much.
+            </p>
+
             {/* Nav Pills — sticky on mobile so they stay visible when scrolling */}
             <div
-              className="sticky top-[83px] z-30 -mx-4 px-4 py-2 sm:relative sm:top-auto sm:mx-0 sm:px-0 sm:py-0"
+              className="sticky top-[60px] z-30 -mx-4 px-4 py-2 sm:relative sm:top-auto sm:mx-0 sm:px-0 sm:py-0"
               style={{ background: 'var(--background)' }}
             >
             <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
