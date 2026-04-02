@@ -82,6 +82,9 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [newTieredPosterUrl, setNewTieredPosterUrl] = useState<string | null>(null)
   const [savingTieredEntry, setSavingTieredEntry] = useState(false)
   const [commentNameInput, setCommentNameInput] = useState('')
+  const [mentionStart, setMentionStart] = useState<number | null>(null)
+  const [mentionSuggestions, setMentionSuggestions] = useState<{ id: string; username: string; display_name: string | null }[]>([])
+  const commentTextareaRef = useRef<HTMLTextAreaElement>(null)
   const [pendingListReaction, setPendingListReaction] = useState<string | null>(null)
   const [listReactionNameInput, setListReactionNameInput] = useState('')
   const [selectedEntry, setSelectedEntry] = useState<ListEntry | null>(null)
@@ -653,6 +656,38 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       setNewComment('')
     }
     setSubmittingComment(false)
+  }
+
+  function renderMentions(text: string) {
+    return text.split(/(@\w+)/g).map((part, i) =>
+      /^@\w+$/.test(part)
+        ? <span key={i} style={{ color: '#e8c547', fontWeight: 600 }}>{part}</span>
+        : <span key={i}>{part}</span>
+    )
+  }
+
+  async function fetchMentionSuggestions(q: string) {
+    const res = await fetch(`/api/profiles/mention-search?q=${encodeURIComponent(q)}`)
+    if (res.ok) setMentionSuggestions(await res.json())
+    else setMentionSuggestions([])
+  }
+
+  function selectMention(username: string) {
+    if (mentionStart === null) return
+    const textarea = commentTextareaRef.current
+    const cursor = textarea?.selectionStart ?? newComment.length
+    const before = newComment.slice(0, mentionStart)
+    const after = newComment.slice(cursor)
+    const next = `${before}@${username} ${after}`
+    setNewComment(next)
+    setMentionSuggestions([])
+    setTimeout(() => {
+      if (textarea) {
+        const pos = mentionStart + username.length + 2
+        textarea.focus()
+        textarea.setSelectionRange(pos, pos)
+      }
+    }, 0)
   }
 
   function formatReactorNames(names: string[]): string {
@@ -1342,21 +1377,62 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                 onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
               />
             )}
-            <textarea
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-              placeholder="Share your thoughts…"
-              rows={3}
-              maxLength={500}
-              className="w-full px-4 py-3 rounded-lg text-sm resize-none outline-none transition-all"
-              style={{
-                background: 'var(--surface-2)',
-                border: '1px solid var(--border)',
-                color: 'var(--foreground)',
-              }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = accentColor)}
-              onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
-            />
+            <div className="relative">
+              <textarea
+                ref={commentTextareaRef}
+                value={newComment}
+                onChange={(e) => {
+                  const val = e.target.value
+                  setNewComment(val)
+                  const cursor = e.target.selectionStart ?? val.length
+                  let i = cursor - 1
+                  let found = false
+                  while (i >= 0 && /\S/.test(val[i])) {
+                    if (val[i] === '@') {
+                      const q = val.slice(i + 1, cursor)
+                      if (q.length > 0) {
+                        setMentionStart(i)
+                        fetchMentionSuggestions(q)
+                        found = true
+                      }
+                      break
+                    }
+                    i--
+                  }
+                  if (!found) setMentionSuggestions([])
+                }}
+                placeholder="Share your thoughts… use @ to mention someone"
+                rows={3}
+                maxLength={500}
+                className="w-full px-4 py-3 rounded-lg text-sm resize-none outline-none transition-all"
+                style={{
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--foreground)',
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = accentColor)}
+                onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+              />
+              {mentionSuggestions.length > 0 && (
+                <div
+                  className="absolute z-50 bottom-full left-0 right-0 mb-1 rounded-lg overflow-hidden shadow-xl"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+                >
+                  {mentionSuggestions.map((p, idx) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); selectMention(p.username) }}
+                      className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-opacity hover:opacity-75"
+                      style={{ borderBottom: idx < mentionSuggestions.length - 1 ? '1px solid var(--border)' : 'none' }}
+                    >
+                      <span style={{ color: '#e8c547', fontWeight: 600 }}>@{p.username}</span>
+                      {p.display_name && <span style={{ color: 'var(--muted)' }}>{p.display_name}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="flex justify-between items-center">
               <span className="text-xs" style={{ color: 'var(--muted)' }}>
                 {newComment.length}/500
@@ -1404,7 +1480,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                     className="text-sm leading-relaxed whitespace-pre-wrap"
                     style={{ color: 'var(--muted)' }}
                   >
-                    {comment.content}
+                    {renderMentions(comment.content)}
                   </p>
                 </div>
               ))}

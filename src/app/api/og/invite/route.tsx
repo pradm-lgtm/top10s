@@ -8,45 +8,67 @@ const H = 630
 const GOLD = '#f59e0b'
 const LOGO_GOLD = '#e8c547'
 
-async function fetchAsBase64(url: string): Promise<string | null> {
-  try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 4000)
-    const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'RankedApp/1.0' } })
-    clearTimeout(timer)
-    if (!res.ok) return null
-    const buf = await res.arrayBuffer()
-    const mime = res.headers.get('content-type') ?? 'image/jpeg'
-    return `data:${mime};base64,${Buffer.from(buf).toString('base64')}`
-  } catch {
-    return null
-  }
+// Strip common filler words from user-created list titles so TMDB search
+// finds actual movies/TV.
+// "My Best Miyazaki films"  → "Miyazaki"
+// "Top 10 Horror Movies 80s" → "Horror 80s"
+const STOP = new Set([
+  'best', 'top', 'my', 'worst', 'favorite', 'favourite', 'all', 'time', 'ever',
+  'great', 'good', 'most', 'underrated', 'overrated', 'ranked',
+  'of', 'the', 'a', 'an', 'and', 'in', 'on', 'at', 'to', 'for', 'with', 'from', 'by',
+  'films', 'movies', 'shows', 'series', 'tv', 'picks', 'list', 'lists',
+])
+
+function extractKeywords(title: string): string {
+  const words = title
+    .replace(/[^a-zA-Z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 1 && !STOP.has(w.toLowerCase()))
+    .slice(0, 3)
+  return words.length ? words.join(' ') : title
 }
 
 async function fetchTmdbPosterUrls(topicTitle: string, count: number): Promise<string[]> {
   const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY
   if (!apiKey || apiKey === 'your-tmdb-api-key') return []
+
+  const query = extractKeywords(topicTitle)
+  console.log(`[og/invite] TMDB search: "${query}" (from "${topicTitle}")`)
+
   try {
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 5000)
+    const timer = setTimeout(() => controller.abort(), 4000)
     const res = await fetch(
-      `https://api.themoviedb.org/3/search/multi?query=${encodeURIComponent(topicTitle)}&api_key=${apiKey}&page=1`,
+      `https://api.themoviedb.org/3/search/multi?query=${encodeURIComponent(query)}&api_key=${apiKey}&page=1`,
       { signal: controller.signal }
     )
     clearTimeout(timer)
-    if (!res.ok) return []
+    if (!res.ok) {
+      console.log(`[og/invite] TMDB ${res.status}`)
+      return []
+    }
     const data = await res.json()
-    return (data.results ?? [])
-      .filter((r: Record<string, unknown>) => r.poster_path && (r.media_type === 'movie' || r.media_type === 'tv'))
+    const urls = (data.results ?? [])
+      .filter(
+        (r: Record<string, unknown>) =>
+          r.poster_path && (r.media_type === 'movie' || r.media_type === 'tv')
+      )
       .slice(0, count)
-      .map((r: Record<string, unknown>) => `https://image.tmdb.org/t/p/w342${r.poster_path as string}`)
-  } catch {
+      .map(
+        (r: Record<string, unknown>) =>
+          `https://image.tmdb.org/t/p/w342${r.poster_path as string}`
+      )
+    console.log(`[og/invite] TMDB returned ${urls.length} poster URLs`)
+    return urls
+  } catch (e) {
+    console.log('[og/invite] TMDB error:', (e as Error).message)
     return []
   }
 }
 
 // GET /api/og/invite?token=[token]
 export async function GET(req: Request) {
+  const start = Date.now()
   const { searchParams } = new URL(req.url)
   const token = searchParams.get('token')
   if (!token) return new Response('Missing token', { status: 400 })
@@ -61,11 +83,15 @@ export async function GET(req: Request) {
 
   if (!invite) return new Response('Not found', { status: 404 })
 
-  // Fetch topic and sender profile in parallel
+  // Fetch topic + sender in parallel
   const [topicRes, senderRes] = await Promise.all([
     supabase.from('topics').select('title, category').eq('id', invite.topic_id).single(),
     invite.sender_id
-      ? supabase.from('profiles').select('display_name, username, avatar_url').eq('id', invite.sender_id).single()
+      ? supabase
+          .from('profiles')
+          .select('display_name, username, avatar_url')
+          .eq('id', invite.sender_id)
+          .single()
       : Promise.resolve({ data: null }),
   ])
 
@@ -73,8 +99,11 @@ export async function GET(req: Request) {
   const senderProfile = senderRes.data
   const senderName = senderProfile?.display_name ?? senderProfile?.username ?? 'Someone'
 
-  // Collect poster image URLs: sender's list first, then TMDB for the topic
+  console.log(`[og/invite] topic="${topic?.title}" sender="${senderName}"`)
+
+  // Poster sources: sender's list entries first, then TMDB keyword search
   let posterUrls: string[] = []
+
   if (invite.sender_list_id) {
     const { data: entries } = await supabase
       .from('list_entries')
@@ -84,21 +113,19 @@ export async function GET(req: Request) {
       .order('rank', { ascending: true })
       .limit(6)
     posterUrls = (entries ?? []).map((e) => e.image_url).filter(Boolean) as string[]
+    console.log(`[og/invite] sender list posters: ${posterUrls.length}`)
   }
 
-  // Supplement with TMDB if not enough from sender's list
   if (posterUrls.length < 4 && topic?.title) {
-    const tmdbUrls = await fetchTmdbPosterUrls(topic.title, 6 - posterUrls.length)
-    posterUrls = [...posterUrls, ...tmdbUrls].slice(0, 6)
+    const tmdb = await fetchTmdbPosterUrls(topic.title, 6 - posterUrls.length)
+    posterUrls = [...posterUrls, ...tmdb].slice(0, 6)
   }
 
-  // Fetch everything as base64 in parallel
-  const [posterB64s, senderAvatarB64] = await Promise.all([
-    Promise.all(posterUrls.map(fetchAsBase64)),
-    senderProfile?.avatar_url ? fetchAsBase64(senderProfile.avatar_url) : Promise.resolve(null),
-  ])
+  console.log(`[og/invite] total posters: ${posterUrls.length} (${Date.now() - start}ms)`)
 
-  const posters = posterB64s.filter(Boolean) as string[]
+  // Pass URLs directly to Satori — no base64 needed, Satori fetches externals natively.
+  // This avoids base64 encoding failures and is faster.
+  const posters = posterUrls
 
   return new ImageResponse(
     (
@@ -115,34 +142,60 @@ export async function GET(req: Request) {
       >
         {/* Poster grid — full bleed background */}
         {posters.length > 0 ? (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              display: 'flex',
+            }}
+          >
             {posters.map((src, i) => (
               // eslint-disable-next-line @next/next/no-img-element
               <img key={i} src={src} alt="" style={{ flex: 1, height: H, objectFit: 'cover' }} />
             ))}
           </div>
         ) : (
-          /* Cinematic gradient fallback when no posters */
+          /* Cinematic gradient fallback — visible purple-to-blue tones */
           <div
             style={{
               position: 'absolute',
-              inset: 0,
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
               display: 'flex',
-              background: 'linear-gradient(135deg, #1a0520 0%, #0d0d1a 50%, #0a1a0a 100%)',
+              background: 'linear-gradient(135deg, #2d0a3e 0%, #0d1535 50%, #0a2210 100%)',
             }}
           />
         )}
 
         {/* Dark overlay for text legibility */}
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', background: 'rgba(0,0,0,0.72)' }} />
-
-        {/* Vignette for cinematic depth */}
         <div
           style={{
             position: 'absolute',
-            inset: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
             display: 'flex',
-            background: 'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0) 45%, rgba(0,0,0,0.45) 100%)',
+            background: 'rgba(0,0,0,0.68)',
+          }}
+        />
+
+        {/* Vignette */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            display: 'flex',
+            background:
+              'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0) 45%, rgba(0,0,0,0.45) 100%)',
           }}
         />
 
@@ -157,10 +210,10 @@ export async function GET(req: Request) {
             gap: 10,
           }}
         >
-          {senderAvatarB64 ? (
+          {senderProfile?.avatar_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={senderAvatarB64}
+              src={senderProfile.avatar_url}
               alt=""
               style={{ width: 36, height: 36, borderRadius: 18, objectFit: 'cover' }}
             />
@@ -182,7 +235,14 @@ export async function GET(req: Request) {
               {senderName[0]?.toUpperCase() ?? '?'}
             </div>
           )}
-          <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.75)', fontWeight: 500, display: 'flex' }}>
+          <span
+            style={{
+              fontSize: 15,
+              color: 'rgba(255,255,255,0.75)',
+              fontWeight: 500,
+              display: 'flex',
+            }}
+          >
             {senderName}
           </span>
         </div>
@@ -191,7 +251,10 @@ export async function GET(req: Request) {
         <div
           style={{
             position: 'absolute',
-            inset: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',

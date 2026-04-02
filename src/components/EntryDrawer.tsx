@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { parseNotes, tiptapToHtml } from '@/lib/notes'
 import type { ListEntry } from '@/types'
@@ -47,6 +47,9 @@ export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClos
   const [pendingEmoji, setPendingEmoji] = useState<string | null>(null)
   const [reactionNameInput, setReactionNameInput] = useState('')
   const [commentNameInput, setCommentNameInput] = useState('')
+  const [mentionStart, setMentionStart] = useState<number | null>(null)
+  const [mentionSuggestions, setMentionSuggestions] = useState<{ id: string; username: string; display_name: string | null }[]>([])
+  const commentInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setLocalVisitorId(visitorId)
@@ -122,6 +125,38 @@ export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClos
       return
     }
     await doToggleReaction(emoji, localVisitorId)
+  }
+
+  function renderMentions(text: string) {
+    return text.split(/(@\w+)/g).map((part, i) =>
+      /^@\w+$/.test(part)
+        ? <span key={i} style={{ color: '#e8c547', fontWeight: 600 }}>{part}</span>
+        : <span key={i}>{part}</span>
+    )
+  }
+
+  async function fetchMentionSuggestions(q: string) {
+    const res = await fetch(`/api/profiles/mention-search?q=${encodeURIComponent(q)}`)
+    if (res.ok) setMentionSuggestions(await res.json())
+    else setMentionSuggestions([])
+  }
+
+  function selectMention(username: string) {
+    if (mentionStart === null) return
+    const input = commentInputRef.current
+    const cursor = input?.selectionStart ?? newComment.length
+    const before = newComment.slice(0, mentionStart)
+    const after = newComment.slice(cursor)
+    const next = `${before}@${username} ${after}`
+    setNewComment(next)
+    setMentionSuggestions([])
+    setTimeout(() => {
+      if (input) {
+        const pos = mentionStart + username.length + 2
+        input.focus()
+        input.setSelectionRange(pos, pos)
+      }
+    }, 0)
   }
 
   async function submitComment(e: React.FormEvent) {
@@ -284,7 +319,7 @@ export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClos
                           </span>
                         </div>
                         <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--muted)' }}>
-                          {comment.content}
+                          {renderMentions(comment.content)}
                         </p>
                       </div>
                     ))}
@@ -316,17 +351,58 @@ export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClos
                 />
               )}
               <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newComment}
-                  onChange={e => setNewComment(e.target.value)}
-                  placeholder="Add a comment…"
-                  maxLength={500}
-                  className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
-                  onFocus={e => (e.currentTarget.style.borderColor = accentColor)}
-                  onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-                />
+                <div className="relative flex-1">
+                  <input
+                    ref={commentInputRef}
+                    type="text"
+                    value={newComment}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setNewComment(val)
+                      const cursor = e.target.selectionStart ?? val.length
+                      let i = cursor - 1
+                      let found = false
+                      while (i >= 0 && /\S/.test(val[i])) {
+                        if (val[i] === '@') {
+                          const q = val.slice(i + 1, cursor)
+                          if (q.length > 0) {
+                            setMentionStart(i)
+                            fetchMentionSuggestions(q)
+                            found = true
+                          }
+                          break
+                        }
+                        i--
+                      }
+                      if (!found) setMentionSuggestions([])
+                    }}
+                    placeholder="Add a comment… use @ to mention"
+                    maxLength={500}
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                    onFocus={e => (e.currentTarget.style.borderColor = accentColor)}
+                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+                  />
+                  {mentionSuggestions.length > 0 && (
+                    <div
+                      className="absolute z-50 bottom-full left-0 right-0 mb-1 rounded-lg overflow-hidden shadow-xl"
+                      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+                    >
+                      {mentionSuggestions.map((p, idx) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onMouseDown={(e) => { e.preventDefault(); selectMention(p.username) }}
+                          className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-opacity hover:opacity-75"
+                          style={{ borderBottom: idx < mentionSuggestions.length - 1 ? '1px solid var(--border)' : 'none' }}
+                        >
+                          <span style={{ color: '#e8c547', fontWeight: 600 }}>@{p.username}</span>
+                          {p.display_name && <span style={{ color: 'var(--muted)' }}>{p.display_name}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <button
                   type="submit"
                   disabled={submitting || !newComment.trim() || (!localVisitorName && !commentNameInput.trim())}

@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     .map((n) => n.actor_id as string)
 
   const visitorActorIds = notifs
-    .filter((n) => ['new_comment', 'new_reaction'].includes(n.type) && n.actor_id)
+    .filter((n) => ['new_comment', 'new_reaction', 'mention'].includes(n.type) && n.actor_id)
     .map((n) => n.actor_id as string)
 
   const listIds = notifs.filter((n) => n.list_id).map((n) => n.list_id as string)

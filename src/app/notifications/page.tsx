@@ -9,7 +9,7 @@ import { AppHeader } from '@/components/AppHeader'
 
 type EnrichedNotification = {
   id: string
-  type: 'new_follower' | 'new_comment' | 'new_reaction' | 'new_list_from_following'
+  type: 'new_follower' | 'new_comment' | 'new_reaction' | 'new_list_from_following' | 'mention'
   actor_name: string
   actor_username: string | null
   list_id: string | null
@@ -24,6 +24,7 @@ function notifText(n: EnrichedNotification): string {
     case 'new_comment': return `${n.actor_name} commented on ${n.list_title ?? 'your list'}`
     case 'new_reaction': return `${n.actor_name} reacted to ${n.list_title ?? 'your list'}`
     case 'new_list_from_following': return `${n.actor_name} published ${n.list_title ?? 'a new list'}`
+    case 'mention': return `${n.actor_name} mentioned you in a comment on ${n.list_title ?? 'a list'}`
   }
 }
 

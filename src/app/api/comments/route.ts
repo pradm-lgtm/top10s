@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAdminSupabase } from '@/lib/supabase-admin'
 
-// POST /api/comments — create a comment and notify the list owner
+function extractMentions(content: string): string[] {
+  const matches = content.match(/@(\w+)/g) ?? []
+  return [...new Set(matches.map((m) => m.slice(1).toLowerCase()))]
+}
+
+// POST /api/comments — create a comment and notify the list owner + any @mentioned users
 export async function POST(req: NextRequest) {
   const { list_id, visitor_id, content } = await req.json()
   if (!list_id || !visitor_id || !content?.trim()) {
@@ -33,6 +38,30 @@ export async function POST(req: NextRequest) {
       list_id,
       comment_id: comment.id,
     })
+  }
+
+  // Notify @mentioned users (skip list owner — already notified above)
+  const mentionedUsernames = extractMentions(content.trim())
+  if (mentionedUsernames.length > 0) {
+    const { data: mentionedProfiles } = await supabase
+      .from('profiles')
+      .select('id')
+      .in('username', mentionedUsernames)
+
+    if (mentionedProfiles?.length) {
+      const mentionNotifs = mentionedProfiles
+        .filter((p) => p.id !== list?.owner_id)
+        .map((p) => ({
+          user_id: p.id,
+          type: 'mention',
+          actor_id: visitor_id,
+          list_id,
+          comment_id: comment.id,
+        }))
+      if (mentionNotifs.length > 0) {
+        await supabase.from('notifications').insert(mentionNotifs)
+      }
+    }
   }
 
   return NextResponse.json(comment)

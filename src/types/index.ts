@@ -34,7 +34,7 @@ export type List = {
 export type Notification = {
   id: string
   user_id: string
-  type: 'new_follower' | 'new_comment' | 'new_reaction' | 'new_list_from_following'
+  type: 'new_follower' | 'new_comment' | 'new_reaction' | 'new_list_from_following' | 'mention'
   actor_id: string | null
   list_id: string | null
   comment_id: string | null
