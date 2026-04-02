@@ -330,7 +330,7 @@ export function TopicClient({ data }: { data: TopicData }) {
                 : `${lists.length} ${lists.length === 1 ? 'person has' : 'people have'} shared their take`}
             </p>
           </div>
-          <InviteButton topicId={topic.id} topicTitle={topic.title} senderListId={userList?.id ?? null} />
+          <InviteButton topicTitle={topic.title} senderListId={userList?.id ?? null} />
         </div>
 
         {/* Related topics */}
