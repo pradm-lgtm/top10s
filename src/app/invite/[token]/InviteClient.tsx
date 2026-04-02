@@ -84,18 +84,12 @@ export function InviteClient({ invite, token }: { invite: InviteData; token: str
                     {senderName[0].toUpperCase()}
                   </div>
                 )}
-                <div>
-                  <span className="text-sm font-semibold">{senderName}</span>
-                  <span className="text-sm" style={{ color: 'var(--muted)' }}> wants to know your take on:</span>
-                </div>
+                <span className="text-sm font-semibold">{senderName}</span>
               </div>
             )}
 
-            <p className="text-xs font-semibold tracking-wide uppercase mb-1" style={{ color: 'var(--accent)' }}>
-              {senderName} wants to know your take
-            </p>
             <h1 className="text-3xl font-bold tracking-tight leading-tight mb-3">
-              Rank your {invite.topic.title}
+              {invite.topic.title}
             </h1>
 
             {invite.message && (
