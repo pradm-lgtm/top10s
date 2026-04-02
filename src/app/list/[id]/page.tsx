@@ -1391,12 +1391,14 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                 onChange={(e) => {
                   const val = e.target.value
                   setNewComment(val)
+                  console.log('[mention] onChange val:', JSON.stringify(val))
                   const cursor = e.target.selectionStart ?? val.length
                   let i = cursor - 1
                   let found = false
                   while (i >= 0 && /\S/.test(val[i])) {
                     if (val[i] === '@') {
                       const q = val.slice(i + 1, cursor)
+                      console.log('[mention] found @ at', i, 'q:', JSON.stringify(q))
                       if (q.length > 0) {
                         setMentionStart(i)
                         fetchMentionSuggestions(q)
