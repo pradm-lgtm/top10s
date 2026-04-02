@@ -667,16 +667,9 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   }
 
   async function fetchMentionSuggestions(q: string) {
-    console.log('[mention] searching:', q)
     const res = await fetch(`/api/profiles/mention-search?q=${encodeURIComponent(q)}`)
-    if (res.ok) {
-      const data = await res.json()
-      console.log('[mention] results:', data)
-      setMentionSuggestions(data)
-    } else {
-      console.log('[mention] API error:', res.status)
-      setMentionSuggestions([])
-    }
+    if (res.ok) setMentionSuggestions(await res.json())
+    else setMentionSuggestions([])
   }
 
   function selectMention(username: string) {
@@ -990,7 +983,6 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               {user && !list.featured && (
                 <IconTooltip label="Invite a friend">
                   <InviteButton
-                    topicId={(list as List & { topic_id?: string }).topic_id ?? null}
                     topicTitle={list.title}
                     senderListId={isOwner ? list.id : null}
                     icon
@@ -1391,14 +1383,12 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                 onChange={(e) => {
                   const val = e.target.value
                   setNewComment(val)
-                  console.log('[mention] onChange val:', JSON.stringify(val))
                   const cursor = e.target.selectionStart ?? val.length
                   let i = cursor - 1
                   let found = false
                   while (i >= 0 && /\S/.test(val[i])) {
                     if (val[i] === '@') {
                       const q = val.slice(i + 1, cursor)
-                      console.log('[mention] found @ at', i, 'q:', JSON.stringify(q))
                       if (q.length > 0) {
                         setMentionStart(i)
                         fetchMentionSuggestions(q)

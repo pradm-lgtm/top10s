@@ -4,13 +4,12 @@ import { useState } from 'react'
 import { useAuth } from '@/context/auth'
 
 type Props = {
-  topicId?: string | null  // if null/empty, will be resolved via find-or-create
   topicTitle: string
   senderListId?: string | null
   icon?: boolean  // render as w-11 h-11 icon button (for icon rows)
 }
 
-export function InviteButton({ topicId, topicTitle, senderListId, icon = false }: Props) {
+export function InviteButton({ topicTitle, senderListId, icon = false }: Props) {
   const { user, signInWithGoogle } = useAuth()
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState('')
@@ -28,25 +27,20 @@ export function InviteButton({ topicId, topicTitle, senderListId, icon = false }
     const token = session?.access_token
     const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
 
-    // Resolve topic_id if not provided
-    let resolvedTopicId = topicId
-    if (!resolvedTopicId) {
-      const topicRes = await fetch('/api/topics/find-or-create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeader },
-        body: JSON.stringify({ title: topicTitle }),
-      })
-      if (topicRes.ok) {
-        const t = await topicRes.json()
-        resolvedTopicId = t.id
-      } else {
-        const err = await topicRes.json().catch(() => ({}))
-        setError(err.error ?? 'Could not resolve topic')
-        setCreating(false)
-        return
-      }
+    // Always resolve topic via find-or-create using the list title.
+    // Never trust the stored topic_id — it may have been incorrectly assigned.
+    const topicRes = await fetch('/api/topics/find-or-create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeader },
+      body: JSON.stringify({ title: topicTitle }),
+    })
+    if (!topicRes.ok) {
+      const err = await topicRes.json().catch(() => ({}))
+      setError(err.error ?? 'Could not resolve topic')
+      setCreating(false)
+      return
     }
-
+    const resolvedTopicId = (await topicRes.json()).id
     if (!resolvedTopicId) { setCreating(false); return }
 
     const res = await fetch('/api/invites/create', {
