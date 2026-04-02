@@ -667,9 +667,16 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   }
 
   async function fetchMentionSuggestions(q: string) {
+    console.log('[mention] searching:', q)
     const res = await fetch(`/api/profiles/mention-search?q=${encodeURIComponent(q)}`)
-    if (res.ok) setMentionSuggestions(await res.json())
-    else setMentionSuggestions([])
+    if (res.ok) {
+      const data = await res.json()
+      console.log('[mention] results:', data)
+      setMentionSuggestions(data)
+    } else {
+      console.log('[mention] API error:', res.status)
+      setMentionSuggestions([])
+    }
   }
 
   function selectMention(username: string) {
