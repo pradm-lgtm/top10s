@@ -101,25 +101,9 @@ export async function GET(req: Request) {
 
   console.log(`[og/invite] topic="${topic?.title}" sender="${senderName}"`)
 
-  // Poster sources: sender's list entries first, then TMDB keyword search
-  let posterUrls: string[] = []
-
-  if (invite.sender_list_id) {
-    const { data: entries } = await supabase
-      .from('list_entries')
-      .select('image_url')
-      .eq('list_id', invite.sender_list_id)
-      .not('rank', 'is', null)
-      .order('rank', { ascending: true })
-      .limit(6)
-    posterUrls = (entries ?? []).map((e) => e.image_url).filter(Boolean) as string[]
-    console.log(`[og/invite] sender list posters: ${posterUrls.length}`)
-  }
-
-  if (posterUrls.length < 4 && topic?.title) {
-    const tmdb = await fetchTmdbPosterUrls(topic.title, 6 - posterUrls.length)
-    posterUrls = [...posterUrls, ...tmdb].slice(0, 6)
-  }
+  // Always use TMDB search for posters — never pull from the sender's list,
+  // as that would reveal their picks before the recipient has made their own list.
+  const posterUrls = topic?.title ? await fetchTmdbPosterUrls(topic.title, 6) : []
 
   console.log(`[og/invite] total posters: ${posterUrls.length} (${Date.now() - start}ms)`)
 
