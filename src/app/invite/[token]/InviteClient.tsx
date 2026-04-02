@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import posthog from 'posthog-js'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/context/auth'
@@ -23,6 +24,13 @@ type InviteData = {
 export function InviteClient({ invite, token }: { invite: InviteData; token: string }) {
   const { user, signInAnonymously } = useAuth()
   const router = useRouter()
+
+  const trackedRef = useRef(false)
+  useEffect(() => {
+    if (trackedRef.current) return
+    trackedRef.current = true
+    posthog.capture('invite_opened', { token, is_new_user: !user })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sign in anonymously when a guest lands on an invite page
   useEffect(() => {

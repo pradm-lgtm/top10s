@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import posthog from 'posthog-js'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
@@ -296,6 +297,10 @@ export function TopicClient({ data }: { data: TopicData }) {
   const sortedLists = sort === 'reactions'
     ? [...initialLists].sort((a, b) => b.reactionCount - a.reactionCount)
     : initialLists // already sorted by created_at desc from server
+
+  useEffect(() => {
+    posthog.capture('topic_page_viewed', { topic_slug: topic.slug })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch suggestions for empty state / general use
   useEffect(() => {

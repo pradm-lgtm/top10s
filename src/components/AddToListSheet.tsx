@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import posthog from 'posthog-js'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import {
@@ -155,6 +156,7 @@ export function AddToListSheet({ entry, onClose, onSuccess }: Props) {
 
     if (res.ok) {
       const newEntry = await res.json()
+      posthog.capture('entry_added_from_other_list')
 
       // For ranked or tier-ranked (after tier selection), show reorder view
       if (list.list_format === 'ranked' || list.list_format === 'tier-ranked') {

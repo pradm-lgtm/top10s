@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, use, useRef } from 'react'
+import posthog from 'posthog-js'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -993,6 +994,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                 <IconTooltip label="Make your own version">
                   <button
                     onClick={() => {
+                      posthog.capture('make_own_version_clicked', { list_id: list.id })
                       const params = new URLSearchParams({
                         title: list.title,
                         format: list.list_format,

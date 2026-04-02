@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import posthog from 'posthog-js'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { AppHeader } from '@/components/AppHeader'
@@ -84,6 +85,10 @@ export function SearchResults() {
       setTopics(data.topics ?? [])
       setLists(data.lists ?? [])
       setProfiles(data.profiles ?? [])
+      posthog.capture('search_performed', {
+        query: q.trim(),
+        results_count: (data.topics?.length ?? 0) + (data.lists?.length ?? 0) + (data.profiles?.length ?? 0),
+      })
     } finally {
       setLoading(false)
     }

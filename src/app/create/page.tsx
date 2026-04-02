@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, Suspense } from 'react'
+import posthog from 'posthog-js'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   DndContext,
@@ -1971,6 +1972,14 @@ function CreatePageInner() {
           body: JSON.stringify({ list_id: list.id }),
         }).catch(() => {})
       }
+    })
+
+    posthog.capture('list_published', {
+      format: listFormat,
+      category,
+      entry_count: entries.length,
+      has_descriptions: entries.some((e) => e.notes != null),
+      via_invite: !!inviteToken,
     })
 
     router.push(`/list/${list.id}`)

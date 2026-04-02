@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import posthog from 'posthog-js'
 import { useAuth } from '@/context/auth'
 
 type Props = {
@@ -52,6 +53,7 @@ export function InviteButton({ topicTitle, senderListId, icon = false }: Props) 
     if (res.ok) {
       const data = await res.json()
       setLink(data.url)
+      posthog.capture('invite_sent', { topic_title: topicTitle, sender_id: user?.id })
     } else {
       const err = await res.json().catch(() => ({}))
       setError(err.error ?? 'Failed to generate link')

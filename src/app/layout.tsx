@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/next";
+import { PostHogProvider } from "@/providers/PostHogProvider";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AdminProvider } from "@/context/admin";
@@ -39,6 +40,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen`}
         style={{ background: "var(--background)", color: "var(--foreground)" }}
       >
+        <PostHogProvider>
         <AuthProvider>
           <NavigationProvider>
             <AdminProvider>
@@ -50,6 +52,7 @@ export default function RootLayout({
           </NavigationProvider>
         <Analytics />
         </AuthProvider>
+        </PostHogProvider>
       </body>
     </html>
   );

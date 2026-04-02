@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import posthog from 'posthog-js'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
@@ -317,6 +318,7 @@ export default function ComparePage() {
       setPosters2(Object.fromEntries(Object.entries(p2).map(([k, v]) => [k, v.poster])))
     })
 
+    posthog.capture('comparison_viewed', { list1_id: lid1, list2_id: lid2 })
     setLoading(false)
   }, [])
 
