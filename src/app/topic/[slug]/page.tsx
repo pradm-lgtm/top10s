@@ -100,9 +100,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const data = await getTopicData(slug)
   if (!data) return { title: 'Topic — Ranked' }
 
+  const rawSite = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://rankedhq.app'
+  const siteUrl = rawSite.startsWith('http') ? rawSite : `https://${rawSite}`
+
   return {
     title: `${data.topic.title} — Ranked`,
     description: `${data.lists.length} people have ranked ${data.topic.title}. See how their lists compare.`,
+    alternates: {
+      canonical: `${siteUrl}/topic/${slug}`,
+    },
   }
 }
 

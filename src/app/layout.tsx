@@ -27,6 +27,9 @@ export const metadata: Metadata = {
     icon: '/icon.svg',
     apple: '/icon.svg',
   },
+  alternates: {
+    canonical: 'https://rankedhq.app',
+  },
 };
 
 export default function RootLayout({

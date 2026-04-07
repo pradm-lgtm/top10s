@@ -20,11 +20,15 @@ export async function generateMetadata(
   const displayName = profile.display_name ?? profile.username
   const title = `${displayName}'s lists | Ranked`
   const description = `See ${displayName}'s ranked film & TV lists on Ranked.`
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? ''
+  const rawSite = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://rankedhq.app'
+  const siteUrl = rawSite.startsWith('http') ? rawSite : `https://${rawSite}`
 
   return {
     title,
     description,
+    alternates: {
+      canonical: `${siteUrl}/${username}`,
+    },
     openGraph: {
       title,
       description,
