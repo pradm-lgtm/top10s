@@ -138,10 +138,31 @@ function PosterStack({
 
 // ── Stats row ──────────────────────────────────────────────────────────────
 
-function StatsRow({ reactionCount, commentCount, reactionEmojis = ['🔥'] }: { reactionCount: number; commentCount: number; reactionEmojis?: string[] }) {
+const FEED_EMOJIS = ['🔥', '❤️', '😮', '😂', '👏']
+
+type FeedComment = { id: string; content: string; visitors: { name: string } | null }
+type FeedEmoji = { emoji: string; count: number; reacted: boolean }
+
+function StatsRow({
+  reactionCount,
+  commentCount,
+  reactionEmojis = ['🔥'],
+  expanded,
+  onClick,
+}: {
+  reactionCount: number
+  commentCount: number
+  reactionEmojis?: string[]
+  expanded?: boolean
+  onClick?: (e: React.MouseEvent) => void
+}) {
   if (reactionCount === 0 && commentCount === 0) return null
   return (
-    <div className="flex items-center gap-3 mt-auto pt-2">
+    <button
+      type="button"
+      className="flex items-center gap-3 mt-auto pt-2 w-full text-left"
+      onClick={onClick}
+    >
       {reactionCount > 0 && (
         <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}>
           <span style={{ fontSize: 13 }}>{reactionEmojis.join('')}</span>{reactionCount}
@@ -152,6 +173,182 @@ function StatsRow({ reactionCount, commentCount, reactionEmojis = ['🔥'] }: { 
           <span style={{ fontSize: 13 }}>💬</span>{commentCount}
         </span>
       )}
+      <span className="ml-auto text-[10px] transition-opacity opacity-40" style={{ color: 'var(--muted)' }}>
+        {expanded ? '▲' : '▼'}
+      </span>
+    </button>
+  )
+}
+
+// ── Inline expand panel ─────────────────────────────────────────────────────
+
+function CardExpandPanel({
+  listId,
+  commentCount,
+  onCommentPosted,
+}: {
+  listId: string
+  commentCount: number
+  onCommentPosted: () => void
+}) {
+  const { user, signInWithGoogle } = useAuth()
+  const [emojis, setEmojis] = useState<FeedEmoji[]>(FEED_EMOJIS.map(e => ({ emoji: e, count: 0, reacted: false })))
+  const [comments, setComments] = useState<FeedComment[]>([])
+  const [commentText, setCommentText] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    async function fetchData() {
+      const vid = localStorage.getItem('visitor_id') ?? ''
+      const [reactRes, commentRes] = await Promise.all([
+        supabase.from('reactions').select('emoji, visitor_id').eq('list_id', listId),
+        supabase
+          .from('comments')
+          .select('id, content, visitors(name)')
+          .eq('list_id', listId)
+          .order('created_at', { ascending: false })
+          .limit(3),
+      ])
+      if (reactRes.data) {
+        const counts: Record<string, number> = {}
+        const mine = new Set<string>()
+        for (const r of reactRes.data) {
+          counts[r.emoji] = (counts[r.emoji] ?? 0) + 1
+          if (r.visitor_id === vid) mine.add(r.emoji)
+        }
+        setEmojis(FEED_EMOJIS.map(e => ({ emoji: e, count: counts[e] ?? 0, reacted: mine.has(e) })))
+      }
+      if (commentRes.data) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setComments(commentRes.data.map((c: any) => ({
+          id: c.id,
+          content: c.content,
+          visitors: Array.isArray(c.visitors) ? c.visitors[0] ?? null : c.visitors,
+        })))
+      }
+      setLoaded(true)
+    }
+    fetchData()
+  }, [listId])
+
+  async function toggleEmoji(emoji: string) {
+    if (!user) { signInWithGoogle(); return }
+    const vid = localStorage.getItem('visitor_id')
+    if (!vid) return
+    const r = emojis.find(r => r.emoji === emoji)!
+    const hasReacted = r.reacted
+    setEmojis(prev => prev.map(r => r.emoji === emoji ? { ...r, count: r.count + (hasReacted ? -1 : 1), reacted: !r.reacted } : r))
+    await fetch('/api/reactions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ list_id: listId, visitor_id: vid, emoji, action: hasReacted ? 'remove' : 'add' }),
+    })
+  }
+
+  async function postComment(e: React.FormEvent) {
+    e.preventDefault()
+    if (!user) { signInWithGoogle(); return }
+    const vid = localStorage.getItem('visitor_id')
+    if (!commentText.trim() || !vid) return
+    setSubmitting(true)
+    const res = await fetch('/api/comments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ list_id: listId, visitor_id: vid, content: commentText.trim() }),
+    })
+    if (res.ok) {
+      const comment = await res.json()
+      setComments(prev => [
+        { id: comment.id, content: comment.content, visitors: comment.visitors ?? null },
+        ...prev,
+      ].slice(0, 3))
+      setCommentText('')
+      onCommentPosted()
+    }
+    setSubmitting(false)
+  }
+
+  return (
+    <div
+      className="pt-3 space-y-3"
+      style={{ borderTop: '1px solid var(--border)' }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* Emoji row */}
+      <div className="flex gap-1.5 flex-wrap">
+        {emojis.map(r => (
+          <button
+            key={r.emoji}
+            type="button"
+            onClick={() => toggleEmoji(r.emoji)}
+            className="flex items-center gap-1 px-2 py-1 rounded-full text-xs transition-all"
+            style={{
+              background: r.reacted ? 'rgba(232,197,71,0.15)' : 'var(--surface-2)',
+              border: `1px solid ${r.reacted ? 'rgba(232,197,71,0.4)' : 'var(--border)'}`,
+              color: r.reacted ? 'var(--accent)' : 'var(--foreground)',
+            }}
+          >
+            <span>{r.emoji}</span>
+            {r.count > 0 && <span className="tabular-nums">{r.count}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* Comments */}
+      {loaded && comments.length > 0 && (
+        <div className="space-y-2">
+          {comments.map(c => (
+            <div key={c.id} className="flex items-start gap-2 min-w-0">
+              <div
+                className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 mt-0.5"
+                style={{ background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+              >
+                {(c.visitors?.name ?? '?')[0].toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="text-[11px] font-semibold mr-1.5" style={{ color: 'var(--foreground)' }}>
+                  {c.visitors?.name ?? 'Anonymous'}
+                </span>
+                <span className="text-[11px]" style={{ color: 'var(--muted)' }}>
+                  {c.content}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Comment input */}
+      <form onSubmit={postComment} className="flex gap-2">
+        <input
+          value={commentText}
+          onChange={e => setCommentText(e.target.value)}
+          placeholder={user ? 'Add your take…' : 'Sign in to comment…'}
+          disabled={!user || submitting}
+          className="flex-1 min-w-0 px-3 py-1.5 rounded-lg text-xs outline-none"
+          style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+          onFocus={e => (e.currentTarget.style.borderColor = 'rgba(232,197,71,0.5)')}
+          onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+        />
+        <button
+          type="submit"
+          disabled={!user || submitting || !commentText.trim()}
+          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-opacity disabled:opacity-40"
+          style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+        >
+          Post
+        </button>
+      </form>
+
+      {/* See all link */}
+      <Link
+        href={`/list/${listId}`}
+        className="block text-[11px] text-right transition-opacity hover:opacity-70"
+        style={{ color: 'var(--muted)' }}
+      >
+        {commentCount > 3 ? `See all ${commentCount} comments →` : 'See full list →'}
+      </Link>
     </div>
   )
 }
@@ -185,20 +382,28 @@ function CategoryBadge({ category }: { category: 'movies' | 'tv' }) {
 
 function FeedCard({ list, posters, followingIds, onFollowToggle }: { list: RichList; posters: Record<string, string | null>; followingIds?: Set<string>; onFollowToggle?: (userId: string, e: React.MouseEvent) => void }) {
   const router = useRouter()
+  const { user, signInWithGoogle } = useAuth()
   const isMovie = list.category === 'movies'
   const accent = isMovie ? 'var(--accent)' : '#a78bfa'
   const hoverBorder = isMovie ? 'rgba(232,197,71,0.4)' : 'rgba(139,92,246,0.4)'
   const hoverShadow = isMovie ? '0 4px 24px rgba(232,197,71,0.07)' : '0 4px 24px rgba(139,92,246,0.07)'
   const isFeatured = list.featured
+  const [expanded, setExpanded] = useState(false)
+  const [commentCount, setCommentCount] = useState(list.commentCount)
+
+  function handleStatsClick(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!user) { signInWithGoogle(); return }
+    setExpanded(v => !v)
+  }
 
   return (
     <div
-      className="cursor-pointer rounded-xl p-4 flex flex-col gap-3 h-full transition-all duration-200 hover:translate-y-[-2px] relative"
+      className="rounded-xl p-4 flex flex-col gap-3 h-full transition-all duration-200 relative"
       style={{
         background: 'var(--surface)',
         border: `1px solid ${isFeatured ? 'rgba(232,197,71,0.25)' : 'var(--border)'}`,
       }}
-      onClick={() => router.push(`/list/${list.id}`)}
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = hoverBorder; e.currentTarget.style.boxShadow = hoverShadow }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = isFeatured ? 'rgba(232,197,71,0.25)' : 'var(--border)'; e.currentTarget.style.boxShadow = '' }}
     >
@@ -207,45 +412,64 @@ function FeedCard({ list, posters, followingIds, onFollowToggle }: { list: RichL
         <CategoryBadge category={list.category} />
       </div>
 
-      {/* Featured badge */}
-      {isFeatured && (
-        <div
-          className="text-[10px] font-bold tracking-[0.2em] uppercase px-2 py-0.5 rounded w-fit"
-          style={{ background: 'rgba(232,197,71,0.12)', color: 'var(--accent)', border: '1px solid rgba(232,197,71,0.2)' }}
-        >
-          {list.source_label ?? 'Featured'}
+      {/* Clickable body — navigates to list */}
+      <div className="flex flex-col gap-3 cursor-pointer" onClick={() => router.push(`/list/${list.id}`)}>
+        {/* Featured badge */}
+        {isFeatured && (
+          <div
+            className="text-[10px] font-bold tracking-[0.2em] uppercase px-2 py-0.5 rounded w-fit"
+            style={{ background: 'rgba(232,197,71,0.12)', color: 'var(--accent)', border: '1px solid rgba(232,197,71,0.2)' }}
+          >
+            {list.source_label ?? 'Featured'}
+          </div>
+        )}
+
+        {list.profiles && (
+          <OwnerChip
+            owner={list.profiles}
+            onClick={(e) => e.stopPropagation()}
+            followingIds={followingIds}
+            onFollowToggle={onFollowToggle}
+          />
+        )}
+
+        <h3 className="font-semibold text-base leading-tight pr-5">{list.title}</h3>
+
+        <div className="flex items-start gap-4">
+          <PosterStack entries={list.entries} size="md" posters={posters} />
+          <ol className="flex-1 min-w-0 space-y-1.5 pt-1">
+            {list.entries.slice(0, 3).map((entry) => (
+              <li key={entry.id} className="flex items-center gap-2 text-xs min-w-0">
+                {entry.rank != null && entry.rank > 0 && (
+                  <span className="font-bold w-4 shrink-0 text-right" style={{ color: accent }}>{entry.rank}</span>
+                )}
+                <span className="truncate" style={{ color: 'var(--muted)' }}>{entry.title}</span>
+              </li>
+            ))}
+            {list.entries.length === 0 && (
+              <li className="text-xs italic" style={{ color: 'var(--muted)' }}>Coming soon…</li>
+            )}
+          </ol>
         </div>
-      )}
-
-      {list.profiles && (
-        <OwnerChip
-          owner={list.profiles}
-          onClick={(e) => e.stopPropagation()}
-          followingIds={followingIds}
-          onFollowToggle={onFollowToggle}
-        />
-      )}
-
-      <h3 className="font-semibold text-base leading-tight pr-5">{list.title}</h3>
-
-      <div className="flex items-start gap-4">
-        <PosterStack entries={list.entries} size="md" posters={posters} />
-        <ol className="flex-1 min-w-0 space-y-1.5 pt-1">
-          {list.entries.slice(0, 3).map((entry) => (
-            <li key={entry.id} className="flex items-center gap-2 text-xs min-w-0">
-              {entry.rank != null && entry.rank > 0 && (
-                <span className="font-bold w-4 shrink-0 text-right" style={{ color: accent }}>{entry.rank}</span>
-              )}
-              <span className="truncate" style={{ color: 'var(--muted)' }}>{entry.title}</span>
-            </li>
-          ))}
-          {list.entries.length === 0 && (
-            <li className="text-xs italic" style={{ color: 'var(--muted)' }}>Coming soon…</li>
-          )}
-        </ol>
       </div>
 
-      <StatsRow reactionCount={list.reactionCount} commentCount={list.commentCount} reactionEmojis={list.reactionEmojis} />
+      {/* Stats row — click to expand */}
+      <StatsRow
+        reactionCount={list.reactionCount}
+        commentCount={commentCount}
+        reactionEmojis={list.reactionEmojis}
+        expanded={expanded}
+        onClick={handleStatsClick}
+      />
+
+      {/* Inline expand panel */}
+      {expanded && (
+        <CardExpandPanel
+          listId={list.id}
+          commentCount={commentCount}
+          onCommentPosted={() => setCommentCount(c => c + 1)}
+        />
+      )}
     </div>
   )
 }
@@ -268,38 +492,55 @@ function CategoryLabel({ category }: { category: 'movies' | 'tv' }) {
 
 function YearCard({ list, posters, followingIds, onFollowToggle }: { list: RichList; posters: Record<string, string | null>; followingIds?: Set<string>; onFollowToggle?: (userId: string, e: React.MouseEvent) => void }) {
   const router = useRouter()
+  const { user, signInWithGoogle } = useAuth()
   const isMovie = list.category === 'movies'
   const accent = isMovie ? 'var(--accent)' : '#a78bfa'
   const hoverBorder = isMovie ? 'rgba(232,197,71,0.4)' : 'rgba(139,92,246,0.4)'
   const hoverShadow = isMovie ? '0 4px 24px rgba(232,197,71,0.07)' : '0 4px 24px rgba(139,92,246,0.07)'
+  const [expanded, setExpanded] = useState(false)
+  const [commentCount, setCommentCount] = useState(list.commentCount)
 
   return (
     <div
-      className="cursor-pointer rounded-xl p-4 flex flex-col gap-3 h-full transition-all duration-200 hover:translate-y-[-2px]"
+      className="rounded-xl p-4 flex flex-col gap-3 h-full transition-all duration-200"
       style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
-      onClick={() => router.push(`/list/${list.id}`)}
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = hoverBorder; e.currentTarget.style.boxShadow = hoverShadow }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = '' }}
     >
-      {list.profiles && <OwnerChip owner={list.profiles} onClick={(e) => e.stopPropagation()} followingIds={followingIds} onFollowToggle={onFollowToggle} />}
-      <h3 className="font-semibold text-sm leading-tight">{list.title}</h3>
-      <div className="flex items-start gap-3">
-        <PosterStack entries={list.entries} size="sm" posters={posters} />
-        <ol className="flex-1 min-w-0 space-y-1.5 pt-0.5">
-          {list.entries.slice(0, 3).map((entry) => (
-            <li key={entry.id} className="flex items-center gap-2 text-xs min-w-0">
-              {entry.rank != null && entry.rank > 0 && (
-                <span className="font-bold w-4 shrink-0 text-right" style={{ color: accent }}>{entry.rank}</span>
-              )}
-              <span className="truncate" style={{ color: 'var(--muted)' }}>{entry.title}</span>
-            </li>
-          ))}
-          {list.entries.length === 0 && (
-            <li className="text-xs italic" style={{ color: 'var(--muted)' }}>Coming soon…</li>
-          )}
-        </ol>
+      <div className="flex flex-col gap-3 cursor-pointer" onClick={() => router.push(`/list/${list.id}`)}>
+        {list.profiles && <OwnerChip owner={list.profiles} onClick={(e) => e.stopPropagation()} followingIds={followingIds} onFollowToggle={onFollowToggle} />}
+        <h3 className="font-semibold text-sm leading-tight">{list.title}</h3>
+        <div className="flex items-start gap-3">
+          <PosterStack entries={list.entries} size="sm" posters={posters} />
+          <ol className="flex-1 min-w-0 space-y-1.5 pt-0.5">
+            {list.entries.slice(0, 3).map((entry) => (
+              <li key={entry.id} className="flex items-center gap-2 text-xs min-w-0">
+                {entry.rank != null && entry.rank > 0 && (
+                  <span className="font-bold w-4 shrink-0 text-right" style={{ color: accent }}>{entry.rank}</span>
+                )}
+                <span className="truncate" style={{ color: 'var(--muted)' }}>{entry.title}</span>
+              </li>
+            ))}
+            {list.entries.length === 0 && (
+              <li className="text-xs italic" style={{ color: 'var(--muted)' }}>Coming soon…</li>
+            )}
+          </ol>
+        </div>
       </div>
-      <StatsRow reactionCount={list.reactionCount} commentCount={list.commentCount} reactionEmojis={list.reactionEmojis} />
+      <StatsRow
+        reactionCount={list.reactionCount}
+        commentCount={commentCount}
+        reactionEmojis={list.reactionEmojis}
+        expanded={expanded}
+        onClick={(e) => { e.stopPropagation(); if (!user) { signInWithGoogle(); return }; setExpanded(v => !v) }}
+      />
+      {expanded && (
+        <CardExpandPanel
+          listId={list.id}
+          commentCount={commentCount}
+          onCommentPosted={() => setCommentCount(c => c + 1)}
+        />
+      )}
     </div>
   )
 }

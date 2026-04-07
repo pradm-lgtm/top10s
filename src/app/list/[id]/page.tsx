@@ -5,6 +5,7 @@ import posthog from 'posthog-js'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { QuickReactCard, useQuickReactTrigger } from '@/components/QuickReactCard'
 import { fetchPosters } from '@/lib/tmdb'
 import { useAdmin } from '@/context/admin'
 import { useAuth } from '@/context/auth'
@@ -111,6 +112,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const router = useRouter()
   const searchParams = useSearchParams()
   const fromCompare = searchParams.get('from')
+  const heroReactTrigger = useQuickReactTrigger(true)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -846,6 +848,23 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       </header>
 
+      {/* Breadcrumb */}
+      {list.profiles && (
+        <div style={{ background: 'var(--background)', borderBottom: '1px solid var(--border)' }}>
+          <div className="max-w-3xl mx-auto px-4 py-2 flex items-center gap-1.5 flex-wrap" style={{ fontSize: 12 }}>
+            <Link href="/home" className="transition-opacity hover:opacity-70" style={{ color: 'var(--muted)' }}>
+              Ranked
+            </Link>
+            <span style={{ color: 'var(--border)' }}>›</span>
+            <Link href={`/${list.profiles.username}`} className="transition-opacity hover:opacity-70" style={{ color: 'var(--muted)' }}>
+              {isOwner ? 'My Lists' : `${list.profiles.display_name ?? list.profiles.username}'s Lists`}
+            </Link>
+            <span style={{ color: 'var(--border)' }}>›</span>
+            <span className="truncate" style={{ color: 'var(--foreground)', maxWidth: '60%' }}>{list.title}</span>
+          </div>
+        </div>
+      )}
+
       {/* Edit mode banner */}
       {editMode && (
         <div className="px-4 py-2.5 flex items-center gap-3 text-sm font-medium" style={{ background: 'rgba(232,197,71,0.12)', borderBottom: '1px solid rgba(232,197,71,0.25)', color: 'var(--accent)' }}>
@@ -1051,6 +1070,37 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               )
             ) : null}
           </div>
+
+          {/* Hero reaction row — quick access without scrolling to reactions section */}
+          {!editMode && (reactions.some(r => r.count > 0) || comments.length > 0) && (
+            <div
+              ref={heroReactTrigger.triggerRef as React.RefObject<HTMLDivElement>}
+              className="mt-4 flex items-center gap-3 cursor-default w-fit"
+              {...heroReactTrigger.triggerProps}
+            >
+              {reactions.filter(r => r.count > 0).slice(0, 3).map(r => (
+                <span key={r.emoji} className="flex items-center gap-1 text-sm" style={{ color: 'var(--muted)' }}>
+                  {r.emoji} <span className="tabular-nums text-xs">{r.count}</span>
+                </span>
+              ))}
+              {comments.length > 0 && (
+                <span className="flex items-center gap-1 text-sm" style={{ color: 'var(--muted)' }}>
+                  💬 <span className="tabular-nums text-xs">{comments.length}</span>
+                </span>
+              )}
+              <span className="text-[11px] ml-1 opacity-50" style={{ color: 'var(--muted)' }}>· React</span>
+            </div>
+          )}
+          {heroReactTrigger.open && (
+            <QuickReactCard
+              listId={id}
+              listTitle={list.title}
+              anchorRect={heroReactTrigger.showMobile ? undefined : heroReactTrigger.anchorRect}
+              onCommentCountChange={(_delta) => {}}
+              onClose={heroReactTrigger.close}
+              {...heroReactTrigger.popoverProps}
+            />
+          )}
 
           {/* Admin: featured toggle + source fields */}
           {isAdmin && (
