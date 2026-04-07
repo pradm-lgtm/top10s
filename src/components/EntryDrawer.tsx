@@ -30,9 +30,11 @@ type Props = {
   onCommentPosted: (entryId: string) => void
   onReactionToggled?: (entryId: string, emoji: string, delta: number) => void
   onRegisterVisitor?: (name: string) => Promise<string>
+  rarePct?: number
+  category?: 'movies' | 'tv'
 }
 
-export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClose, onCommentPosted, onReactionToggled, onRegisterVisitor }: Props) {
+export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClose, onCommentPosted, onReactionToggled, onRegisterVisitor, rarePct, category }: Props) {
   const [comments, setComments] = useState<EntryComment[]>([])
   const [reactions, setReactions] = useState<ReactionCount[]>(
     EMOJIS.map(e => ({ emoji: e, count: 0, reacted: false }))
@@ -210,6 +212,19 @@ export function EntryDrawer({ entry, visitorId, visitorName, accentColor, onClos
                   #{entry.rank}
                 </p>
                 <h3 className="font-bold text-base leading-snug">{entry.title}</h3>
+                {rarePct !== undefined && category && (
+                  <span className="relative group/rare inline-flex items-center mt-1">
+                    <span className="text-[10px] font-medium cursor-default select-none" style={{ color: '#67e8f9', letterSpacing: '0.02em' }}>
+                      ✦ Rare pick
+                    </span>
+                    <span
+                      className="absolute bottom-full left-0 mb-1.5 px-2 py-1 rounded whitespace-nowrap pointer-events-none opacity-0 group-hover/rare:opacity-100 transition-opacity hidden sm:block z-30"
+                      style={{ fontSize: 11, background: '#0f172a', color: '#e2e8f0', border: '1px solid #1e293b', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}
+                    >
+                      Only {Math.round(rarePct * 100)}% of {category === 'movies' ? 'movies' : 'TV'} lists include this
+                    </span>
+                  </span>
+                )}
               </div>
               <button
                 onClick={onClose}

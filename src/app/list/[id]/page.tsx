@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { QuickReactCard, useQuickReactTrigger } from '@/components/QuickReactCard'
+import { entryRarityKey, type RarityResponse } from '@/app/api/entries/rarity/route'
 import { fetchPosters } from '@/lib/tmdb'
 import { useAdmin } from '@/context/admin'
 import { useAuth } from '@/context/auth'
@@ -39,6 +40,36 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 
 const EMOJIS = ['🔥', '❤️', '😮', '😂', '👏']
+
+// ── Rare pick badge ───────────────────────────────────────────────────────────
+
+function RarePickBadge({ pct, category }: { pct: number; category: 'movies' | 'tv' }) {
+  const pctStr = `${Math.round(pct * 100)}%`
+  const label = category === 'movies' ? 'movies' : 'TV'
+  return (
+    <span className="relative group/rare inline-flex items-center">
+      <span
+        className="text-[10px] font-medium cursor-default select-none"
+        style={{ color: '#67e8f9', letterSpacing: '0.02em' }}
+      >
+        ✦ Rare
+      </span>
+      {/* Tooltip */}
+      <span
+        className="absolute bottom-full left-0 mb-1.5 px-2 py-1 rounded whitespace-nowrap pointer-events-none opacity-0 group-hover/rare:opacity-100 transition-opacity hidden sm:block z-30"
+        style={{
+          fontSize: 11,
+          background: '#0f172a',
+          color: '#e2e8f0',
+          border: '1px solid #1e293b',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+        }}
+      >
+        Only {pctStr} of {label} lists include this
+      </span>
+    </span>
+  )
+}
 
 function IconTooltip({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -109,6 +140,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [addToListEntry, setAddToListEntry] = useState<{ title: string; image_url: string | null } | null>(null)
   const [addToListToast, setAddToListToast] = useState<string | null>(null)
   const [similarLists, setSimilarLists] = useState<{ id: string; title: string; overlap: number; is_version: boolean; owner: { username: string; display_name: string | null; avatar_url: string | null } | null }[]>([])
+  const [rarePicks, setRarePicks] = useState<Map<string, number>>(new Map())
   const router = useRouter()
   const searchParams = useSearchParams()
   const fromCompare = searchParams.get('from')
@@ -236,11 +268,25 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
 
     setLoading(false)
 
-    // Fetch similar lists lazily after main content renders
+    // Fetch similar lists + rarity data lazily after main content renders
+    const listCategory = listRes.data?.category
+    const listFeatured = listRes.data?.featured
     setTimeout(async () => {
       try {
-        const res = await fetch(`/api/lists/similar?listId=${id}`)
-        if (res.ok) setSimilarLists(await res.json())
+        const [similarRes, rarityRes] = await Promise.all([
+          fetch(`/api/lists/similar?listId=${id}`),
+          // Only fetch rarity for user-created lists; featured/editorial skip
+          listCategory && !listFeatured
+            ? fetch(`/api/entries/rarity?category=${listCategory}`)
+            : Promise.resolve(null),
+        ])
+        if (similarRes.ok) setSimilarLists(await similarRes.json())
+        if (rarityRes?.ok) {
+          const data: RarityResponse = await rarityRes.json()
+          if (data.minListsMet) {
+            setRarePicks(new Map(Object.entries(data.rare)))
+          }
+        }
       } catch { /* non-fatal */ }
     }, 500)
   }
@@ -1156,7 +1202,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                   hasEntries={(tierId) => entries.some(e => e.tier_id === tierId || e.tier === tierId)}
                 />
               )}
-              <TieredEntries entries={entries} tiers={effectiveTiers} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} onMoveTier={editMode ? moveEntryToTier : undefined} editMode={editMode} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} />
+              <TieredEntries entries={entries} tiers={effectiveTiers} accentColor={accentColor} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} onMoveTier={editMode ? moveEntryToTier : undefined} editMode={editMode} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} rarePicks={rarePicks} category={list.category} />
               {(isOwner || isAdmin) && editMode && <TieredAddForm tiers={effectiveTiers} category={list.category} title={newTieredTitle} setTitle={setNewTieredTitle} posterUrl={newTieredPosterUrl} setPosterUrl={setNewTieredPosterUrl} tierId={newTieredTierId} setTierId={setNewTieredTierId} notes={newTieredNotes} setNotes={setNewTieredNotes} open={addingTieredEntry} setOpen={setAddingTieredEntry} saving={savingTieredEntry} onSubmit={addTieredEntry} />}
             </>
           ) : list.list_format === 'tier-ranked' ? (
@@ -1172,7 +1218,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                   hasEntries={(tierId) => entries.some(e => e.tier_id === tierId || e.tier === tierId)}
                 />
               )}
-              <TierRankedEntries entries={entries} tiers={effectiveTiers} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} onMoveTier={editMode ? moveEntryToTier : undefined} onTierItemDragEnd={editMode ? handleTierItemDragEnd : undefined} editMode={editMode} sensors={sensors} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} visitorId={visitorId} />
+              <TierRankedEntries entries={entries} tiers={effectiveTiers} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} onMoveTier={editMode ? moveEntryToTier : undefined} onTierItemDragEnd={editMode ? handleTierItemDragEnd : undefined} editMode={editMode} sensors={sensors} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} visitorId={visitorId} rarePicks={rarePicks} category={list.category} />
               {(isOwner || isAdmin) && editMode && <TieredAddForm tiers={effectiveTiers} category={list.category} title={newTieredTitle} setTitle={setNewTieredTitle} posterUrl={newTieredPosterUrl} setPosterUrl={setNewTieredPosterUrl} tierId={newTieredTierId} setTierId={setNewTieredTierId} notes={newTieredNotes} setNotes={setNewTieredNotes} open={addingTieredEntry} setOpen={setAddingTieredEntry} saving={savingTieredEntry} onSubmit={addTieredEntry} />}
             </>
           ) : (
@@ -1210,6 +1256,8 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               commentCounts={commentCounts}
               onEntryClick={handleEntryClick}
               onAddToList={user && !isOwner ? (e) => setAddToListEntry({ title: e.title, image_url: e.image_url ?? null }) : undefined}
+              rarePicks={rarePicks}
+              category={list.category}
             />
           )}
 
@@ -1589,6 +1637,8 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         onCommentPosted={handleCommentPosted}
         onReactionToggled={handleReactionToggled}
         onRegisterVisitor={registerVisitor}
+        rarePct={selectedEntry ? rarePicks.get(entryRarityKey(selectedEntry)) : undefined}
+        category={list.category}
       />
 
       {showShare && (
@@ -1884,6 +1934,8 @@ function RankedRowList({
   commentCounts,
   onEntryClick,
   onAddToList,
+  rarePicks,
+  category,
 }: {
   entries: ListEntry[]
   posters: Record<string, PosterInfo>
@@ -1891,6 +1943,8 @@ function RankedRowList({
   commentCounts: Record<string, number>
   onEntryClick: (e: ListEntry) => void
   onAddToList?: (e: ListEntry) => void
+  rarePicks?: Map<string, number>
+  category?: 'movies' | 'tv'
 }) {
   const [isDesktop, setIsDesktop] = useState(false)
   useEffect(() => {
@@ -1979,17 +2033,25 @@ function RankedRowList({
 
               {/* Text side */}
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                {/* Title */}
-                <div
-                  style={{
-                    fontSize: titleSize,
-                    fontWeight: 600,
-                    color: '#fff',
-                    lineHeight: 1.3,
-                    marginBottom: hasNotes ? 4 : 0,
-                  }}
-                >
-                  {entry.title}
+                {/* Title + rare badge */}
+                <div style={{ marginBottom: hasNotes ? 4 : 0 }}>
+                  <span
+                    style={{
+                      fontSize: titleSize,
+                      fontWeight: 600,
+                      color: '#fff',
+                      lineHeight: 1.3,
+                      marginRight: 6,
+                    }}
+                  >
+                    {entry.title}
+                  </span>
+                  {(() => {
+                    const pct = rarePicks?.get(entryRarityKey(entry))
+                    return pct !== undefined && category
+                      ? <RarePickBadge pct={pct} category={category} />
+                      : null
+                  })()}
                 </div>
 
                 {/* Description teaser */}
@@ -2708,6 +2770,8 @@ function TieredEntries({
   commentCounts = {},
   entryReactions = {},
   selectedEntryId,
+  rarePicks,
+  category,
 }: {
   entries: ListEntry[]
   tiers: Tier[]
@@ -2724,6 +2788,8 @@ function TieredEntries({
   commentCounts?: Record<string, number>
   entryReactions?: Record<string, Record<string, number>>
   selectedEntryId?: string | null
+  rarePicks?: Map<string, number>
+  category?: 'movies' | 'tv'
 }) {
   // New format: group by tier_id using tiers data
   if (tierData.length > 0) {
@@ -2848,6 +2914,10 @@ function TieredEntries({
                             <span className="font-medium leading-snug" style={{ fontSize: '0.8rem', color: i <= 2 ? 'var(--foreground)' : 'var(--muted)' }}>
                               {imdbUrl ? <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>{entry.title}</a> : entry.title}
                             </span>
+                            {!editMode && (() => {
+                              const pct = rarePicks?.get(entryRarityKey(entry))
+                              return pct !== undefined && category ? <span className="ml-1.5"><RarePickBadge pct={pct} category={category} /></span> : null
+                            })()}
                             {!editMode && ((commentCounts[entry.id] ?? 0) > 0 || ['🔥','❤️','😮','😂','👏'].some(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0)) && (
                               <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                                 {(commentCounts[entry.id] ?? 0) > 0 && <span style={{ fontSize: '0.65rem', color: 'var(--muted)' }}>💬 {commentCounts[entry.id]}</span>}
@@ -3283,6 +3353,8 @@ function TierRankedPosterGrid({
   commentCounts,
   visitorId,
   onEntryClick,
+  rarePicks,
+  category,
 }: {
   entries: ListEntry[]
   posters: Record<string, PosterInfo>
@@ -3290,6 +3362,8 @@ function TierRankedPosterGrid({
   commentCounts: Record<string, number>
   visitorId: string
   onEntryClick?: (entry: ListEntry) => void
+  rarePicks?: Map<string, number>
+  category?: 'movies' | 'tv'
 }) {
   const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null)
   const [expandedReactions, setExpandedReactions] = useState<Record<string, { emoji: string; count: number; reacted: boolean }[]>>({})
@@ -3459,8 +3533,12 @@ function TierRankedPosterGrid({
                       padding: 16,
                     }}
                   >
-                    <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 10 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 10, display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                       {expandedEntry.title}
+                      {(() => {
+                        const pct = rarePicks?.get(entryRarityKey(expandedEntry))
+                        return pct !== undefined && category ? <RarePickBadge pct={pct} category={category} /> : null
+                      })()}
                     </div>
 
                     <div
@@ -3531,6 +3609,8 @@ function TierRankedEntries({
   entryReactions = {},
   selectedEntryId,
   visitorId = '',
+  rarePicks,
+  category,
 }: {
   entries: ListEntry[]
   tiers: Tier[]
@@ -3549,6 +3629,8 @@ function TierRankedEntries({
   entryReactions?: Record<string, Record<string, number>>
   selectedEntryId?: string | null
   visitorId?: string
+  rarePicks?: Map<string, number>
+  category?: 'movies' | 'tv'
 }) {
   const fallbackSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
   const activeSensors = sensors ?? fallbackSensors
@@ -3661,6 +3743,8 @@ function TierRankedEntries({
                   commentCounts={commentCounts ?? {}}
                   visitorId={visitorId}
                   onEntryClick={(e) => onEntryClick?.(e)}
+                  rarePicks={rarePicks}
+                  category={category}
                 />
               )}
             </div>
