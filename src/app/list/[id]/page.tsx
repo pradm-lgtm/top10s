@@ -853,7 +853,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         <div style={{ background: 'var(--background)', borderBottom: '1px solid var(--border)' }}>
           <div className="max-w-3xl mx-auto px-4 py-2 flex items-center gap-1.5 flex-wrap" style={{ fontSize: 12 }}>
             <Link href="/home" className="transition-opacity hover:opacity-70" style={{ color: 'var(--muted)' }}>
-              Ranked
+              Home
             </Link>
             <span style={{ color: 'var(--border)' }}>›</span>
             <Link href={`/${list.profiles.username}`} className="transition-opacity hover:opacity-70" style={{ color: 'var(--muted)' }}>

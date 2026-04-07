@@ -156,7 +156,6 @@ function StatsRow({
   expanded?: boolean
   onClick?: (e: React.MouseEvent) => void
 }) {
-  if (reactionCount === 0 && commentCount === 0) return null
   return (
     <button
       type="button"
@@ -168,11 +167,9 @@ function StatsRow({
           <span style={{ fontSize: 13 }}>{reactionEmojis.join('')}</span>{reactionCount}
         </span>
       )}
-      {commentCount > 0 && (
-        <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}>
-          <span style={{ fontSize: 13 }}>💬</span>{commentCount}
-        </span>
-      )}
+      <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}>
+        <span style={{ fontSize: 13 }}>💬</span>{commentCount > 0 ? commentCount : ''}
+      </span>
       <span className="ml-auto text-[10px] transition-opacity opacity-40" style={{ color: 'var(--muted)' }}>
         {expanded ? '▲' : '▼'}
       </span>
