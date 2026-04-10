@@ -9,6 +9,8 @@ import { entryRarityKey, type RarityResponse } from '@/app/api/entries/rarity/ro
 import { fetchPosters } from '@/lib/tmdb'
 import { useAdmin } from '@/context/admin'
 import { useAuth } from '@/context/auth'
+import { useNavigation } from '@/context/navigation'
+import { SearchOverlay } from '@/components/SearchOverlay'
 import { EditableText } from '@/components/EditableText'
 import { EntryDrawer } from '@/components/EntryDrawer'
 import ShareSheet from '@/components/ShareSheet'
@@ -103,6 +105,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [entryReactions, setEntryReactions] = useState<Record<string, Record<string, number>>>({})
   const { isAdmin } = useAdmin()
   const { user, profile } = useAuth()
+  const { showSearch, setShowSearch } = useNavigation()
   const [isOwner, setIsOwner] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -805,6 +808,18 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
           </Link>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSearch(true)}
+              className="w-9 h-9 flex items-center justify-center rounded-lg transition-opacity hover:opacity-70"
+              style={{ color: 'var(--muted)' }}
+              aria-label="Search"
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <circle cx="9" cy="9" r="5.5" stroke="currentColor" strokeWidth="1.7"/>
+                <path d="M13.5 13.5l4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
+              </svg>
+            </button>
+
             <span
               className="text-xs tracking-[0.3em] uppercase font-semibold px-2 py-1 rounded"
               style={{
@@ -1610,6 +1625,8 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         rarePct={selectedEntry ? rarePicks.get(entryRarityKey(selectedEntry)) : undefined}
         category={list.category}
       />
+
+      {showSearch && <SearchOverlay onClose={() => setShowSearch(false)} />}
 
       {showShare && (
         <ShareSheet
