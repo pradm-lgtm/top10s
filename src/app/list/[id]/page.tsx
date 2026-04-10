@@ -5,7 +5,6 @@ import posthog from 'posthog-js'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { QuickReactCard, useQuickReactTrigger } from '@/components/QuickReactCard'
 import { entryRarityKey, type RarityResponse } from '@/app/api/entries/rarity/route'
 import { fetchPosters } from '@/lib/tmdb'
 import { useAdmin } from '@/context/admin'
@@ -43,32 +42,10 @@ const EMOJIS = ['🔥', '❤️', '😮', '😂', '👏']
 
 // ── Rare pick badge ───────────────────────────────────────────────────────────
 
+// RarePickBadge intentionally hidden — tracking continues in backend (/api/entries/rarity)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function RarePickBadge({ pct, category }: { pct: number; category: 'movies' | 'tv' }) {
-  const pctStr = `${Math.round(pct * 100)}%`
-  const label = category === 'movies' ? 'movies' : 'TV'
-  return (
-    <span className="relative group/rare inline-flex items-center">
-      <span
-        className="text-[10px] font-medium cursor-default select-none"
-        style={{ color: '#67e8f9', letterSpacing: '0.02em' }}
-      >
-        ✦ Rare
-      </span>
-      {/* Tooltip */}
-      <span
-        className="absolute bottom-full left-0 mb-1.5 px-2 py-1 rounded whitespace-nowrap pointer-events-none opacity-0 group-hover/rare:opacity-100 transition-opacity hidden sm:block z-30"
-        style={{
-          fontSize: 11,
-          background: '#0f172a',
-          color: '#e2e8f0',
-          border: '1px solid #1e293b',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-        }}
-      >
-        Only {pctStr} of {label} lists include this
-      </span>
-    </span>
-  )
+  return null
 }
 
 function IconTooltip({ label, children }: { label: string; children: React.ReactNode }) {
@@ -144,7 +121,6 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const router = useRouter()
   const searchParams = useSearchParams()
   const fromCompare = searchParams.get('from')
-  const heroReactTrigger = useQuickReactTrigger(true)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -202,7 +178,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
 
   async function fetchAll(vid: string) {
     const [listRes, entriesRes, commentsRes, reactionsRes, hmRes, awRes, tiersRes] = await Promise.all([
-      supabase.from('lists').select('*, profiles(username, display_name, avatar_url)').eq('id', id).single(),
+      supabase.from('lists').select('*, profiles(username, display_name, avatar_url), topics(slug, title)').eq('id', id).single(),
       supabase.from('list_entries').select('*').eq('list_id', id).order('rank'),
       supabase
         .from('comments')
@@ -959,7 +935,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               ? (list.genre ?? 'All-Time')
               : `${list.year} · ${isMovie ? 'Movies' : 'TV Shows'}`}
           </div>
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-3">
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-2">
             <EditableText
               value={list.title}
               onSave={(v) => saveListField('title', v)}
@@ -967,6 +943,15 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               editable={(isAdmin || isOwner) && editMode}
             />
           </h1>
+          {similarLists.length > 0 && list.topics?.slug && (
+            <Link
+              href={`/topic/${list.topics.slug}`}
+              className="inline-block text-xs mb-3 transition-opacity hover:opacity-100 opacity-50"
+              style={{ color: 'var(--foreground)' }}
+            >
+              Similar lists →
+            </Link>
+          )}
           <div className="flex items-center gap-3 mb-4">
             {list.featured ? (
               /* Source badge for featured/editorial lists */
@@ -1117,36 +1102,6 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
             ) : null}
           </div>
 
-          {/* Hero reaction row — quick access without scrolling to reactions section */}
-          {!editMode && (reactions.some(r => r.count > 0) || comments.length > 0) && (
-            <div
-              ref={heroReactTrigger.triggerRef as React.RefObject<HTMLDivElement>}
-              className="mt-4 flex items-center gap-3 cursor-default w-fit"
-              {...heroReactTrigger.triggerProps}
-            >
-              {reactions.filter(r => r.count > 0).slice(0, 3).map(r => (
-                <span key={r.emoji} className="flex items-center gap-1 text-sm" style={{ color: 'var(--muted)' }}>
-                  {r.emoji} <span className="tabular-nums text-xs">{r.count}</span>
-                </span>
-              ))}
-              {comments.length > 0 && (
-                <span className="flex items-center gap-1 text-sm" style={{ color: 'var(--muted)' }}>
-                  💬 <span className="tabular-nums text-xs">{comments.length}</span>
-                </span>
-              )}
-              <span className="text-[11px] ml-1 opacity-50" style={{ color: 'var(--muted)' }}>· React</span>
-            </div>
-          )}
-          {heroReactTrigger.open && (
-            <QuickReactCard
-              listId={id}
-              listTitle={list.title}
-              anchorRect={heroReactTrigger.showMobile ? undefined : heroReactTrigger.anchorRect}
-              onCommentCountChange={(_delta) => {}}
-              onClose={heroReactTrigger.close}
-              {...heroReactTrigger.popoverProps}
-            />
-          )}
 
           {/* Admin: featured toggle + source fields */}
           {isAdmin && (
@@ -1590,9 +1545,19 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         {/* Similar Lists */}
         {similarLists.length > 0 && (
           <section>
-            <h2 className="text-xs tracking-[0.3em] uppercase font-semibold mb-4" style={{ color: 'var(--muted)' }}>
-              Similar Lists
-            </h2>
+            {list.topics?.slug ? (
+              <Link
+                href={`/topic/${list.topics.slug}`}
+                className="inline-block text-xs tracking-[0.3em] uppercase font-semibold mb-4 transition-opacity hover:opacity-70"
+                style={{ color: 'var(--muted)' }}
+              >
+                Similar Lists →
+              </Link>
+            ) : (
+              <h2 className="text-xs tracking-[0.3em] uppercase font-semibold mb-4" style={{ color: 'var(--muted)' }}>
+                Similar Lists
+              </h2>
+            )}
             <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
               {similarLists.map((s) => (
                 <div
