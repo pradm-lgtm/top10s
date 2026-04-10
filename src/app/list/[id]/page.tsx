@@ -117,6 +117,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   const [addToListEntry, setAddToListEntry] = useState<{ title: string; image_url: string | null } | null>(null)
   const [addToListToast, setAddToListToast] = useState<string | null>(null)
   const [similarLists, setSimilarLists] = useState<{ id: string; title: string; overlap: number; is_version: boolean; owner: { username: string; display_name: string | null; avatar_url: string | null } | null }[]>([])
+  const [similarTopicSlug, setSimilarTopicSlug] = useState<string | null>(null)
   const [rarePicks, setRarePicks] = useState<Map<string, number>>(new Map())
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -256,7 +257,11 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
             ? fetch(`/api/entries/rarity?category=${listCategory}`)
             : Promise.resolve(null),
         ])
-        if (similarRes.ok) setSimilarLists(await similarRes.json())
+        if (similarRes.ok) {
+          const data = await similarRes.json()
+          setSimilarLists(data.lists ?? [])
+          setSimilarTopicSlug(data.topicSlug ?? null)
+        }
         if (rarityRes?.ok) {
           const data: RarityResponse = await rarityRes.json()
           if (data.minListsMet) {
@@ -943,9 +948,9 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               editable={(isAdmin || isOwner) && editMode}
             />
           </h1>
-          {similarLists.length > 0 && list.topics?.slug && (
+          {similarLists.length > 0 && (similarTopicSlug ?? list.topics?.slug) && (
             <Link
-              href={`/topic/${list.topics.slug}`}
+              href={`/topic/${similarTopicSlug ?? list.topics?.slug}`}
               className="inline-block text-xs mb-3 transition-opacity hover:opacity-100 opacity-50"
               style={{ color: 'var(--foreground)' }}
             >
@@ -1545,9 +1550,9 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         {/* Similar Lists */}
         {similarLists.length > 0 && (
           <section>
-            {list.topics?.slug ? (
+            {(similarTopicSlug ?? list.topics?.slug) ? (
               <Link
-                href={`/topic/${list.topics.slug}`}
+                href={`/topic/${similarTopicSlug ?? list.topics?.slug}`}
                 className="inline-block text-xs tracking-[0.3em] uppercase font-semibold mb-4 transition-opacity hover:opacity-70"
                 style={{ color: 'var(--muted)' }}
               >

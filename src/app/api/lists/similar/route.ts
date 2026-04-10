@@ -9,10 +9,10 @@ export async function GET(req: NextRequest) {
 
   const supabase = getAdminSupabase()
 
-  // Get the source list
+  // Get the source list (including topic_id so we know if it needs one assigned)
   const { data: source } = await supabase
     .from('lists')
-    .select('id, title, category, list_type, year')
+    .select('id, title, category, list_type, year, topic_id, topics(slug)')
     .eq('id', listId)
     .single()
 
@@ -108,8 +108,41 @@ export async function GET(req: NextRequest) {
     ...allCandidates.filter((c) => similarIds.has(c.id)),
   ].slice(0, 4)
 
-  return NextResponse.json(
-    results.map((c) => {
+  // Ensure the source list has a topic assigned — find or create one from its title
+  let topicSlug: string | null = Array.isArray(source.topics) ? source.topics[0]?.slug ?? null : (source.topics as { slug: string } | null)?.slug ?? null
+  if (!topicSlug) {
+    const slug = source.title
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .slice(0, 80)
+
+    // Find or create topic
+    const { data: existing } = await supabase.from('topics').select('id, slug').eq('slug', slug).single()
+    let topicId: string
+    if (existing) {
+      topicId = existing.id
+      topicSlug = existing.slug
+    } else {
+      const { data: created } = await supabase
+        .from('topics')
+        .insert({ slug, title: source.title.trim(), category: source.category })
+        .select('id, slug')
+        .single()
+      topicId = created?.id ?? ''
+      topicSlug = created?.slug ?? null
+    }
+    // Assign topic_id to this list
+    if (topicId) {
+      await supabase.from('lists').update({ topic_id: topicId }).eq('id', listId)
+    }
+  }
+
+  return NextResponse.json({
+    topicSlug,
+    lists: results.map((c) => {
       const cEntries = entryMap[c.id] ?? []
       const overlap = cEntries.filter((t) => sourceTitles.includes(t.toLowerCase())).length
       const owner = Array.isArray(c.profiles) ? c.profiles[0] : c.profiles
@@ -120,6 +153,6 @@ export async function GET(req: NextRequest) {
         is_version: versionIds.has(c.id),
         owner: owner ?? null,
       }
-    })
-  )
+    }),
+  })
 }
