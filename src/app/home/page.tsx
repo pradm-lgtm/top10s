@@ -159,7 +159,8 @@ function StatsRow({
   return (
     <button
       type="button"
-      className="flex items-center gap-3 mt-auto pt-2 w-full text-left"
+      className="flex items-center gap-3 mt-auto w-full text-left min-h-[44px] px-1 -mx-1"
+      style={{ borderTop: '1px solid var(--border)', paddingTop: 10, paddingBottom: 10 }}
       onClick={onClick}
     >
       {reactionCount > 0 && (
@@ -168,9 +169,9 @@ function StatsRow({
         </span>
       )}
       <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}>
-        <span style={{ fontSize: 13 }}>💬</span>{commentCount > 0 ? commentCount : ''}
+        <span style={{ fontSize: 14 }}>💬</span>{commentCount > 0 ? commentCount : ''}
       </span>
-      <span className="ml-auto text-[10px] transition-opacity opacity-40" style={{ color: 'var(--muted)' }}>
+      <span className="ml-auto text-[11px] opacity-40" style={{ color: 'var(--muted)' }}>
         {expanded ? '▲' : '▼'}
       </span>
     </button>
@@ -396,11 +397,12 @@ function FeedCard({ list, posters, followingIds, onFollowToggle }: { list: RichL
 
   return (
     <div
-      className="rounded-xl p-4 flex flex-col gap-3 h-full transition-all duration-200 relative"
+      className="rounded-xl p-4 flex flex-col gap-3 h-full transition-all duration-200 relative cursor-pointer"
       style={{
         background: 'var(--surface)',
         border: `1px solid ${isFeatured ? 'rgba(232,197,71,0.25)' : 'var(--border)'}`,
       }}
+      onClick={() => router.push(`/list/${list.id}`)}
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = hoverBorder; e.currentTarget.style.boxShadow = hoverShadow }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = isFeatured ? 'rgba(232,197,71,0.25)' : 'var(--border)'; e.currentTarget.style.boxShadow = '' }}
     >
@@ -409,8 +411,8 @@ function FeedCard({ list, posters, followingIds, onFollowToggle }: { list: RichL
         <CategoryBadge category={list.category} />
       </div>
 
-      {/* Clickable body — navigates to list */}
-      <div className="flex flex-col gap-3 cursor-pointer" onClick={() => router.push(`/list/${list.id}`)}>
+      {/* Card body */}
+      <div className="flex flex-col gap-3">
         {/* Featured badge */}
         {isFeatured && (
           <div
@@ -450,23 +452,24 @@ function FeedCard({ list, posters, followingIds, onFollowToggle }: { list: RichL
         </div>
       </div>
 
-      {/* Stats row — click to expand */}
-      <StatsRow
-        reactionCount={list.reactionCount}
-        commentCount={commentCount}
-        reactionEmojis={list.reactionEmojis}
-        expanded={expanded}
-        onClick={handleStatsClick}
-      />
-
-      {/* Inline expand panel */}
-      {expanded && (
-        <CardExpandPanel
-          listId={list.id}
+      {/* Interaction zone — stops propagation so taps here never navigate */}
+      <div className="mt-auto" onClick={(e) => e.stopPropagation()}>
+        <StatsRow
+          reactionCount={list.reactionCount}
           commentCount={commentCount}
-          onCommentPosted={() => setCommentCount(c => c + 1)}
+          reactionEmojis={list.reactionEmojis}
+          expanded={expanded}
+          onClick={handleStatsClick}
         />
-      )}
+
+        {expanded && (
+          <CardExpandPanel
+            listId={list.id}
+            commentCount={commentCount}
+            onCommentPosted={() => setCommentCount(c => c + 1)}
+          />
+        )}
+      </div>
     </div>
   )
 }
@@ -499,12 +502,13 @@ function YearCard({ list, posters, followingIds, onFollowToggle }: { list: RichL
 
   return (
     <div
-      className="rounded-xl p-4 flex flex-col gap-3 h-full transition-all duration-200"
+      className="rounded-xl p-4 flex flex-col gap-3 h-full transition-all duration-200 cursor-pointer"
       style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
+      onClick={() => router.push(`/list/${list.id}`)}
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = hoverBorder; e.currentTarget.style.boxShadow = hoverShadow }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = '' }}
     >
-      <div className="flex flex-col gap-3 cursor-pointer" onClick={() => router.push(`/list/${list.id}`)}>
+      <div className="flex flex-col gap-3">
         {list.profiles && <OwnerChip owner={list.profiles} onClick={(e) => e.stopPropagation()} followingIds={followingIds} onFollowToggle={onFollowToggle} />}
         <h3 className="font-semibold text-sm leading-tight">{list.title}</h3>
         <div className="flex items-start gap-3">
@@ -524,20 +528,24 @@ function YearCard({ list, posters, followingIds, onFollowToggle }: { list: RichL
           </ol>
         </div>
       </div>
-      <StatsRow
-        reactionCount={list.reactionCount}
-        commentCount={commentCount}
-        reactionEmojis={list.reactionEmojis}
-        expanded={expanded}
-        onClick={(e) => { e.stopPropagation(); if (!user) { signInWithGoogle(); return }; setExpanded(v => !v) }}
-      />
-      {expanded && (
-        <CardExpandPanel
-          listId={list.id}
+
+      {/* Interaction zone — stops propagation so taps here never navigate */}
+      <div className="mt-auto" onClick={(e) => e.stopPropagation()}>
+        <StatsRow
+          reactionCount={list.reactionCount}
           commentCount={commentCount}
-          onCommentPosted={() => setCommentCount(c => c + 1)}
+          reactionEmojis={list.reactionEmojis}
+          expanded={expanded}
+          onClick={(e) => { e.stopPropagation(); if (!user) { signInWithGoogle(); return }; setExpanded(v => !v) }}
         />
-      )}
+        {expanded && (
+          <CardExpandPanel
+            listId={list.id}
+            commentCount={commentCount}
+            onCommentPosted={() => setCommentCount(c => c + 1)}
+          />
+        )}
+      </div>
     </div>
   )
 }
