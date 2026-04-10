@@ -422,7 +422,7 @@ function FeedCard({ list, posters, followingIds, onFollowToggle }: { list: RichL
       </div>
 
       {/* Card body */}
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 flex-1">
         {/* Featured badge */}
         {isFeatured && (
           <div
@@ -463,7 +463,7 @@ function FeedCard({ list, posters, followingIds, onFollowToggle }: { list: RichL
       </div>
 
       {/* Interaction zone — stops propagation so taps here never navigate */}
-      <div className="mt-auto" onClick={(e) => e.stopPropagation()}>
+      <div onClick={(e) => e.stopPropagation()}>
         {expanded ? (
           <CardExpandPanel
             listId={list.id}
@@ -519,7 +519,7 @@ function YearCard({ list, posters, followingIds, onFollowToggle }: { list: RichL
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = hoverBorder; e.currentTarget.style.boxShadow = hoverShadow }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = '' }}
     >
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 flex-1">
         {list.profiles && <OwnerChip owner={list.profiles} onClick={(e) => e.stopPropagation()} followingIds={followingIds} onFollowToggle={onFollowToggle} />}
         <h3 className="font-semibold text-sm leading-tight">{list.title}</h3>
         <div className="flex items-start gap-3">
@@ -541,7 +541,7 @@ function YearCard({ list, posters, followingIds, onFollowToggle }: { list: RichL
       </div>
 
       {/* Interaction zone — stops propagation so taps here never navigate */}
-      <div className="mt-auto" onClick={(e) => e.stopPropagation()}>
+      <div onClick={(e) => e.stopPropagation()}>
         {expanded ? (
           <CardExpandPanel
             listId={list.id}
