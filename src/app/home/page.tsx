@@ -184,10 +184,12 @@ function CardExpandPanel({
   listId,
   commentCount,
   onCommentPosted,
+  onCollapse,
 }: {
   listId: string
   commentCount: number
   onCommentPosted: () => void
+  onCollapse: () => void
 }) {
   const { user, signInWithGoogle } = useAuth()
   const [emojis, setEmojis] = useState<FeedEmoji[]>(FEED_EMOJIS.map(e => ({ emoji: e, count: 0, reacted: false })))
@@ -268,13 +270,12 @@ function CardExpandPanel({
   }
 
   return (
-    <div
-      className="pt-3 space-y-3"
-      style={{ borderTop: '1px solid var(--border)' }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {/* Emoji row */}
-      <div className="flex gap-1.5 flex-wrap">
+    <div onClick={(e) => e.stopPropagation()}>
+      {/* Emoji row — replaces the StatsRow, same border-top + padding */}
+      <div
+        className="flex items-center gap-1.5 flex-wrap"
+        style={{ borderTop: '1px solid var(--border)', paddingTop: 10, paddingBottom: 10 }}
+      >
         {emojis.map(r => (
           <button
             key={r.emoji}
@@ -291,62 +292,71 @@ function CardExpandPanel({
             {r.count > 0 && <span className="tabular-nums">{r.count}</span>}
           </button>
         ))}
+        {/* Collapse button — mirrors the ▼ on the count row */}
+        <button
+          type="button"
+          onClick={onCollapse}
+          className="ml-auto text-[11px] opacity-40 hover:opacity-70 transition-opacity min-h-[24px] px-1"
+          style={{ color: 'var(--muted)' }}
+        >
+          ▲
+        </button>
       </div>
 
-      {/* Comments */}
-      {loaded && comments.length > 0 && (
-        <div className="space-y-2">
-          {comments.map(c => (
-            <div key={c.id} className="flex items-start gap-2 min-w-0">
-              <div
-                className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 mt-0.5"
-                style={{ background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)' }}
-              >
-                {(c.visitors?.name ?? '?')[0].toUpperCase()}
+      {/* Comments + input */}
+      <div className="space-y-3 pb-1">
+        {loaded && comments.length > 0 && (
+          <div className="space-y-2">
+            {comments.map(c => (
+              <div key={c.id} className="flex items-start gap-2 min-w-0">
+                <div
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 mt-0.5"
+                  style={{ background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+                >
+                  {(c.visitors?.name ?? '?')[0].toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="text-[11px] font-semibold mr-1.5" style={{ color: 'var(--foreground)' }}>
+                    {c.visitors?.name ?? 'Anonymous'}
+                  </span>
+                  <span className="text-[11px]" style={{ color: 'var(--muted)' }}>
+                    {c.content}
+                  </span>
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <span className="text-[11px] font-semibold mr-1.5" style={{ color: 'var(--foreground)' }}>
-                  {c.visitors?.name ?? 'Anonymous'}
-                </span>
-                <span className="text-[11px]" style={{ color: 'var(--muted)' }}>
-                  {c.content}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
 
-      {/* Comment input */}
-      <form onSubmit={postComment} className="flex gap-2">
-        <input
-          value={commentText}
-          onChange={e => setCommentText(e.target.value)}
-          placeholder={user ? 'Add your take…' : 'Sign in to comment…'}
-          disabled={!user || submitting}
-          className="flex-1 min-w-0 px-3 py-1.5 rounded-lg text-xs outline-none"
-          style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
-          onFocus={e => (e.currentTarget.style.borderColor = 'rgba(232,197,71,0.5)')}
-          onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-        />
-        <button
-          type="submit"
-          disabled={!user || submitting || !commentText.trim()}
-          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-opacity disabled:opacity-40"
-          style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+        <form onSubmit={postComment} className="flex gap-2">
+          <input
+            value={commentText}
+            onChange={e => setCommentText(e.target.value)}
+            placeholder={user ? 'Add your take…' : 'Sign in to comment…'}
+            disabled={!user || submitting}
+            className="flex-1 min-w-0 px-3 py-1.5 rounded-lg text-xs outline-none"
+            style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+            onFocus={e => (e.currentTarget.style.borderColor = 'rgba(232,197,71,0.5)')}
+            onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+          />
+          <button
+            type="submit"
+            disabled={!user || submitting || !commentText.trim()}
+            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-opacity disabled:opacity-40"
+            style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+          >
+            Post
+          </button>
+        </form>
+
+        <Link
+          href={`/list/${listId}`}
+          className="block text-[11px] text-right transition-opacity hover:opacity-70"
+          style={{ color: 'var(--muted)' }}
         >
-          Post
-        </button>
-      </form>
-
-      {/* See all link */}
-      <Link
-        href={`/list/${listId}`}
-        className="block text-[11px] text-right transition-opacity hover:opacity-70"
-        style={{ color: 'var(--muted)' }}
-      >
-        {commentCount > 3 ? `See all ${commentCount} comments →` : 'See full list →'}
-      </Link>
+          {commentCount > 3 ? `See all ${commentCount} comments →` : 'See full list →'}
+        </Link>
+      </div>
     </div>
   )
 }
@@ -454,19 +464,20 @@ function FeedCard({ list, posters, followingIds, onFollowToggle }: { list: RichL
 
       {/* Interaction zone — stops propagation so taps here never navigate */}
       <div className="mt-auto" onClick={(e) => e.stopPropagation()}>
-        <StatsRow
-          reactionCount={list.reactionCount}
-          commentCount={commentCount}
-          reactionEmojis={list.reactionEmojis}
-          expanded={expanded}
-          onClick={handleStatsClick}
-        />
-
-        {expanded && (
+        {expanded ? (
           <CardExpandPanel
             listId={list.id}
             commentCount={commentCount}
             onCommentPosted={() => setCommentCount(c => c + 1)}
+            onCollapse={() => setExpanded(false)}
+          />
+        ) : (
+          <StatsRow
+            reactionCount={list.reactionCount}
+            commentCount={commentCount}
+            reactionEmojis={list.reactionEmojis}
+            expanded={false}
+            onClick={handleStatsClick}
           />
         )}
       </div>
@@ -531,18 +542,20 @@ function YearCard({ list, posters, followingIds, onFollowToggle }: { list: RichL
 
       {/* Interaction zone — stops propagation so taps here never navigate */}
       <div className="mt-auto" onClick={(e) => e.stopPropagation()}>
-        <StatsRow
-          reactionCount={list.reactionCount}
-          commentCount={commentCount}
-          reactionEmojis={list.reactionEmojis}
-          expanded={expanded}
-          onClick={(e) => { e.stopPropagation(); if (!user) { signInWithGoogle(); return }; setExpanded(v => !v) }}
-        />
-        {expanded && (
+        {expanded ? (
           <CardExpandPanel
             listId={list.id}
             commentCount={commentCount}
             onCommentPosted={() => setCommentCount(c => c + 1)}
+            onCollapse={() => setExpanded(false)}
+          />
+        ) : (
+          <StatsRow
+            reactionCount={list.reactionCount}
+            commentCount={commentCount}
+            reactionEmojis={list.reactionEmojis}
+            expanded={false}
+            onClick={(e) => { e.stopPropagation(); if (!user) { signInWithGoogle(); return }; setExpanded(true) }}
           />
         )}
       </div>
