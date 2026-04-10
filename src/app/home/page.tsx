@@ -1085,9 +1085,6 @@ export default function HomePage() {
         )}
       </div>
 
-      <div className="text-center py-8">
-        <a href="/privacy" className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>Privacy Policy</a>
-      </div>
     </div>
   )
 }

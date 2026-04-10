@@ -8,7 +8,8 @@ import { AdminBar } from "@/components/AdminBar";
 import { AuthProvider } from "@/context/auth";
 import { NavigationProvider } from "@/context/navigation";
 import { OnboardingModal } from "@/components/OnboardingModal";
-import { BottomNav } from "@/components/BottomNav";
+import { BottomNav } from "@/components/BottomNav"
+import { AppFooter } from "@/components/AppFooter";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,6 +49,7 @@ export default function RootLayout({
           <NavigationProvider>
             <AdminProvider>
               {children}
+              <AppFooter />
               <AdminBar />
             </AdminProvider>
             <OnboardingModal />
