@@ -407,7 +407,7 @@ function FeedCard({ list, posters, followingIds, onFollowToggle }: { list: RichL
 
   return (
     <div
-      className="rounded-xl p-4 flex flex-col gap-3 h-full transition-all duration-200 relative cursor-pointer"
+      className="rounded-xl p-4 flex flex-col gap-3 transition-all duration-200 relative cursor-pointer"
       style={{
         background: 'var(--surface)',
         border: `1px solid ${isFeatured ? 'rgba(232,197,71,0.25)' : 'var(--border)'}`,
@@ -513,7 +513,7 @@ function YearCard({ list, posters, followingIds, onFollowToggle }: { list: RichL
 
   return (
     <div
-      className="rounded-xl p-4 flex flex-col gap-3 h-full transition-all duration-200 cursor-pointer"
+      className="rounded-xl p-4 flex flex-col gap-3 transition-all duration-200 cursor-pointer"
       style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
       onClick={() => router.push(`/list/${list.id}`)}
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = hoverBorder; e.currentTarget.style.boxShadow = hoverShadow }}
@@ -584,7 +584,7 @@ function PairedCardGrid<T extends RichList>({
   return (
     <div className="space-y-4">
       {Array.from({ length: rowCount }).map((_, i) => (
-        <div key={i} className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+        <div key={i} className="grid grid-cols-1 sm:grid-cols-2 gap-8 items-start">
           <div className="flex flex-col">
             {leftList[i] && <Card list={leftList[i]} posters={posters} followingIds={followingIds} onFollowToggle={onFollowToggle} />}
           </div>
@@ -925,7 +925,7 @@ export default function HomePage() {
             {/* All tab — unified infinite scroll */}
             {navPill === 'all' && (
               <div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                   {feedLists.slice(0, displayCount).map((l) => (
                     <FeedCard key={l.id} list={l} posters={posters} followingIds={followingIds} onFollowToggle={handleFollowToggle} />
                   ))}
@@ -961,7 +961,7 @@ export default function HomePage() {
                     )}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                     {promptFeedLists.map((l) => (
                       <FeedCard key={l.id} list={l} posters={posters} followingIds={followingIds} onFollowToggle={handleFollowToggle} />
                     ))}
@@ -978,7 +978,7 @@ export default function HomePage() {
                     <p className="text-sm" style={{ color: 'var(--muted)' }}>No editorial lists yet.</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                     {editorialLists.map((l) => (
                       <FeedCard key={l.id} list={l} posters={posters} />
                     ))}
@@ -990,7 +990,7 @@ export default function HomePage() {
             {/* Recently Added tab */}
             {navPill === 'recent' && (
               <div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                   {recentFeedLists.slice(0, displayCount).map((l) => (
                     <FeedCard key={l.id} list={l} posters={posters} followingIds={followingIds} onFollowToggle={handleFollowToggle} />
                   ))}
