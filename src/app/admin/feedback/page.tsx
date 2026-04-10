@@ -18,8 +18,20 @@ export default async function AdminFeedbackPage() {
   const supabase = getAdminSupabase()
   const { data: rows } = await supabase
     .from('feedback')
-    .select('id, nps_score, suggestions, user_id, created_at, profiles(username, display_name)')
+    .select('id, nps_score, suggestions, user_id, created_at')
     .order('created_at', { ascending: false })
+
+  // Enrich with profile info for signed-in users (separate query — no FK to profiles)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const userIds = [...new Set((rows ?? []).map((r: any) => r.user_id).filter(Boolean))]
+  const profileMap: Record<string, { username: string; display_name: string | null }> = {}
+  if (userIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, username, display_name')
+      .in('id', userIds)
+    for (const p of profiles ?? []) profileMap[p.id] = p
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const feedback: FeedbackRow[] = (rows ?? []).map((r: any) => ({
@@ -28,7 +40,7 @@ export default async function AdminFeedbackPage() {
     suggestions: r.suggestions ?? null,
     user_id: r.user_id ?? null,
     created_at: r.created_at,
-    profiles: Array.isArray(r.profiles) ? r.profiles[0] ?? null : r.profiles ?? null,
+    profiles: r.user_id ? profileMap[r.user_id] ?? null : null,
   }))
 
   const total = feedback.length
