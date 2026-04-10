@@ -963,15 +963,6 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
               editable={(isAdmin || isOwner) && editMode}
             />
           </h1>
-          {similarLists.length > 0 && (similarTopicSlug ?? list.topics?.slug) && (
-            <Link
-              href={`/topic/${similarTopicSlug ?? list.topics?.slug}`}
-              className="inline-block text-xs mb-3 transition-opacity hover:opacity-100 opacity-50"
-              style={{ color: 'var(--foreground)' }}
-            >
-              Similar lists →
-            </Link>
-          )}
           <div className="flex items-center gap-3 mb-4">
             {list.featured ? (
               /* Source badge for featured/editorial lists */
