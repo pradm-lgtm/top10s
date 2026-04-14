@@ -2024,12 +2024,6 @@ function RankedRowList({
                   >
                     {entry.title}
                   </span>
-                  {(() => {
-                    const pct = rarePicks?.get(entryRarityKey(entry))
-                    return pct !== undefined && category
-                      ? <RarePickBadge pct={pct} category={category} />
-                      : null
-                  })()}
                 </div>
 
                 {/* Description teaser */}
@@ -2892,10 +2886,6 @@ function TieredEntries({
                             <span className="font-medium leading-snug" style={{ fontSize: '0.8rem', color: i <= 2 ? 'var(--foreground)' : 'var(--muted)' }}>
                               {imdbUrl ? <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>{entry.title}</a> : entry.title}
                             </span>
-                            {!editMode && (() => {
-                              const pct = rarePicks?.get(entryRarityKey(entry))
-                              return pct !== undefined && category ? <span className="ml-1.5"><RarePickBadge pct={pct} category={category} /></span> : null
-                            })()}
                             {!editMode && ((commentCounts[entry.id] ?? 0) > 0 || ['🔥','❤️','😮','😂','👏'].some(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0)) && (
                               <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                                 {(commentCounts[entry.id] ?? 0) > 0 && <span style={{ fontSize: '0.65rem', color: 'var(--muted)' }}>💬 {commentCounts[entry.id]}</span>}
@@ -3513,10 +3503,6 @@ function TierRankedPosterGrid({
                   >
                     <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 10, display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                       {expandedEntry.title}
-                      {(() => {
-                        const pct = rarePicks?.get(entryRarityKey(expandedEntry))
-                        return pct !== undefined && category ? <RarePickBadge pct={pct} category={category} /> : null
-                      })()}
                     </div>
 
                     <div
