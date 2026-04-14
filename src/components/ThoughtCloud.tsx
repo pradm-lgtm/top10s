@@ -391,8 +391,49 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
     if (!searchQuery.trim()) { setSearchResults([]); setSearching(false); return }
     setSearching(true)
     searchTimerRef.current = setTimeout(async () => {
-      const results = await tmdbSearch(searchQuery.trim(), category, apiKey)
-      setSearchResults(results)
+      const q = searchQuery.trim()
+
+      // Run TMDB search and triage in parallel — zero added latency
+      const [tmdbResults, triageRes] = await Promise.all([
+        tmdbSearch(q, category, apiKey),
+        fetch('/api/claude/suggest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'triage', query: q }),
+        }).then(r => r.ok ? r.json() : { type: 'lookup' }).catch(() => ({ type: 'lookup' })),
+      ])
+
+      if (triageRes.type === 'concept') {
+        // Concept query — generate titles via Claude then resolve posters progressively
+        setSearchResults([]) // clear while loading
+        try {
+          const res = await fetch('/api/claude/suggest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'searchConcept', query: q, category, count: 15 }),
+          })
+          if (res.ok) {
+            const { titles } = await res.json()
+            if (Array.isArray(titles) && titles.length > 0) {
+              const resolved: CloudResult[] = []
+              for (let i = 0; i < titles.length; i += 8) {
+                const batch = titles.slice(i, i + 8)
+                const batchResults = await Promise.all(
+                  batch.map((t: string) => tmdbSearchOne(t, category, null, null, apiKey)),
+                )
+                const valid = batchResults.filter((r): r is CloudResult => r !== null)
+                resolved.push(...valid)
+                setSearchResults(dedupeById([...resolved]))
+              }
+              setSearching(false)
+              return
+            }
+          }
+        } catch { /* fall through to TMDB results */ }
+      }
+
+      // Lookup query (or concept fallback) — show TMDB results
+      setSearchResults(tmdbResults)
       setSearching(false)
     }, 400)
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current) }
@@ -410,7 +451,7 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
         <input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder={`Search for a specific ${category === 'movies' ? 'movie' : 'show'}…`}
+          placeholder={`Search by title, person, or theme…`}
           className="w-full pl-9 pr-8 py-2.5 rounded-xl text-sm outline-none"
           style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
           onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}

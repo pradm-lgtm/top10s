@@ -14,6 +14,41 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { mode } = body
 
+    // ── triage mode ─────────────────────────────────────────────────────────
+    if (mode === 'triage') {
+      const { query } = body
+      const response = await client.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 5,
+        messages: [{
+          role: 'user',
+          content: `Classify this film/TV search query as "lookup" (a specific title, person name, franchise, or character) or "concept" (a theme, genre, era, mood, award, or descriptive phrase).\n\nQuery: "${query}"\n\nReply with exactly one word: lookup or concept`,
+        }],
+      })
+      const text = response.content[0].type === 'text' ? response.content[0].text.trim().toLowerCase() : ''
+      return NextResponse.json({ type: text.includes('concept') ? 'concept' : 'lookup' })
+    }
+
+    // ── searchConcept mode ───────────────────────────────────────────────────
+    if (mode === 'searchConcept') {
+      const { query, category, count = 15 } = body
+      const catLabel = category === 'movies' ? 'movies' : 'TV shows'
+      const response = await client.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 768,
+        system: 'You are a film/TV suggestion engine with deep knowledge of world cinema including Hollywood and international cinema, actor and director filmographies, award winners, cult classics, and any era, genre, theme, or regional cinema. Always return exact, real titles that exist.',
+        messages: [{
+          role: 'user',
+          content: `Find exactly ${count} ${catLabel} that match this description: "${query}"\n\nReturn ONLY a JSON array of title strings, nothing else.\nExample: ["Title A", "Title B", "Title C"]`,
+        }],
+      })
+      const text = response.content[0].type === 'text' ? response.content[0].text.trim() : ''
+      const match = text.match(/\[[\s\S]*\]/)
+      if (!match) return NextResponse.json({ titles: [] })
+      const titles = JSON.parse(match[0]) as string[]
+      return NextResponse.json({ titles: Array.isArray(titles) ? titles.slice(0, count) : [] })
+    }
+
     // ── inferGenre mode ─────────────────────────────────────────────────────
     if (mode === 'inferGenre') {
       const { category, addedEntries } = body
