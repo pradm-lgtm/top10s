@@ -25,7 +25,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth'
 import { AppHeader } from '@/components/AppHeader'
-import { ThoughtCloud, startPrefetch } from '@/components/ThoughtCloud'
+import { ThoughtCloud, startPrefetch, resolveTitlesProgressively } from '@/components/ThoughtCloud'
 import type { CloudResult } from '@/components/ThoughtCloud'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import type { TiptapDoc } from '@/lib/notes'
@@ -1292,6 +1292,7 @@ function Step3({
   entries, setEntries,
   onPublish, onBack, publishing, publishError,
   prefetchedTitles,
+  prefetchedResults,
 }: {
   listTitle: string
   category: 'movies' | 'tv'
@@ -1309,6 +1310,7 @@ function Step3({
   publishing: boolean
   publishError: string | null
   prefetchedTitles: string[]
+  prefetchedResults: CloudResult[]
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -1622,6 +1624,7 @@ function Step3({
         addedEntries={entries.map((e) => e.title)}
         onToggle={handleCloudToggle}
         prefetchedTitles={prefetchedTitles}
+        prefetchedResults={prefetchedResults}
       />
     </div>
   )
@@ -1660,6 +1663,7 @@ function CreatePageInner() {
   const [publishing, setPublishing] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
   const [prefetchTitles, setPrefetchTitles] = useState<string[]>([])
+  const [prefetchResults, setPrefetchResults] = useState<CloudResult[]>([])
   const prefetchSeqRef = useRef(0)
   const [promptWeek, setPromptWeek] = useState<number | null>(null)
   const [originalListId, setOriginalListId] = useState<string | null>(null)
@@ -1804,12 +1808,31 @@ function CreatePageInner() {
     const yTo   = timeScope === 'year' ? year : timeScope === 'range' ? yearTo  : null
     const seq = ++prefetchSeqRef.current
     setPrefetchTitles([])
+    setPrefetchResults([])
     const timer = setTimeout(() => {
       const { claude } = startPrefetch(title.trim(), category, yFrom, yTo, description)
       claude.then(r => { if (seq === prefetchSeqRef.current) setPrefetchTitles(r) })
     }, 600)
     return () => clearTimeout(timer)
   }, [title, category, timeScope, year, yearFrom, yearTo, description])
+
+  // When Claude titles arrive, immediately start resolving TMDB posters in the background
+  // so results are ready before the user reaches step 3
+  useEffect(() => {
+    if (prefetchTitles.length === 0) { setPrefetchResults([]); return }
+    const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? ''
+    const yFrom = timeScope === 'year' ? year : timeScope === 'range' ? yearFrom : null
+    const yTo   = timeScope === 'year' ? year : timeScope === 'range' ? yearTo  : null
+    setPrefetchResults([])
+    const cancel = resolveTitlesProgressively(
+      prefetchTitles, category, yFrom, yTo, apiKey,
+      (batch) => setPrefetchResults(prev => {
+        const seen = new Set(prev.map(r => r.id))
+        return [...prev, ...batch.filter(r => !seen.has(r.id))]
+      }),
+    )
+    return cancel
+  }, [prefetchTitles, category, timeScope, year, yearFrom, yearTo])
 
   // Warn before leaving with unsaved work (browser nav + in-app link clicks)
   useEffect(() => {
@@ -2050,6 +2073,7 @@ function CreatePageInner() {
             publishing={publishing}
             publishError={publishError}
             prefetchedTitles={prefetchTitles}
+            prefetchedResults={prefetchResults}
           />
         )}
       </div>

@@ -176,7 +176,7 @@ function PosterNode({ result, added, onToggle }: {
   )
 }
 
-// ─── Pre-fetch helper (call from parent before ThoughtCloud mounts) ───────────
+// ─── Pre-fetch helpers (call from parent before ThoughtCloud mounts) ──────────
 
 export function startPrefetch(
   listTitle: string, category: 'movies' | 'tv',
@@ -187,6 +187,30 @@ export function startPrefetch(
   return {
     claude: claudeSuggestTitles(listTitle, category, yearFrom, yearTo, description, genre),
   }
+}
+
+// Resolves a list of titles to TMDB CloudResults in batches of 8,
+// calling onBatch after each batch. Returns a cancel function.
+export function resolveTitlesProgressively(
+  titles: string[], category: 'movies' | 'tv',
+  yearFrom: number | null, yearTo: number | null,
+  apiKey: string,
+  onBatch: (results: CloudResult[]) => void,
+): () => void {
+  let cancelled = false
+  ;(async () => {
+    for (let i = 0; i < titles.length; i += 8) {
+      if (cancelled) return
+      const batch = titles.slice(i, i + 8)
+      const resolved = await Promise.all(
+        batch.map(t => tmdbSearchOne(t, category, yearFrom, yearTo, apiKey)),
+      )
+      if (cancelled) return
+      const valid = resolved.filter((r): r is CloudResult => r !== null)
+      if (valid.length > 0) onBatch(valid)
+    }
+  })()
+  return () => { cancelled = true }
 }
 
 // ─── ThoughtCloud ─────────────────────────────────────────────────────────────
@@ -202,9 +226,10 @@ export interface ThoughtCloudProps {
   onToggle: (result: CloudResult) => void
   prefetchedTmdb?: CloudResult[]
   prefetchedTitles?: string[]
+  prefetchedResults?: CloudResult[]
 }
 
-export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, description, addedIds, addedEntries, onToggle, prefetchedTitles }: ThoughtCloudProps) {
+export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, description, addedIds, addedEntries, onToggle, prefetchedTitles, prefetchedResults }: ThoughtCloudProps) {
   const apiKey   = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? ''
   const catLabel = category === 'movies' ? 'movies' : 'shows'
 
@@ -237,8 +262,23 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
   // Keep addedEntriesRef in sync
   useEffect(() => { addedEntriesRef.current = addedEntries }, [addedEntries])
 
+  // Track whether parent's progressive resolution has taken ownership
+  const externallyFedRef = useRef(false)
+
+  // Watch prefetchedResults from parent — sync into local state as batches arrive
+  useEffect(() => {
+    if (!prefetchedResults || prefetchedResults.length === 0) return
+    externallyFedRef.current = true
+    setClaudeSuggestions(dedupeById([...prefetchedResults]))
+    claudeSuggestionsRef.current = dedupeById([...prefetchedResults])
+    setClaudeLoading(false)
+  }, [prefetchedResults])
+
   const loadSuggestions = useCallback(async () => {
     if (!apiKey) { setClaudeLoading(false); return }
+
+    // If parent is feeding results progressively, don't also fetch internally
+    if (prefetchedResults && prefetchedResults.length > 0) return
 
     setClaudeLoading(true)
     setClaudeSuggestions([])
@@ -247,7 +287,8 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
     const effectiveGenre = detectGenreFromText(listTitle + ' ' + description)
     effectiveGenreRef.current = effectiveGenre
 
-    // Use pre-fetched titles if available, otherwise fetch from Claude now
+    // Use pre-fetched titles if available (parent fetched Claude but TMDB not started yet),
+    // otherwise do the full Claude + TMDB fetch internally
     const seedTitles = prefetchedTitlesRef.current
     const titles = seedTitles.length > 0
       ? seedTitles
@@ -255,13 +296,16 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
 
     if (titles.length === 0) { setClaudeLoading(false); return }
 
-    // Resolve TMDB posters in batches of 8, updating state as each batch arrives
+    // Resolve TMDB posters in batches of 8, updating state as each batch arrives.
+    // Abort if parent takes over mid-fetch.
     let firstBatch = true
     for (let i = 0; i < titles.length; i += 8) {
+      if (externallyFedRef.current) return
       const batch = titles.slice(i, i + 8)
       const resolved = await Promise.all(
         batch.map((t: string) => tmdbSearchOne(t, category, yearFrom, yearTo, apiKey)),
       )
+      if (externallyFedRef.current) return
       const valid = resolved.filter((r): r is CloudResult => r !== null)
       if (valid.length > 0) {
         setClaudeSuggestions(prev => {
@@ -272,8 +316,8 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
       }
       if (firstBatch) { setClaudeLoading(false); firstBatch = false }
     }
-    if (firstBatch) setClaudeLoading(false) // in case all batches returned nothing
-  }, [listTitle, category, yearFrom, yearTo, description, apiKey])
+    if (firstBatch) setClaudeLoading(false)
+  }, [listTitle, category, yearFrom, yearTo, description, apiKey, prefetchedResults])
 
   useEffect(() => {
     loadSuggestions()
