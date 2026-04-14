@@ -26,25 +26,6 @@ function dedupeById(items: CloudResult[]): CloudResult[] {
   return items.filter((r) => { if (seen.has(r.id)) return false; seen.add(r.id); return true })
 }
 
-// TMDB genre IDs
-const MOVIE_GENRE_IDS: Record<string, number> = {
-  'Action': 28, 'Comedy': 35, 'Drama': 18, 'Horror': 27,
-  'Sci-Fi': 878, 'Romance': 10749, 'Thriller': 53, 'Animation': 16,
-}
-const TV_GENRE_IDS: Record<string, number> = {
-  'Drama': 18, 'Comedy': 35, 'Reality': 10764, 'Crime': 80,
-  'Sci-Fi': 10765, 'Animation': 16, 'Documentary': 99,
-}
-
-// Genres to exclude when filtering by a primary genre (TMDB tags are messy)
-const GENRE_EXCLUSIONS: Record<number, number[]> = {
-  35:    [28, 53, 80, 27],       // Comedy → exclude Action, Thriller, Crime, Horror
-  27:    [35, 16],               // Horror → exclude Comedy, Animation
-  16:    [27, 53],               // Animation → exclude Horror, Thriller
-  10749: [28, 53, 80, 27],      // Romance → exclude Action, Thriller, Crime, Horror
-  878:   [35],                   // Sci-Fi → exclude Comedy
-}
-
 // Detect genre from list title or context text
 const TITLE_GENRE_KEYWORDS: [RegExp, string][] = [
   [/\baction\b/i, 'Action'],
@@ -64,43 +45,6 @@ function detectGenreFromText(text: string): string {
     if (re.test(text)) return genre
   }
   return ''
-}
-
-async function tmdbDiscover(
-  category: 'movies' | 'tv', yearFrom: number | null, yearTo: number | null, apiKey: string, genreId?: number,
-): Promise<CloudResult[]> {
-  const type = category === 'movies' ? 'movie' : 'tv'
-  let yearParam = ''
-  if (yearFrom !== null && yearTo !== null) {
-    if (yearFrom === yearTo) {
-      yearParam = category === 'movies' ? `&primary_release_year=${yearFrom}` : `&first_air_date_year=${yearFrom}`
-    } else {
-      yearParam = category === 'movies'
-        ? `&primary_release_date.gte=${yearFrom}-01-01&primary_release_date.lte=${yearTo}-12-31`
-        : `&first_air_date.gte=${yearFrom}-01-01&first_air_date.lte=${yearTo}-12-31`
-    }
-  }
-  const genreParam = genreId ? `&with_genres=${genreId}` : ''
-  const excludeIds = genreId ? (GENRE_EXCLUSIONS[genreId] ?? []) : []
-  const excludeParam = excludeIds.length > 0 ? `&without_genres=${excludeIds.join(',')}` : ''
-  const minVotes = (yearFrom !== null) ? '&vote_count.gte=30' : '&vote_count.gte=1000'
-
-  try {
-    const [r1, r2] = await Promise.all([
-      fetch(`${TMDB_BASE}/discover/${type}?api_key=${apiKey}&sort_by=popularity.desc&page=1${yearParam}${genreParam}${excludeParam}`),
-      fetch(`${TMDB_BASE}/discover/${type}?api_key=${apiKey}&sort_by=vote_average.desc&page=1${yearParam}${genreParam}${excludeParam}${minVotes}`),
-    ])
-    const [d1, d2] = await Promise.all([r1.json(), r2.json()])
-    const merged: CloudResult[] = []
-    const a: CloudResult[] = (d1.results ?? []).filter((r: CloudResult) => r.poster_path)
-    const b: CloudResult[] = (d2.results ?? []).filter((r: CloudResult) => r.poster_path)
-    const maxLen = Math.max(a.length, b.length)
-    for (let i = 0; i < maxLen; i++) {
-      if (a[i]) merged.push(a[i])
-      if (b[i]) merged.push(b[i])
-    }
-    return dedupeById(merged)
-  } catch { return [] }
 }
 
 async function tmdbSearchOne(
@@ -159,30 +103,18 @@ async function tmdbSearch(
   } catch { return [] }
 }
 
-async function claudeSuggest(
+async function claudeSuggestTitles(
   listTitle: string, category: 'movies' | 'tv', yearFrom: number | null, yearTo: number | null,
-  context: string, genre: string, apiKey: string,
-): Promise<CloudResult[]> {
-  try {
-    const res = await fetch('/api/claude/suggest', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ listTitle, category, yearFrom, yearTo, context, genre: genre || undefined, count: 24 }),
-    })
-    if (!res.ok) return []
-    const { titles } = await res.json()
-    if (!Array.isArray(titles) || titles.length === 0) return []
-
-    const results: CloudResult[] = []
-    for (let i = 0; i < titles.length; i += 8) {
-      const batch = titles.slice(i, i + 8)
-      const resolved = await Promise.all(
-        batch.map((t: string) => tmdbSearchOne(t, category, yearFrom, yearTo, apiKey)),
-      )
-      results.push(...resolved.filter((r): r is CloudResult => r !== null))
-    }
-    return dedupeById(results)
-  } catch { return [] }
+  context: string, genre: string,
+): Promise<string[]> {
+  const res = await fetch('/api/claude/suggest', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ listTitle, category, yearFrom, yearTo, context, genre: genre || undefined, count: 36 }),
+  })
+  if (!res.ok) return []
+  const { titles } = await res.json()
+  return Array.isArray(titles) ? titles : []
 }
 
 // ─── Genre chips ──────────────────────────────────────────────────────────────
@@ -249,14 +181,11 @@ function PosterNode({ result, added, onToggle }: {
 export function startPrefetch(
   listTitle: string, category: 'movies' | 'tv',
   yearFrom: number | null, yearTo: number | null,
-  description: string, apiKey: string,
-): { tmdb: Promise<CloudResult[]>; claude: Promise<CloudResult[]> } {
+  description: string,
+): { claude: Promise<string[]> } {
   const genre = detectGenreFromText(listTitle + ' ' + description)
-  const gMap = category === 'movies' ? MOVIE_GENRE_IDS : TV_GENRE_IDS
-  const genreId = genre ? gMap[genre] : undefined
   return {
-    tmdb: tmdbDiscover(category, yearFrom, yearTo, apiKey, genreId),
-    claude: claudeSuggest(listTitle, category, yearFrom, yearTo, description, genre, apiKey),
+    claude: claudeSuggestTitles(listTitle, category, yearFrom, yearTo, description, genre),
   }
 }
 
@@ -272,29 +201,24 @@ export interface ThoughtCloudProps {
   addedEntries: string[]
   onToggle: (result: CloudResult) => void
   prefetchedTmdb?: CloudResult[]
-  prefetchedClaude?: CloudResult[]
+  prefetchedTitles?: string[]
 }
 
-export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, description, addedIds, addedEntries, onToggle, prefetchedTmdb, prefetchedClaude }: ThoughtCloudProps) {
+export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, description, addedIds, addedEntries, onToggle, prefetchedTitles }: ThoughtCloudProps) {
   const apiKey   = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? ''
-  const genreMap = category === 'movies' ? MOVIE_GENRE_IDS : TV_GENRE_IDS
   const catLabel = category === 'movies' ? 'movies' : 'shows'
 
-  const [tmdbSuggestions, setTmdbSuggestions] = useState<CloudResult[]>([])
   const [claudeSuggestions, setClaudeSuggestions] = useState<CloudResult[]>([])
-  const [loading, setLoading]             = useState(true)
-  const [claudeLoading, setClaudeLoading] = useState(false)
+  const [claudeLoading, setClaudeLoading] = useState(true)
 
   const [searchQuery, setSearchQuery]     = useState('')
   const [searchResults, setSearchResults] = useState<CloudResult[]>([])
   const [searching, setSearching]         = useState(false)
 
   // Seed data from parent pre-fetch (captured at mount — only used on first load)
-  const prefetchedTmdbRef   = useRef(prefetchedTmdb   ?? [])
-  const prefetchedClaudeRef = useRef(prefetchedClaude ?? [])
+  const prefetchedTitlesRef = useRef(prefetchedTitles ?? [])
 
   // Refs mirroring state for stale-closure-safe access in async callbacks
-  const tmdbSuggestionsRef   = useRef<CloudResult[]>([])
   const claudeSuggestionsRef = useRef<CloudResult[]>([])
   const addedEntriesRef      = useRef<string[]>(addedEntries)
 
@@ -308,53 +232,48 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
   const genreInferenceFiredRef = useRef(false)
 
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const sentinelRef    = useRef<HTMLDivElement>(null)
   const gridRef        = useRef<HTMLDivElement>(null)
 
   // Keep addedEntriesRef in sync
   useEffect(() => { addedEntriesRef.current = addedEntries }, [addedEntries])
 
   const loadSuggestions = useCallback(async () => {
-    if (!apiKey) { setLoading(false); return }
+    if (!apiKey) { setClaudeLoading(false); return }
 
-    setLoading(true)
-    setTmdbSuggestions([])
+    setClaudeLoading(true)
     setClaudeSuggestions([])
-    tmdbSuggestionsRef.current = []
     claudeSuggestionsRef.current = []
 
     const effectiveGenre = detectGenreFromText(listTitle + ' ' + description)
     effectiveGenreRef.current = effectiveGenre
 
-    // Use pre-fetched TMDB results if available, otherwise fetch now
-    const seedTmdb = prefetchedTmdbRef.current
-    if (seedTmdb.length > 0) {
-      setTmdbSuggestions(seedTmdb)
-      tmdbSuggestionsRef.current = seedTmdb
-      setLoading(false)
-    } else {
-      const genreId = effectiveGenre ? genreMap[effectiveGenre] : undefined
-      const tmdbResults = await tmdbDiscover(category, yearFrom, yearTo, apiKey, genreId)
-      setTmdbSuggestions(tmdbResults)
-      tmdbSuggestionsRef.current = tmdbResults
-      setLoading(false)
-    }
+    // Use pre-fetched titles if available, otherwise fetch from Claude now
+    const seedTitles = prefetchedTitlesRef.current
+    const titles = seedTitles.length > 0
+      ? seedTitles
+      : await claudeSuggestTitles(listTitle, category, yearFrom, yearTo, description, effectiveGenre)
 
-    // Use pre-fetched Claude results if available, otherwise fetch now
-    const seedClaude = prefetchedClaudeRef.current
-    if (seedClaude.length > 0) {
-      setClaudeSuggestions(seedClaude)
-      claudeSuggestionsRef.current = seedClaude
-    } else {
-      setClaudeLoading(true)
-      const claudeResults = await claudeSuggest(listTitle, category, yearFrom, yearTo, description, effectiveGenre, apiKey)
-      setClaudeLoading(false)
-      if (claudeResults.length > 0) {
-        setClaudeSuggestions(claudeResults)
-        claudeSuggestionsRef.current = claudeResults
+    if (titles.length === 0) { setClaudeLoading(false); return }
+
+    // Resolve TMDB posters in batches of 8, updating state as each batch arrives
+    let firstBatch = true
+    for (let i = 0; i < titles.length; i += 8) {
+      const batch = titles.slice(i, i + 8)
+      const resolved = await Promise.all(
+        batch.map((t: string) => tmdbSearchOne(t, category, yearFrom, yearTo, apiKey)),
+      )
+      const valid = resolved.filter((r): r is CloudResult => r !== null)
+      if (valid.length > 0) {
+        setClaudeSuggestions(prev => {
+          const updated = dedupeById([...prev, ...valid])
+          claudeSuggestionsRef.current = updated
+          return updated
+        })
       }
+      if (firstBatch) { setClaudeLoading(false); firstBatch = false }
     }
-  }, [listTitle, category, yearFrom, yearTo, description, apiKey, genreMap])
+    if (firstBatch) setClaudeLoading(false) // in case all batches returned nothing
+  }, [listTitle, category, yearFrom, yearTo, description, apiKey])
 
   useEffect(() => {
     loadSuggestions()
@@ -479,33 +398,9 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current) }
   }, [searchQuery, category, apiKey])
 
-  // Scroll-right sentinel → load more
-  const loadMore = useCallback(async () => {
-    if (loading || claudeLoading || searchQuery) return
-    const more = await tmdbDiscover(category, yearFrom, yearTo, apiKey)
-    setTmdbSuggestions((prev) => {
-      const updated = dedupeById([...prev, ...more])
-      tmdbSuggestionsRef.current = updated
-      return updated
-    })
-  }, [loading, claudeLoading, searchQuery, category, yearFrom, yearTo, apiKey])
-
-  useEffect(() => {
-    const sentinel = sentinelRef.current
-    const grid = gridRef.current
-    if (!sentinel || !grid) return
-    const obs = new IntersectionObserver(
-      (entries) => { if (entries[0].isIntersecting) loadMore() },
-      { root: grid, threshold: 0.1 },
-    )
-    obs.observe(sentinel)
-    return () => obs.disconnect()
-  }, [loadMore])
-
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  const suggestions = dedupeById([...claudeSuggestions, ...tmdbSuggestions])
-  const displayItems = searchQuery.trim() ? searchResults : suggestions
+  const displayItems = searchQuery.trim() ? searchResults : claudeSuggestions
 
   return (
     <div className="space-y-4">
@@ -538,12 +433,6 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
               : `Suggested ${catLabel} from ${yearFrom}–${yearTo}`
             : `Suggested ${catLabel}`
           }
-          {claudeLoading && (
-            <span className="inline-flex items-center gap-1">
-              <span className="w-3 h-3 rounded-full border animate-spin inline-block" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
-              finding more…
-            </span>
-          )}
         </p>
       )}
 
@@ -552,7 +441,7 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
         <div style={{ position: 'absolute', inset: '0 auto 0 0', width: 48, background: 'linear-gradient(to right, var(--background), transparent)', zIndex: 10, pointerEvents: 'none' }} />
         <div style={{ position: 'absolute', inset: '0 0 0 auto', width: 48, background: 'linear-gradient(to left, var(--background), transparent)', zIndex: 10, pointerEvents: 'none' }} />
 
-        {loading ? (
+        {claudeLoading ? (
           <div className="flex justify-center py-14">
             <div className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
           </div>
@@ -581,9 +470,6 @@ export function ThoughtCloud({ listTitle, category, yearFrom, yearTo, descriptio
               />
             ))}
 
-            {!searchQuery.trim() && (
-              <div ref={sentinelRef} style={{ width: 64, height: 94 }} />
-            )}
           </div>
         )}
       </div>

@@ -1291,7 +1291,7 @@ function Step3({
   listFormat, setListFormat, tiers, setTiers,
   entries, setEntries,
   onPublish, onBack, publishing, publishError,
-  prefetchedTmdb, prefetchedClaude,
+  prefetchedTitles,
 }: {
   listTitle: string
   category: 'movies' | 'tv'
@@ -1308,8 +1308,7 @@ function Step3({
   onBack: () => void
   publishing: boolean
   publishError: string | null
-  prefetchedTmdb: CloudResult[]
-  prefetchedClaude: CloudResult[]
+  prefetchedTitles: string[]
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -1622,8 +1621,7 @@ function Step3({
         addedIds={addedTmdbIds}
         addedEntries={entries.map((e) => e.title)}
         onToggle={handleCloudToggle}
-        prefetchedTmdb={prefetchedTmdb}
-        prefetchedClaude={prefetchedClaude}
+        prefetchedTitles={prefetchedTitles}
       />
     </div>
   )
@@ -1661,8 +1659,7 @@ function CreatePageInner() {
   const [entries, setEntries] = useState<Entry[]>([])
   const [publishing, setPublishing] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
-  const [prefetchTmdb, setPrefetchTmdb] = useState<CloudResult[]>([])
-  const [prefetchClaude, setPrefetchClaude] = useState<CloudResult[]>([])
+  const [prefetchTitles, setPrefetchTitles] = useState<string[]>([])
   const prefetchSeqRef = useRef(0)
   const [promptWeek, setPromptWeek] = useState<number | null>(null)
   const [originalListId, setOriginalListId] = useState<string | null>(null)
@@ -1806,12 +1803,10 @@ function CreatePageInner() {
     const yFrom = timeScope === 'year' ? year : timeScope === 'range' ? yearFrom : null
     const yTo   = timeScope === 'year' ? year : timeScope === 'range' ? yearTo  : null
     const seq = ++prefetchSeqRef.current
-    setPrefetchTmdb([])
-    setPrefetchClaude([])
+    setPrefetchTitles([])
     const timer = setTimeout(() => {
-      const { tmdb, claude } = startPrefetch(title.trim(), category, yFrom, yTo, description, apiKey)
-      tmdb.then(r   => { if (seq === prefetchSeqRef.current) setPrefetchTmdb(r) })
-      claude.then(r => { if (seq === prefetchSeqRef.current) setPrefetchClaude(r) })
+      const { claude } = startPrefetch(title.trim(), category, yFrom, yTo, description)
+      claude.then(r => { if (seq === prefetchSeqRef.current) setPrefetchTitles(r) })
     }, 600)
     return () => clearTimeout(timer)
   }, [title, category, timeScope, year, yearFrom, yearTo, description])
@@ -2054,8 +2049,7 @@ function CreatePageInner() {
             onBack={() => setStep(2)}
             publishing={publishing}
             publishError={publishError}
-            prefetchedTmdb={prefetchTmdb}
-            prefetchedClaude={prefetchClaude}
+            prefetchedTitles={prefetchTitles}
           />
         )}
       </div>

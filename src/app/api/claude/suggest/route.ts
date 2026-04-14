@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
 
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
+      max_tokens: 1536,
       system: 'You are a film/TV suggestion engine with deep knowledge of world cinema. Generate relevant titles for any list context including:\n- Hollywood and international cinema (Bollywood, Korean, French, Japanese, etc.)\n- Actor and director filmographies\n- Award winners, cult classics, and mainstream hits\n- Any era, genre, theme, or regional cinema\n\nAlways return exact, well-known titles that exist and match the query. For non-English cinema, use the most commonly known title (English or original as appropriate).',
       messages: [{ role: 'user', content: lines }],
     })
