@@ -128,8 +128,13 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } })
+    useSensor(TouchSensor, { activationConstraint: { delay: 500, tolerance: 8 } })
   )
+
+  const [isTouchDevice, setIsTouchDevice] = useState(false)
+  const [undoEntry, setUndoEntry] = useState<{ entry: ListEntry; originalIndex: number } | null>(null)
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null)
 
   useEffect(() => {
     const name = localStorage.getItem('visitor_name')
@@ -179,6 +184,10 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       })
     }
   }, [user, profile])
+
+  useEffect(() => {
+    setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0)
+  }, [])
 
   async function fetchAll(vid: string) {
     const [listRes, entriesRes, commentsRes, reactionsRes, hmRes, awRes, tiersRes] = await Promise.all([
@@ -433,6 +442,76 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
   async function getSession() {
     const { data: { session } } = await supabase.auth.getSession()
     return session
+  }
+
+  async function commitDelete(entryId: string) {
+    if (isAdmin) {
+      await fetch(`/api/admin/entries/${entryId}`, { method: 'DELETE' })
+    } else if (isOwner) {
+      const session = await getSession()
+      await fetch(`/api/lists/${id}/entries/${entryId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session?.access_token}` },
+      })
+    }
+  }
+
+  function softDeleteEntry(entryId: string) {
+    const idx = entries.findIndex(e => e.id === entryId)
+    if (idx === -1) return
+    const entry = entries[idx]
+
+    // Commit any previously pending delete
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current)
+      undoTimerRef.current = null
+      if (undoEntry) commitDelete(undoEntry.entry.id)
+    }
+
+    setEntries(prev => prev.filter(e => e.id !== entryId))
+    setUndoEntry({ entry, originalIndex: idx })
+
+    undoTimerRef.current = setTimeout(() => {
+      commitDelete(entryId)
+      setUndoEntry(null)
+      undoTimerRef.current = null
+    }, 4000)
+  }
+
+  function undoDelete() {
+    if (!undoEntry) return
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current)
+      undoTimerRef.current = null
+    }
+    setEntries(prev => {
+      const next = [...prev]
+      next.splice(undoEntry.originalIndex, 0, undoEntry.entry)
+      return next
+    })
+    setUndoEntry(null)
+  }
+
+  async function moveEntryUp(entryId: string) {
+    const idx = entries.findIndex(e => e.id === entryId)
+    if (idx <= 0) return
+    const reordered = [...entries]
+    ;[reordered[idx - 1], reordered[idx]] = [reordered[idx], reordered[idx - 1]]
+    const updated = reordered.map((e, i) => ({ ...e, rank: i + 1 }))
+    setEntries(updated)
+    const session = await getSession()
+    await Promise.all([
+      fetch(`/api/lists/${id}/entries/${updated[idx - 1].id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ rank: updated[idx - 1].rank }),
+      }),
+      fetch(`/api/lists/${id}/entries/${updated[idx].id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ rank: updated[idx].rank }),
+      }),
+    ])
   }
 
   async function handleRankedDragEnd(event: DragEndEvent) {
@@ -911,7 +990,11 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
       {editMode && (
         <div className="px-4 py-2.5 flex items-center gap-3 text-sm font-medium" style={{ background: 'rgba(232,197,71,0.12)', borderBottom: '1px solid rgba(232,197,71,0.25)', color: 'var(--accent)' }}>
           <span>✎ Editing</span>
-          <span className="text-xs font-normal" style={{ color: 'var(--muted)' }}>Drag ⠿ to reorder · ✕ to remove · changes save when you click Save</span>
+          <span className="text-xs font-normal" style={{ color: 'var(--muted)' }}>
+            {isTouchDevice
+              ? 'Swipe left to edit or remove · Long press rank to reorder'
+              : 'Drag ⠿ to reorder · hover for edit · ✕ to remove'}
+          </span>
           <button
             onClick={() => {
               if (list?.list_format === 'ranked') {
@@ -1184,7 +1267,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                   hasEntries={(tierId) => entries.some(e => e.tier_id === tierId || e.tier === tierId)}
                 />
               )}
-              <TierRankedEntries entries={entries} tiers={effectiveTiers} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} onMoveTier={editMode ? moveEntryToTier : undefined} onTierItemDragEnd={editMode ? handleTierItemDragEnd : undefined} editMode={editMode} sensors={sensors} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} visitorId={visitorId} rarePicks={rarePicks} category={list.category} />
+              <TierRankedEntries entries={entries} tiers={effectiveTiers} posters={posters} isTheme={list.list_type === 'theme'} isAdmin={isAdmin} isOwner={isOwner} onDelete={editMode ? deleteEntry : undefined} onMoveTier={editMode ? moveEntryToTier : undefined} onTierItemDragEnd={editMode ? handleTierItemDragEnd : undefined} editMode={editMode} sensors={sensors} saveEntryField={saveEntryField} onEntryClick={handleEntryClick} commentCounts={commentCounts} entryReactions={entryReactions} selectedEntryId={selectedEntry?.id ?? null} visitorId={visitorId} rarePicks={rarePicks} category={list.category} isTouchDevice={isTouchDevice} onSoftDelete={softDeleteEntry} onMoveUp={moveEntryUp} editingEntryId={editingEntryId} setEditingEntryId={setEditingEntryId} />
               {(isOwner || isAdmin) && editMode && <TieredAddForm tiers={effectiveTiers} category={list.category} title={newTieredTitle} setTitle={setNewTieredTitle} posterUrl={newTieredPosterUrl} setPosterUrl={setNewTieredPosterUrl} tierId={newTieredTierId} setTierId={setNewTieredTierId} notes={newTieredNotes} setNotes={setNewTieredNotes} open={addingTieredEntry} setOpen={setAddingTieredEntry} saving={savingTieredEntry} onSubmit={addTieredEntry} />}
             </>
           ) : (
@@ -1209,6 +1292,11 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                     onEntryClick={handleEntryClick}
                     onDelete={deleteEntry}
                     saveEntryField={saveEntryField}
+                    isTouchDevice={isTouchDevice}
+                    onSoftDelete={softDeleteEntry}
+                    onMoveUp={moveEntryUp}
+                    editingEntryId={editingEntryId}
+                    setEditingEntryId={setEditingEntryId}
                   />
                 ))}
               </ol>
@@ -1656,6 +1744,19 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
           {addToListToast}
         </div>
       )}
+
+      {undoEntry && (
+        <UndoToast
+          title={undoEntry.entry.title}
+          onUndo={undoDelete}
+          onDismiss={() => {
+            if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+            undoTimerRef.current = null
+            commitDelete(undoEntry.entry.id)
+            setUndoEntry(null)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -2099,6 +2200,7 @@ function RankedRowList({
 function SortableRankedEntry({
   entry, index, accentColor, posters, editMode, isAdmin, isOwner,
   selectedEntryId, commentCounts, entryReactions, onEntryClick, onDelete, saveEntryField,
+  isTouchDevice = false, onSoftDelete, onMoveUp, editingEntryId, setEditingEntryId,
 }: {
   entry: ListEntry
   index: number
@@ -2113,9 +2215,14 @@ function SortableRankedEntry({
   onEntryClick: (e: ListEntry) => void
   onDelete: (id: string) => void
   saveEntryField: (id: string, field: string, value: string | number) => Promise<void>
+  isTouchDevice?: boolean
+  onSoftDelete?: (id: string) => void
+  onMoveUp?: (id: string) => void
+  editingEntryId?: string | null
+  setEditingEntryId?: (id: string | null) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: entry.id })
-  const style = {
+  const dndStyle = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
@@ -2124,108 +2231,407 @@ function SortableRankedEntry({
   const src = entry.image_url ?? info?.poster
   const imdbUrl = info?.imdbUrl
   const pending = !(entry.id in posters)
+  const canMoveUp = index > 0
+  const isEditing = editingEntryId === entry.id
+  const useMobileSwipe = editMode && isTouchDevice
 
+  // Local inline edit state
+  const [editTitle, setEditTitle] = useState(entry.title)
+  const [editNotes, setEditNotes] = useState<TiptapDoc | null>(null)
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  // Swipe state
+  const contentRef = useRef<HTMLDivElement>(null)
+  const openSideRef = useRef<'none' | 'left' | 'right'>('none')
+  const [openSide, setOpenSide] = useState<'none' | 'left' | 'right'>('none')
+  const canMoveUpRef = useRef(canMoveUp)
+  useEffect(() => { canMoveUpRef.current = canMoveUp }, [canMoveUp])
+
+  // Seed edit form when entering inline edit
+  useEffect(() => {
+    if (isEditing) {
+      setEditTitle(entry.title)
+      setEditNotes(parseNotes(entry.notes ?? '') ?? null)
+    }
+  }, [isEditing]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Touch swipe gesture
+  useEffect(() => {
+    const elRaw = contentRef.current
+    if (!elRaw || !editMode || !isTouchDevice) return
+    const el: HTMLDivElement = elRaw
+
+    const touchData = { startX: 0, startY: 0, startTime: 0, isHorizontal: null as boolean | null, baseOffset: 0 }
+
+    function getBaseOffset() {
+      if (openSideRef.current === 'right') return -144
+      if (openSideRef.current === 'left') return 80
+      return 0
+    }
+
+    function snapTo(side: 'none' | 'left' | 'right') {
+      const offset = side === 'right' ? -144 : side === 'left' ? 80 : 0
+      el.style.transition = 'transform 0.25s ease'
+      el.style.transform = `translateX(${offset}px)`
+      openSideRef.current = side
+      setOpenSide(side)
+    }
+
+    function onStart(e: TouchEvent) {
+      const target = e.target as HTMLElement
+      if (target.closest('[data-drag-handle]')) return
+      const t = e.touches[0]
+      touchData.startX = t.clientX
+      touchData.startY = t.clientY
+      touchData.startTime = Date.now()
+      touchData.isHorizontal = null
+      touchData.baseOffset = getBaseOffset()
+      el.style.transition = 'none'
+    }
+
+    function onMove(e: TouchEvent) {
+      if (touchData.isHorizontal === false) return
+      const t = e.touches[0]
+      const dx = t.clientX - touchData.startX
+      const dy = t.clientY - touchData.startY
+      if (touchData.isHorizontal === null && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+        touchData.isHorizontal = Math.abs(dx) > Math.abs(dy)
+      }
+      if (touchData.isHorizontal !== true) return
+      e.preventDefault()
+      const raw = touchData.baseOffset + dx
+      el.style.transform = `translateX(${Math.max(-180, Math.min(100, raw))}px)`
+    }
+
+    function onEnd(e: TouchEvent) {
+      if (touchData.isHorizontal !== true) return
+      const t = e.changedTouches[0]
+      const dx = t.clientX - touchData.startX
+      const dt = Math.max(Date.now() - touchData.startTime, 1)
+      const vel = Math.abs(dx) / dt
+      const finalOffset = touchData.baseOffset + dx
+      const rowW = el.offsetWidth
+      const isFastFlick = vel > 0.5 && Math.abs(dx) > 30
+
+      // Full swipe left → delete
+      if ((finalOffset < -(rowW * 0.7) || (isFastFlick && dx < -80)) && (isOwner || isAdmin)) {
+        el.style.transition = 'transform 0.2s ease'
+        el.style.transform = `translateX(${-rowW - 100}px)`
+        setTimeout(() => {
+          el.style.transition = 'none'
+          el.style.transform = 'translateX(0px)'
+          openSideRef.current = 'none'
+          setOpenSide('none')
+          onSoftDelete?.(entry.id)
+        }, 200)
+        return
+      }
+      // Swipe left → reveal edit/remove
+      if (finalOffset < -50 || (isFastFlick && dx < 0 && openSideRef.current !== 'right')) {
+        snapTo('right')
+        return
+      }
+      // Swipe right → reveal move up
+      if ((finalOffset > 50 || (isFastFlick && dx > 0 && openSideRef.current !== 'left')) && canMoveUpRef.current) {
+        snapTo('left')
+        return
+      }
+      snapTo('none')
+    }
+
+    el.addEventListener('touchstart', onStart, { passive: true })
+    el.addEventListener('touchmove', onMove, { passive: false })
+    el.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchmove', onMove)
+      el.removeEventListener('touchend', onEnd)
+    }
+  }, [editMode, isTouchDevice, entry.id, isOwner, isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Close swipe when tapping elsewhere
+  useEffect(() => {
+    if (openSide === 'none') return
+    function handleOutside(e: TouchEvent) {
+      const target = e.target as HTMLElement
+      if (!contentRef.current?.parentElement?.contains(target)) {
+        contentRef.current!.style.transition = 'transform 0.25s ease'
+        contentRef.current!.style.transform = 'translateX(0px)'
+        openSideRef.current = 'none'
+        setOpenSide('none')
+      }
+    }
+    document.addEventListener('touchstart', handleOutside, { passive: true })
+    return () => document.removeEventListener('touchstart', handleOutside)
+  }, [openSide])
+
+  function closeSwipe() {
+    if (contentRef.current) {
+      contentRef.current.style.transition = 'transform 0.25s ease'
+      contentRef.current.style.transform = 'translateX(0px)'
+    }
+    openSideRef.current = 'none'
+    setOpenSide('none')
+  }
+
+  // ── Inline edit form ──────────────────────────────────────────────────────
+  if (isEditing) {
+    return (
+      <li ref={setNodeRef} style={dndStyle}>
+        <div
+          className="rounded-xl p-3 space-y-3"
+          style={{ background: 'var(--surface)', border: `1px solid var(--accent)`, borderLeft: `3px solid ${accentColor}` }}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--accent)' }}>Editing · {entry.rank ?? index + 1}</span>
+            <div className="flex gap-2">
+              <button
+                disabled={savingEdit}
+                onClick={async () => {
+                  setSavingEdit(true)
+                  const titleToSave = editTitle.trim() || entry.title
+                  await saveEntryField(entry.id, 'title', titleToSave)
+                  if (editNotes !== null) await saveEntryField(entry.id, 'notes', JSON.stringify(editNotes))
+                  setSavingEdit(false)
+                  setEditingEntryId?.(null)
+                }}
+                className="px-3 py-1 rounded text-xs font-semibold disabled:opacity-40"
+                style={{ background: 'var(--accent)', color: '#0a0a0f' }}
+              >
+                {savingEdit ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                onClick={() => setEditingEntryId?.(null)}
+                className="px-3 py-1 rounded text-xs font-semibold"
+                style={{ background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+          <input
+            type="text"
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            className="w-full text-sm font-semibold outline-none rounded-lg px-3 py-2"
+            style={{ background: 'var(--surface-2)', color: 'var(--foreground)', border: '1px solid var(--border)' }}
+            placeholder="Title"
+          />
+          <RichTextEditor
+            value={editNotes ?? (parseNotes(entry.notes ?? '') ?? null)}
+            onChange={setEditNotes}
+            placeholder="Notes (optional)"
+            minHeight={72}
+          />
+        </div>
+      </li>
+    )
+  }
+
+  // ── Normal entry row ──────────────────────────────────────────────────────
   return (
-    <li ref={setNodeRef} style={style}>
+    <li ref={setNodeRef} style={dndStyle}>
       <div
-        className={`rounded-xl p-3 sm:p-4 transition-colors${!isAdmin && !editMode ? ' cursor-pointer' : ''}`}
+        className="relative rounded-xl overflow-hidden"
         style={{
-          background: selectedEntryId === entry.id ? `${accentColor}08` : 'var(--surface)',
           border: `1px solid ${selectedEntryId === entry.id ? `${accentColor}40` : 'var(--border)'}`,
           borderLeft: `3px solid ${index === 0 ? accentColor : selectedEntryId === entry.id ? `${accentColor}60` : 'var(--border)'}`,
         }}
-        onClick={(e) => {
-          if (isAdmin || editMode) return
-          if ((e.target as HTMLElement).closest('a')) return
-          onEntryClick(entry)
-        }}
       >
-        {/* Top row: drag · rank · poster · title · delete */}
-        <div className="flex items-start gap-3">
-          {editMode && (
+        {/* Mobile: Left action — Move Up */}
+        {useMobileSwipe && canMoveUp && (
+          <div className="absolute left-0 top-0 bottom-0 flex items-center justify-center" style={{ width: 80, background: '#f59e0b' }}>
             <button
-              {...listeners}
-              {...attributes}
-              className="shrink-0 self-center text-lg cursor-grab active:cursor-grabbing select-none"
-              style={{ color: 'var(--muted)', touchAction: 'none' }}
-              aria-label="Drag to reorder"
+              onClick={() => { onMoveUp?.(entry.id); closeSwipe() }}
+              className="flex flex-col items-center gap-0.5 font-semibold text-xs text-white w-full h-full justify-center"
             >
-              ⠿
+              <span className="text-xl leading-none">↑</span>
+              <span>Move up</span>
             </button>
-          )}
-          <div
-            className="text-xl font-bold w-7 shrink-0 tabular-nums leading-none mt-0.5"
-            style={{ color: index === 0 ? accentColor : index < 3 ? 'var(--foreground)' : 'var(--muted)' }}
-          >
-            {entry.rank ?? index + 1}
-          </div>
-          {/* Poster — left side */}
-          {src ? (
-            imdbUrl ? (
-              <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded" loading="lazy" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
-              </a>
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded shrink-0" loading="lazy" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
-            )
-          ) : (
-            <div
-              className="w-8 h-12 rounded shrink-0 flex items-end justify-center pb-1 overflow-hidden"
-              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', opacity: pending ? 0.4 : 1 }}
-            >
-              {!pending && <span className="text-[9px] text-center leading-tight px-1" style={{ color: 'var(--muted)' }}>{entry.title}</span>}
-            </div>
-          )}
-          {/* Title + reactions */}
-          <div className="flex-1 min-w-0 pt-0.5">
-            <h3 className="font-semibold text-sm leading-snug">
-              <EditableText
-                value={entry.title}
-                onSave={(v) => saveEntryField(entry.id, 'title', v)}
-                className="font-semibold text-sm"
-                editable={isAdmin && !editMode}
-                renderValue={(v) =>
-                  imdbUrl && !isAdmin ? (
-                    <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>{v}</a>
-                  ) : <>{v}</>
-                }
-              />
-            </h3>
-            <div className="mt-1.5 flex items-center gap-2.5 flex-wrap">
-              {commentCounts[entry.id] > 0 && (
-                <span className="text-xs" style={{ color: 'var(--muted)' }}>💬 {commentCounts[entry.id]}</span>
-              )}
-              {['🔥', '❤️', '😮', '😂', '👏']
-                .filter(e => (entryReactions[entry.id]?.[e] ?? 0) > 0)
-                .map(e => (
-                  <span key={e} className="text-xs" style={{ color: 'var(--muted)' }}>{e} {entryReactions[entry.id][e]}</span>
-                ))}
-            </div>
-          </div>
-          {(isAdmin || isOwner) && editMode && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }}
-              className="shrink-0 text-xs px-2 py-1 rounded opacity-60 hover:opacity-100 transition-opacity"
-              style={{ border: '1px solid #f87171', color: '#f87171' }}
-              title="Delete entry"
-            >✕</button>
-          )}
-        </div>
-        {/* Bottom row: notes full width */}
-        {(entry.notes || (isAdmin && !editMode) || (editMode && (isOwner || isAdmin))) && (
-          <div className="mt-3">
-            <ExpandableNotes
-              value={entry.notes ?? ''}
-              onSave={(v) => saveEntryField(entry.id, 'notes', v)}
-              editable={(isAdmin && !editMode) || (editMode && (isOwner || isAdmin))}
-              placeholder="Add a note…"
-            />
           </div>
         )}
+
+        {/* Mobile: Right actions — Edit + Remove */}
+        {useMobileSwipe && (
+          <div className="absolute right-0 top-0 bottom-0 flex">
+            <button
+              onClick={() => { setEditingEntryId?.(entry.id); closeSwipe() }}
+              className="flex flex-col items-center justify-center gap-0.5 font-semibold text-xs text-white"
+              style={{ width: 72, background: '#3b82f6' }}
+            >
+              <span className="text-xl leading-none">✎</span>
+              <span>Edit</span>
+            </button>
+            {(isOwner || isAdmin) && (
+              <button
+                onClick={() => { closeSwipe(); onSoftDelete?.(entry.id) }}
+                className="flex flex-col items-center justify-center gap-0.5 font-semibold text-xs text-white"
+                style={{ width: 72, background: '#ef4444' }}
+              >
+                <span className="text-xl leading-none">🗑</span>
+                <span>Remove</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Sliding content */}
+        <div
+          ref={contentRef}
+          className="p-3 sm:p-4 group relative"
+          style={{
+            background: selectedEntryId === entry.id ? `${accentColor}08` : 'var(--surface)',
+            cursor: !isAdmin && !editMode ? 'pointer' : 'default',
+          }}
+          onClick={(e) => {
+            if (isAdmin || editMode) return
+            if ((e.target as HTMLElement).closest('a')) return
+            onEntryClick(entry)
+          }}
+        >
+          {/* Top row */}
+          <div className="flex items-start gap-3">
+            {/* Desktop: drag handle */}
+            {!isTouchDevice && editMode && (
+              <button
+                {...listeners}
+                {...attributes}
+                className="shrink-0 self-center text-lg cursor-grab active:cursor-grabbing select-none"
+                style={{ color: 'var(--muted)', touchAction: 'none' }}
+                aria-label="Drag to reorder"
+              >
+                ⠿
+              </button>
+            )}
+
+            {/* Mobile edit: rank number as drag handle */}
+            {isTouchDevice && editMode ? (
+              <div
+                {...listeners}
+                {...attributes}
+                data-drag-handle="true"
+                className="text-xl font-bold w-7 shrink-0 tabular-nums leading-none mt-0.5 cursor-grab active:cursor-grabbing select-none"
+                style={{ color: index === 0 ? accentColor : index < 3 ? 'var(--foreground)' : 'var(--muted)', touchAction: 'none' }}
+              >
+                {entry.rank ?? index + 1}
+              </div>
+            ) : (
+              <div
+                className="text-xl font-bold w-7 shrink-0 tabular-nums leading-none mt-0.5"
+                style={{ color: index === 0 ? accentColor : index < 3 ? 'var(--foreground)' : 'var(--muted)' }}
+              >
+                {entry.rank ?? index + 1}
+              </div>
+            )}
+
+            {/* Poster */}
+            {src ? (
+              imdbUrl ? (
+                <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded" loading="lazy" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
+                </a>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded shrink-0" loading="lazy" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }} />
+              )
+            ) : (
+              <div
+                className="w-8 h-12 rounded shrink-0 flex items-end justify-center pb-1 overflow-hidden"
+                style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', opacity: pending ? 0.4 : 1 }}
+              >
+                {!pending && <span className="text-[9px] text-center leading-tight px-1" style={{ color: 'var(--muted)' }}>{entry.title}</span>}
+              </div>
+            )}
+
+            {/* Title + reactions */}
+            <div className="flex-1 min-w-0 pt-0.5">
+              <h3 className="font-semibold text-sm leading-snug">
+                <EditableText
+                  value={entry.title}
+                  onSave={(v) => saveEntryField(entry.id, 'title', v)}
+                  className="font-semibold text-sm"
+                  editable={isAdmin && !editMode}
+                  renderValue={(v) =>
+                    imdbUrl && !isAdmin ? (
+                      <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'inherit' }}>{v}</a>
+                    ) : <>{v}</>
+                  }
+                />
+              </h3>
+              <div className="mt-1.5 flex items-center gap-2.5 flex-wrap">
+                {commentCounts[entry.id] > 0 && (
+                  <span className="text-xs" style={{ color: 'var(--muted)' }}>💬 {commentCounts[entry.id]}</span>
+                )}
+                {['🔥', '❤️', '😮', '😂', '👏']
+                  .filter(e => (entryReactions[entry.id]?.[e] ?? 0) > 0)
+                  .map(e => (
+                    <span key={e} className="text-xs" style={{ color: 'var(--muted)' }}>{e} {entryReactions[entry.id][e]}</span>
+                  ))}
+              </div>
+            </div>
+
+            {/* Desktop: delete + edit buttons */}
+            {!isTouchDevice && (isAdmin || isOwner) && editMode && (
+              <div className="flex items-center gap-1 shrink-0">
+                {setEditingEntryId && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setEditingEntryId(entry.id) }}
+                    className="text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity"
+                    style={{ border: '1px solid #3b82f6', color: '#3b82f6' }}
+                    title="Edit entry"
+                  >✎</button>
+                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }}
+                  className="text-xs px-2 py-1 rounded opacity-60 hover:opacity-100 transition-opacity"
+                  style={{ border: '1px solid #f87171', color: '#f87171' }}
+                  title="Delete entry"
+                >✕</button>
+              </div>
+            )}
+          </div>
+
+          {/* Notes */}
+          {(entry.notes || (isAdmin && !editMode)) && (
+            <div className="mt-3">
+              <ExpandableNotes
+                value={entry.notes ?? ''}
+                onSave={(v) => saveEntryField(entry.id, 'notes', v)}
+                editable={isAdmin && !editMode}
+                placeholder="Add a note…"
+              />
+            </div>
+          )}
+        </div>
       </div>
     </li>
+  )
+}
+
+// ─── UndoToast ────────────────────────────────────────────────────────────────
+
+function UndoToast({ title, onUndo, onDismiss }: { title: string; onUndo: () => void; onDismiss: () => void }) {
+  useEffect(() => {
+    const timer = setTimeout(onDismiss, 4000)
+    return () => clearTimeout(timer)
+  }, [onDismiss])
+
+  return (
+    <div
+      className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium shadow-xl"
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--foreground)', whiteSpace: 'nowrap' }}
+    >
+      <span style={{ color: 'var(--muted)' }}>Removed <span style={{ color: 'var(--foreground)' }}>{title}</span></span>
+      <span style={{ color: 'var(--border)' }}>·</span>
+      <button
+        onClick={onUndo}
+        className="font-semibold transition-opacity hover:opacity-70"
+        style={{ color: 'var(--accent)' }}
+      >
+        Undo
+      </button>
+    </div>
   )
 }
 
@@ -3216,6 +3622,7 @@ function TieredEntries({
 function SortableTierRankedEntry({
   entry, color, editMode, isAdmin, isOwner, onDelete, onMoveTier, tiers,
   posters, onEntryClick, commentCounts, entryReactions, selectedEntryId, saveEntryField,
+  isTouchDevice = false, onSoftDelete, editingEntryId, setEditingEntryId,
 }: {
   entry: ListEntry; color: string; editMode: boolean; isAdmin: boolean; isOwner: boolean
   onDelete?: (id: string) => void; onMoveTier?: (entryId: string, tierId: string) => void
@@ -3223,88 +3630,329 @@ function SortableTierRankedEntry({
   commentCounts: Record<string, number>; entryReactions: Record<string, Record<string, number>>
   selectedEntryId: string | null
   saveEntryField?: (id: string, field: string, value: string | number) => Promise<void>
+  isTouchDevice?: boolean
+  onSoftDelete?: (id: string) => void
+  editingEntryId?: string | null
+  setEditingEntryId?: (id: string | null) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: entry.id })
+  const dndStyle = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
   const info = posters[entry.id]
   const src = entry.image_url ?? info?.poster
   const imdbUrl = info?.imdbUrl
+  const isEditing = editingEntryId === entry.id
+  const useMobileSwipe = editMode && isTouchDevice
 
+  // Local inline edit state
+  const [editTitle, setEditTitle] = useState(entry.title)
+  const [editNotes, setEditNotes] = useState<TiptapDoc | null>(null)
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  // Swipe state
+  const contentRef = useRef<HTMLDivElement>(null)
+  const openSideRef = useRef<'none' | 'right'>('none')
+  const [openSide, setOpenSide] = useState<'none' | 'right'>('none')
+
+  useEffect(() => {
+    if (isEditing) {
+      setEditTitle(entry.title)
+      setEditNotes(parseNotes(entry.notes ?? '') ?? null)
+    }
+  }, [isEditing]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const elRaw = contentRef.current
+    if (!elRaw || !editMode || !isTouchDevice) return
+    const el: HTMLDivElement = elRaw
+
+    const touchData = { startX: 0, startY: 0, startTime: 0, isHorizontal: null as boolean | null, baseOffset: 0 }
+
+    function snapTo(side: 'none' | 'right') {
+      const offset = side === 'right' ? -144 : 0
+      el.style.transition = 'transform 0.25s ease'
+      el.style.transform = `translateX(${offset}px)`
+      openSideRef.current = side
+      setOpenSide(side)
+    }
+
+    function onStart(e: TouchEvent) {
+      const target = e.target as HTMLElement
+      if (target.closest('[data-drag-handle]')) return
+      const t = e.touches[0]
+      touchData.startX = t.clientX
+      touchData.startY = t.clientY
+      touchData.startTime = Date.now()
+      touchData.isHorizontal = null
+      touchData.baseOffset = openSideRef.current === 'right' ? -144 : 0
+      el.style.transition = 'none'
+    }
+
+    function onMove(e: TouchEvent) {
+      if (touchData.isHorizontal === false) return
+      const t = e.touches[0]
+      const dx = t.clientX - touchData.startX
+      const dy = t.clientY - touchData.startY
+      if (touchData.isHorizontal === null && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+        touchData.isHorizontal = Math.abs(dx) > Math.abs(dy)
+      }
+      if (touchData.isHorizontal !== true) return
+      e.preventDefault()
+      el.style.transform = `translateX(${Math.max(-180, Math.min(20, touchData.baseOffset + dx))}px)`
+    }
+
+    function onEnd(e: TouchEvent) {
+      if (touchData.isHorizontal !== true) return
+      const t = e.changedTouches[0]
+      const dx = t.clientX - touchData.startX
+      const dt = Math.max(Date.now() - touchData.startTime, 1)
+      const vel = Math.abs(dx) / dt
+      const finalOffset = touchData.baseOffset + dx
+      const rowW = el.offsetWidth
+      const isFastFlick = vel > 0.5 && Math.abs(dx) > 30
+
+      if ((finalOffset < -(rowW * 0.7) || (isFastFlick && dx < -80)) && (isOwner || isAdmin)) {
+        el.style.transition = 'transform 0.2s ease'
+        el.style.transform = `translateX(${-rowW - 100}px)`
+        setTimeout(() => {
+          el.style.transition = 'none'
+          el.style.transform = 'translateX(0px)'
+          openSideRef.current = 'none'
+          setOpenSide('none')
+          onSoftDelete?.(entry.id)
+        }, 200)
+        return
+      }
+      if (finalOffset < -50 || (isFastFlick && dx < 0 && openSideRef.current !== 'right')) {
+        snapTo('right')
+        return
+      }
+      snapTo('none')
+    }
+
+    el.addEventListener('touchstart', onStart, { passive: true })
+    el.addEventListener('touchmove', onMove, { passive: false })
+    el.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchmove', onMove)
+      el.removeEventListener('touchend', onEnd)
+    }
+  }, [editMode, isTouchDevice, entry.id, isOwner, isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (openSide === 'none') return
+    function handleOutside(e: TouchEvent) {
+      const target = e.target as HTMLElement
+      if (!contentRef.current?.parentElement?.contains(target)) {
+        contentRef.current!.style.transition = 'transform 0.25s ease'
+        contentRef.current!.style.transform = 'translateX(0px)'
+        openSideRef.current = 'none'
+        setOpenSide('none')
+      }
+    }
+    document.addEventListener('touchstart', handleOutside, { passive: true })
+    return () => document.removeEventListener('touchstart', handleOutside)
+  }, [openSide])
+
+  function closeSwipe() {
+    if (contentRef.current) {
+      contentRef.current.style.transition = 'transform 0.25s ease'
+      contentRef.current.style.transform = 'translateX(0px)'
+    }
+    openSideRef.current = 'none'
+    setOpenSide('none')
+  }
+
+  // ── Inline edit form ──────────────────────────────────────────────────────
+  if (isEditing) {
+    return (
+      <div ref={setNodeRef} style={dndStyle}>
+        <div className="rounded-lg p-3 space-y-2" style={{ background: 'var(--surface)', border: `1px solid ${color}40` }}>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold" style={{ color }}>Editing</span>
+            <div className="flex gap-2">
+              <button
+                disabled={savingEdit}
+                onClick={async () => {
+                  if (!saveEntryField) return
+                  setSavingEdit(true)
+                  await saveEntryField(entry.id, 'title', editTitle.trim() || entry.title)
+                  if (editNotes !== null) await saveEntryField(entry.id, 'notes', JSON.stringify(editNotes))
+                  setSavingEdit(false)
+                  setEditingEntryId?.(null)
+                }}
+                className="px-3 py-1 rounded text-xs font-semibold disabled:opacity-40"
+                style={{ background: color, color: '#0a0a0f' }}
+              >
+                {savingEdit ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                onClick={() => setEditingEntryId?.(null)}
+                className="px-3 py-1 rounded text-xs font-semibold"
+                style={{ background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+          <input
+            type="text"
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            className="w-full text-sm font-semibold outline-none rounded-lg px-3 py-2"
+            style={{ background: 'var(--surface-2)', color: 'var(--foreground)', border: '1px solid var(--border)' }}
+          />
+          {onMoveTier && (
+            <select
+              value={entry.tier_id ?? entry.tier ?? ''}
+              onChange={e => onMoveTier(entry.id, e.target.value)}
+              className="w-full text-xs rounded outline-none cursor-pointer px-2 py-1"
+              style={{ background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+            >
+              {tiers.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+          )}
+          <RichTextEditor
+            value={editNotes ?? (parseNotes(entry.notes ?? '') ?? null)}
+            onChange={setEditNotes}
+            placeholder="Notes (optional)"
+            minHeight={64}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  // ── Normal entry row ──────────────────────────────────────────────────────
   return (
     <div
       ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1,
-        background: selectedEntryId === entry.id ? `${color}10` : 'var(--surface)',
-        border: `1px solid ${selectedEntryId === entry.id ? `${color}40` : 'var(--border)'}`,
-      }}
-      className={`flex items-start gap-3 rounded-lg px-3 py-2 transition-colors${!isAdmin && !editMode ? ' cursor-pointer' : ''}`}
-      onClick={(e) => {
-        if (isAdmin || editMode) return
-        if ((e.target as HTMLElement).closest('a')) return
-        onEntryClick?.(entry)
-      }}
+      style={dndStyle}
+      className="relative rounded-lg overflow-hidden"
     >
-      {editMode && (
-        <button {...listeners} {...attributes} className="shrink-0 self-center text-base cursor-grab active:cursor-grabbing select-none" style={{ color: 'var(--muted)', touchAction: 'none' }}>⠿</button>
-      )}
-      <span className="text-xs font-bold w-6 shrink-0 text-right tabular-nums mt-2.5" style={{ color: `${color}70` }}>{entry.rank}</span>
-      {src ? (
-        imdbUrl ? (
-          <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 mt-1">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded" loading="lazy" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
-          </a>
-        ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded shrink-0 mt-1" loading="lazy" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
-        )
-      ) : (
-        <div className="w-8 h-12 rounded shrink-0 mt-1" style={{ background: `${color}15`, border: `1px solid ${color}20` }} />
-      )}
-      <div className="flex-1 min-w-0 py-1.5">
-        <span className="font-medium text-sm">
-          {imdbUrl && !isAdmin ? (
-            <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'var(--foreground)' }}>{entry.title}</a>
-          ) : entry.title}
-        </span>
-        {!editMode && entry.notes && (
-          <div className="mt-1.5">
-            <ExpandableNotes value={entry.notes} />
-          </div>
-        )}
-        {editMode && saveEntryField && (
-          <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-            <ExpandableNotes
-              value={entry.notes ?? ''}
-              onSave={(v) => saveEntryField(entry.id, 'notes', v)}
-              editable
-              placeholder="Add a description…"
-            />
-          </div>
-        )}
-        {editMode && onMoveTier && (
-          <select
-            value={entry.tier_id ?? entry.tier ?? ''}
-            onChange={e => { e.stopPropagation(); onMoveTier(entry.id, e.target.value) }}
-            onClick={e => e.stopPropagation()}
-            className="mt-1 w-full text-xs rounded outline-none cursor-pointer"
-            style={{ background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)', padding: '2px 4px' }}
+      {/* Mobile: Right actions */}
+      {useMobileSwipe && (
+        <div className="absolute right-0 top-0 bottom-0 flex">
+          <button
+            onClick={() => { setEditingEntryId?.(entry.id); closeSwipe() }}
+            className="flex flex-col items-center justify-center gap-0.5 font-semibold text-xs text-white"
+            style={{ width: 72, background: '#3b82f6' }}
           >
-            {tiers.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-          </select>
+            <span className="text-xl leading-none">✎</span>
+            <span>Edit</span>
+          </button>
+          {(isOwner || isAdmin) && (
+            <button
+              onClick={() => { closeSwipe(); onSoftDelete?.(entry.id) }}
+              className="flex flex-col items-center justify-center gap-0.5 font-semibold text-xs text-white"
+              style={{ width: 72, background: '#ef4444' }}
+            >
+              <span className="text-xl leading-none">🗑</span>
+              <span>Remove</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Sliding content */}
+      <div
+        ref={contentRef}
+        style={{
+          background: selectedEntryId === entry.id ? `${color}10` : 'var(--surface)',
+          border: `1px solid ${selectedEntryId === entry.id ? `${color}40` : 'var(--border)'}`,
+        }}
+        className={`flex items-start gap-3 rounded-lg px-3 py-2 transition-colors group${!isAdmin && !editMode ? ' cursor-pointer' : ''}`}
+        onClick={(e) => {
+          if (isAdmin || editMode) return
+          if ((e.target as HTMLElement).closest('a')) return
+          onEntryClick?.(entry)
+        }}
+      >
+        {/* Desktop: drag handle */}
+        {!isTouchDevice && editMode && (
+          <button {...listeners} {...attributes} className="shrink-0 self-center text-base cursor-grab active:cursor-grabbing select-none" style={{ color: 'var(--muted)', touchAction: 'none' }}>⠿</button>
         )}
-        {!editMode && (
-          <div className="mt-1 flex items-center gap-2 flex-wrap">
-            {(commentCounts[entry.id] ?? 0) > 0 && <span className="text-xs" style={{ color: 'var(--muted)' }}>💬 {commentCounts[entry.id]}</span>}
-            {['🔥', '❤️', '😮', '😂', '👏'].filter(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0).map(e => (
-              <span key={e} className="text-xs" style={{ color: 'var(--muted)' }}>{e} {entryReactions![entry.id][e]}</span>
-            ))}
+        {/* Mobile edit: rank as drag handle */}
+        {isTouchDevice && editMode ? (
+          <span
+            {...listeners}
+            {...attributes}
+            data-drag-handle="true"
+            className="text-xs font-bold w-6 shrink-0 text-right tabular-nums mt-2.5 cursor-grab active:cursor-grabbing select-none"
+            style={{ color: `${color}70`, touchAction: 'none' }}
+          >
+            {entry.rank}
+          </span>
+        ) : (
+          <span className="text-xs font-bold w-6 shrink-0 text-right tabular-nums mt-2.5" style={{ color: `${color}70` }}>{entry.rank}</span>
+        )}
+        {src ? (
+          imdbUrl ? (
+            <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 mt-1">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded" loading="lazy" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
+            </a>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={src} alt={entry.title} className="w-8 h-12 object-cover rounded shrink-0 mt-1" loading="lazy" style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }} />
+          )
+        ) : (
+          <div className="w-8 h-12 rounded shrink-0 mt-1" style={{ background: `${color}15`, border: `1px solid ${color}20` }} />
+        )}
+        <div className="flex-1 min-w-0 py-1.5">
+          <span className="font-medium text-sm">
+            {imdbUrl && !isAdmin ? (
+              <a href={imdbUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: 'var(--foreground)' }}>{entry.title}</a>
+            ) : entry.title}
+          </span>
+          {entry.notes && (
+            <div className="mt-1.5">
+              <ExpandableNotes value={entry.notes} />
+            </div>
+          )}
+          {!editMode && (
+            <div className="mt-1 flex items-center gap-2 flex-wrap">
+              {(commentCounts[entry.id] ?? 0) > 0 && <span className="text-xs" style={{ color: 'var(--muted)' }}>💬 {commentCounts[entry.id]}</span>}
+              {['🔥', '❤️', '😮', '😂', '👏'].filter(e => (entryReactions?.[entry.id]?.[e] ?? 0) > 0).map(e => (
+                <span key={e} className="text-xs" style={{ color: 'var(--muted)' }}>{e} {entryReactions![entry.id][e]}</span>
+              ))}
+            </div>
+          )}
+          {/* Desktop: tier dropdown in edit mode */}
+          {!isTouchDevice && editMode && onMoveTier && (
+            <select
+              value={entry.tier_id ?? entry.tier ?? ''}
+              onChange={e => { e.stopPropagation(); onMoveTier(entry.id, e.target.value) }}
+              onClick={e => e.stopPropagation()}
+              className="mt-1 w-full text-xs rounded outline-none cursor-pointer"
+              style={{ background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)', padding: '2px 4px' }}
+            >
+              {tiers.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+          )}
+        </div>
+
+        {/* Desktop: delete + edit buttons */}
+        {!isTouchDevice && editMode && (isOwner || isAdmin) && (
+          <div className="flex items-center gap-1 shrink-0 self-center">
+            {setEditingEntryId && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setEditingEntryId(entry.id) }}
+                className="w-6 h-6 flex items-center justify-center rounded text-xs opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity"
+                style={{ border: '1px solid #3b82f6', color: '#3b82f6' }}
+                title="Edit"
+              >✎</button>
+            )}
+            {onDelete && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }}
+                className="w-6 h-6 flex items-center justify-center rounded-full text-xs opacity-40 hover:opacity-100 transition-opacity"
+                style={{ border: '1px solid #f87171', color: '#f87171' }}
+              >✕</button>
+            )}
           </div>
         )}
       </div>
-      {(isOwner || isAdmin) && onDelete && (
-        <button onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }} className="shrink-0 self-center w-6 h-6 flex items-center justify-center rounded-full text-xs opacity-40 hover:opacity-100 transition-opacity" style={{ border: '1px solid #f87171', color: '#f87171' }}>✕</button>
-      )}
     </div>
   )
 }
@@ -3575,6 +4223,10 @@ function TierRankedEntries({
   visitorId = '',
   rarePicks,
   category,
+  isTouchDevice = false,
+  onSoftDelete,
+  editingEntryId,
+  setEditingEntryId,
 }: {
   entries: ListEntry[]
   tiers: Tier[]
@@ -3595,6 +4247,11 @@ function TierRankedEntries({
   visitorId?: string
   rarePicks?: Map<string, number>
   category?: 'movies' | 'tv'
+  isTouchDevice?: boolean
+  onSoftDelete?: (id: string) => void
+  onMoveUp?: (id: string) => void
+  editingEntryId?: string | null
+  setEditingEntryId?: (id: string | null) => void
 }) {
   const fallbackSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
   const activeSensors = sensors ?? fallbackSensors
@@ -3652,6 +4309,10 @@ function TierRankedEntries({
                   entryReactions={entryReactions}
                   selectedEntryId={selectedEntryId ?? null}
                   saveEntryField={saveEntryField}
+                  isTouchDevice={isTouchDevice}
+                  onSoftDelete={onSoftDelete}
+                  editingEntryId={editingEntryId}
+                  setEditingEntryId={setEditingEntryId}
                 />
               ))}
             </div>
@@ -3694,6 +4355,10 @@ function TierRankedEntries({
                         entryReactions={entryReactions}
                         selectedEntryId={selectedEntryId ?? null}
                         saveEntryField={saveEntryField}
+                        isTouchDevice={isTouchDevice}
+                        onSoftDelete={onSoftDelete}
+                        editingEntryId={editingEntryId}
+                        setEditingEntryId={setEditingEntryId}
                       />
                     ))}
                   </div>
@@ -3784,6 +4449,10 @@ function TierRankedEntries({
                       entryReactions={entryReactions}
                       selectedEntryId={selectedEntryId ?? null}
                       saveEntryField={saveEntryField}
+                      isTouchDevice={isTouchDevice}
+                      onSoftDelete={onSoftDelete}
+                      editingEntryId={editingEntryId}
+                      setEditingEntryId={setEditingEntryId}
                     />
                   ))}
                 </div>
